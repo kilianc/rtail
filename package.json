@@ -1,0 +1,36 @@
+{
+  "name": "rtail",
+  "version": "0.0.1",
+  "description": "stupid simple remote tail for logs",
+  "keywords": [
+    "tail",
+    "log",
+    "logs",
+    "remote"
+  ],
+  "main": "client.js",
+  "bin": {
+    "rtail": "./client.js",
+    "rtail-server": "./server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:kilianc/rtail.git"
+  },
+  "dependencies": {
+    "express": "^4.10.0",
+    "node-uuid": "^1.4.1",
+    "socket.io": "^1.1.0",
+    "yargs": "^1.3.2"
+  },
+  "devDependencies": {
+    "chai": "^1.9.2",
+    "mocha": "^2.0.1"
+  },
+  "scripts": {
+    "test": "mocha test.js -reporter spec",
+    "start": "node server.js"
+  },
+  "author": "Kilian Ciuffolo <me@nailik.org>",
+  "license": "MIT"
+}
