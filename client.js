@@ -11,27 +11,27 @@ var dgram = require('dgram')
   , pkg = require('./package')
 
 // fix yargs help
-uuid.v4.toString = function () { return 'self assigned' }
+uuid.v4.toString = function () { return 'uuid()' }
 
 /**
  * Parsing argv
  */
 
 var argv = yargs
-  .usage('Usage: cmd | $0 -h [string] -p [num] [--mute]')
-  .example('server | $0 -h localhost -p 43567 > server.log', 'remote + file')
-  .example('server | $0 -h localhost -p 43567', 'remote + stdout')
-  .example('server | $0 -h localhost -p 43567 -m', 'only remote')
-  .example('server | $0 -h localhost -p 43567 -id "prod server"', 'only remote')
+  .usage('Usage: cmd | rtail --host [string] --port [num] [--mute] [--id [string]]')
+  .example('server | rtail --host 127.0.0.1 > server.log',' broadcast to localhost + file')
+  .example('server | rtail --port 43567', ' custom port')
+  .example('server | rtail --mute', ' only remote', ' no stdout')
+  .example('server | rtail --id api.domain.com', ' name the log stream')
   .boolean('mute')
   .alias('mute', 'm')
   .describe('mute', 'don\'t pipe stdin with stdout')
   .string('host')
-  .default('host', 'localhost')
+  .default('host', '127.0.0.1')
   .describe('host', 'the recipient server host')
-  .demand('port')
-  .alias('port', 'p')
   .string('port')
+  .alias('port', 'p')
+  .default('port', 9999)
   .describe('port', 'the recipient server port')
   .string('id')
   .alias('id', ['name', 'n'])
