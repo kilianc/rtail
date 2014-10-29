@@ -12,9 +12,9 @@ var dgram = require('dgram')
  */
 
 var argv = yargs
-  .usage('Usage: $0 [--udp-host [string] --udp-port [num] --web-host [string] --web-port [num]]')
-  .example('$0 --web-port 8080', 'custom http port')
-  .example('$0 --udp-port 8080', 'custom udp port')
+  .usage('Usage: rtail-server [--udp-host [string] --udp-port [num] --web-host [string] --web-port [num]]')
+  .example('rtail-server --web-port 8080', 'custom http port')
+  .example('rtail-server --udp-port 8080', 'custom udp port')
   .string('host')
   .default('host', 'localhost')
   .describe('host', 'the listening udp hostname')
