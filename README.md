@@ -89,7 +89,21 @@ Open your browser and start tailing logs!
 
 ## Params *(todo)*
 
-    $ rtail-server --help
+    $ rtail-server
+    Usage: rtail-server [--udp-host [string] --udp-port [num] --web-host [string] --web-port [num]]
+
+    Examples:
+      rtail-server --web-port 8080    custom http port
+      rtail-server --udp-port 8080    custom udp port
+
+
+    Options:
+      --udp-host, --uh  the listening udp hostname   [default: "localhost"]
+      --udp-port, --up  the listening udp port       [default: 9999]
+      --web-host, --wh  the listening http hostname  [default: "localhost"]
+      --web-port, --wp  the listening http port      [default: 8888]
+      --help, -h        Show help
+      --version, -v     Show version number
 
 ## UDP Broadcasting
 
