@@ -1,6 +1,6 @@
 {
   "name": "rtail",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "stupid simple remote tail for logs",
   "keywords": [
     "tail",
