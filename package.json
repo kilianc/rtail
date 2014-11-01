@@ -1,6 +1,6 @@
 {
   "name": "rtail",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Tail everything in the browser in seconds",
   "keywords": [
     "tail",
