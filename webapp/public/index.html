@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>logs</title>
+
+  <link href="//maxcdn.bootstrapcdn.com/bootswatch/3.2.0/darkly/bootstrap.min.css" rel="stylesheet">
+
+  <style type="text/css" media="screen">
+    .line {
+      margin: 1px;
+      background: #252525;
+      border: 0;
+      color: #aaa;
+    }
+
+    .line.string {
+      padding-top: 0;
+      padding-bottom: 0;
+    }
+  </style>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="//code.jquery.com/jquery-2.1.1.min.js"></script>
+  <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.26/angular.min.js"></script>
+
+  <script>
+    angular
+    .module('app', [])
+    .controller('MainCtrl', function MainCtrl($scope) {
+      $scope.lines = []
+      $scope.socket = io()
+
+      $scope.socket.on('streams', function (streams) {
+        $scope.streams = streams
+        console.log($scope.streams)
+        $scope.$apply()
+      })
+
+      $scope.selectStream = function (stream) {
+        $scope.socket.emit('select stream', stream)
+      }
+
+      $scope.socket.on('backlog', function (lines) {
+        $scope.lines = lines
+        $scope.$apply()
+      })
+
+      $scope.socket.on('line', function (line) {
+        $scope.lines.push(line)
+        $scope.lines.length >= 100 && $scope.lines.shift()
+        $scope.$apply()
+        $('body').scrollTop($('body')[0].scrollHeight)
+      })
+    })
+  </script>
+</head>
+<body ng-app="app" ng-controller="MainCtrl">
+  <div class="container-fluid">
+    <h1>{{lines.length}}</h1>
+    <ul>
+      <li ng-repeat="stream in streams">
+        <a href ng-click="selectStream(stream)">{{stream}}</a>
+      </li>
+    </ul>
+    <div ng-repeat="line in lines">
+      <pre class="line {{line.type}}">{{line.line}}</pre>
+    </div>
+  </div>
+</body>
+</html>

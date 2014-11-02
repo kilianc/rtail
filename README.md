@@ -1,4 +1,4 @@
-# `rtail(1)`
+# `rtail(1)` (DO NOT USE IT YET)
 
 Stupid simple UNIX style stream broadcast over UDP in your browser.
 
@@ -87,7 +87,7 @@ With custom ports
 
 Open your browser and start tailing logs!
 
-## Params *(todo)*
+## Params
 
     $ rtail-server
     Usage: rtail-server [--udp-host [string] --udp-port [num] --web-host [string] --web-port [num]]
