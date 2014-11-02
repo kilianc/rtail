@@ -1,4 +1,4 @@
-# `rtail(1)`
+# `rtail(1)` (DO NOT USE IT YET)
 
 Stupid simple UNIX style stream broadcast over UDP in your browser.
 
