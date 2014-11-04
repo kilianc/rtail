@@ -1,4 +1,5 @@
 # `rtail(1)` (DO NOT USE IT YET)
+[![Gitter](https://badges.gitter.im/Join Chat.svg)](https://gitter.im/kilianc/rtail?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 Stupid simple UNIX style stream broadcast over UDP in your browser.
 
