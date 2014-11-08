@@ -21,7 +21,7 @@
     }
   </style>
 
-  <script src="/socket.io/socket.io.js"></script>
+  <script src="./socket.io/socket.io.js"></script>
   <script src="//code.jquery.com/jquery-2.1.1.min.js"></script>
   <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.26/angular.min.js"></script>
 
@@ -30,7 +30,7 @@
     .module('app', [])
     .controller('MainCtrl', function MainCtrl($scope) {
       $scope.lines = []
-      $scope.socket = io()
+      $scope.socket = io(document.location.origin, { path: document.location.pathname + 'socket.io' })
 
       $scope.socket.on('streams', function (streams) {
         $scope.streams = streams
