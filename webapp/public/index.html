@@ -25,36 +25,9 @@
   <script src="//code.jquery.com/jquery-2.1.1.min.js"></script>
   <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.26/angular.min.js"></script>
 
-  <script>
-    angular
-    .module('app', [])
-    .controller('MainCtrl', function MainCtrl($scope) {
-      $scope.lines = []
-      $scope.socket = io()
+  <script src="/js/format.js"></script>
+  <script src="/js/main.js"></script>
 
-      $scope.socket.on('streams', function (streams) {
-        $scope.streams = streams
-        console.log($scope.streams)
-        $scope.$apply()
-      })
-
-      $scope.selectStream = function (stream) {
-        $scope.socket.emit('select stream', stream)
-      }
-
-      $scope.socket.on('backlog', function (lines) {
-        $scope.lines = lines
-        $scope.$apply()
-      })
-
-      $scope.socket.on('line', function (line) {
-        $scope.lines.push(line)
-        $scope.lines.length >= 100 && $scope.lines.shift()
-        $scope.$apply()
-        $('body').scrollTop($('body')[0].scrollHeight)
-      })
-    })
-  </script>
 </head>
 <body ng-app="app" ng-controller="MainCtrl">
   <div class="container-fluid">
@@ -65,7 +38,7 @@
       </li>
     </ul>
     <div ng-repeat="line in lines">
-      <pre class="line {{line.type}}">{{line.line}}</pre>
+      <pre class="line {{line.type}}" ng-bind-html='line.line'></pre>
     </div>
   </div>
 </body>
