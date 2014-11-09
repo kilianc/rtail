@@ -5,8 +5,6 @@
 angular
   .module('app', ['$ansiToHtml'])
   .controller('MainCtrl', ['$scope', '$sce', '$ansiToHtml', function MainCtrl($scope, $sce, $ansiToHtml) {
-    var format = Format()
-
     $scope.lines = []
     $scope.socket = io(document.location.origin, { path: document.location.pathname + 'socket.io' })
 
