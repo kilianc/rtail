@@ -39,10 +39,10 @@ Supports JSON lines
     $ while true; do echo [1, 2, 3, "hello"]; sleep 1; done | rtail
     $ echo { "foo": "bar" } | rtail
 
-Using log files
+Using log files (log rotate safe!)
 
     $ node server.js 2>&1 > log.txt
-    $ tailf log.txt | rtail
+    $ tail -F log.txt | rtail
 
 For fun and debugging
 
@@ -83,7 +83,7 @@ With default values
 
 With custom ports
 
-    $ ratil-server --web-port 8080 --udp-port 9090
+    $ rtail-server --web-port 8080 --udp-port 9090
 
 
 Open your browser and start tailing logs!
