@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="12px" height="15px" viewBox="0 0 12 15" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns">
+    <!-- Generator: Sketch 3.3.2 (12043) - http://www.bohemiancoding.com/sketch -->
+    <title>light/btn-json-collapse</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="rTail---assets" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" sketch:type="MSPage">
+        <g id="webapp-assets@2x" sketch:type="MSArtboardGroup" transform="translate(-192.000000, -406.000000)" fill="#6D6D6D">
+            <g id="light" sketch:type="MSLayerGroup" transform="translate(100.000000, 83.000000)">
+                <g id="assets" transform="translate(40.000000, 70.000000)" sketch:type="MSShapeGroup">
+                    <path d="M58.5654179,267.126798 L63.3704409,255.038622 C63.6086708,254.321489 63.5839452,253.5 62.7287508,253.5 L53.2670588,253.5 C52.4852565,253.5 52.3620206,254.381304 52.6253686,255.038622 L57.4303917,267.126798 C57.743976,267.624401 58.2518336,267.624401 58.5654179,267.126798" id="light/btn-json-collapse"></path>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

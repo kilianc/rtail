@@ -1,0 +1,38 @@
+// **
+// define theme specific variables
+// **
+
+$theme: light;
+
+$main-color: #ec7b65;
+$header-bg-color: #374249;
+
+$stream-search-color: #787e80;
+$stream-search-bg-color: #dddddd;
+
+$stream-list-bg-color: #ececec;
+$stream-list-title-color: #495861;
+$stream-list-color: #787e80;
+$stream-list-selected-color: #45a7b9;
+$stream-list-selected-bg-color: rgba(69, 167, 185, 0.17);
+$stream-list-bg-hover-color: $stream-list-selected-bg-color;
+
+$stream-view-bg-color: #fff;
+$stream-view-content-color: #cfcfcf;
+$stream-view-content-bg-hover-color: darken($stream-view-bg-color, 3%);
+$stream-view-timestamp-color: #bbbbbb;
+$stream-view-timestamp-border-color: #ececec;
+
+$popover-font-color: #fff;
+$popover-bg-color: #374249;
+$popover-alt-bg-color: #434C53;
+$popover-btn-bg-hover-color: lighten($popover-bg-color, 5%);
+$popover-btn-bg-active-color: darken($popover-btn-bg-hover-color, 10%);
+$popover-btn-border-color: #6B7780;
+$popover-btn-font-color: rgba(#FFFFFF, 0.6);
+
+// **
+// define theme specific variables
+// **
+
+@import "_theme.scss";

@@ -1,9 +1,15 @@
-# `rtail(1)` (DO NOT USE IT YET)
-[![Gitter](https://badges.gitter.im/Join Chat.svg)](https://gitter.im/kilianc/rtail?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+# `rtail(1)`
+
+[![Travis CI](https://img.shields.io/travis/kilianc/rtail.svg?style=flat-square)](https://travis-ci.org/kilianc/rtail)
+[![Coveralls](https://img.shields.io/coveralls/kilianc/rtail.svg?style=flat-square)](https://coveralls.io/r/kilianc/rtail)
+[![NPM version](https://img.shields.io/npm/v/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
+[![NPM downloads](https://img.shields.io/npm/dm/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
+[![License](https://img.shields.io/npm/l/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
+[![Gitter](https://img.shields.io/badge/≡_gitter-join_chat_➝-04cd7e.svg?style=flat-square)](https://gitter.im/kilianc/rtail?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 Stupid simple UNIX style stream broadcast over UDP in your browser.
 
-`rtail` is a command line utility that grabs every line in `stdin` and broadcast it over **UDP**. That's it, nothing fancy, nothing complicated. You can tail your log files, your app logs or whatever you wish to pipe in `rtail` to a `rtail-server` and see multiple streams in the browser, realtime.
+`rtail` is a command line utility that grabs every line in `stdin` and broadcast it over **UDP**. That's it, nothing fancy, nothing complicated. You can tail your log files, your app output or whatever you wish to pipe, in `rtail` to a `rtail-server` and see multiple streams in the browser, realtime.
 
 ## Installation
 
@@ -55,19 +61,21 @@ For fun and debugging
     Usage: cmd | rtail --host [string] --port [num] [--mute] [--id [string]]
 
     Examples:
-      server | rtail --host 127.0.0.1 > server.log     broadcast to localhost + file
-      server | rtail --port 43567                      custom port
-      server | rtail --mute                            only remote
-      server | rtail --id api.domain.com               name the log stream
+      server | rtail --host 127.0.0.1 > server.log    Broadcast to localhost + file
+      server | rtail --port 43567                     Custom port
+      server | rtail --mute                           Only remote
+      server | rtail --id api.domain.com              Name the log stream
+      server | rtail --not-tty                        Strips ANSI colors
 
 
     Options:
-      --mute, -m        don't pipe stdin with stdout
-      --host            the recipient server host     [default: "127.0.0.1"]
-      --port, -p        the recipient server port     [default: 9999]
-      --id, --name, -n  the log stream id             [default: uuid()]
-      --help, -h        Show help
-      --version, -v     Show version number
+      --mute, -m     Don't pipe stdin with stdout
+      --host         The recipient server host     [default: "127.0.0.1"]
+      --port, -p     The recipient server port     [default: 9999]
+      --id, --name   The log stream id             [default: moniker()]
+      --not-tty      Strips ansi colors
+      --help, -h     Show help
+      --version, -v  Show version number
 
 ## `rtail-server(1)`
 
@@ -85,24 +93,34 @@ With custom ports
 
     $ rtail-server --web-port 8080 --udp-port 9090
 
+With debugging on
+
+    $ DEBUG=rtail:* rtail-server
+
+With serving always latest stable webapp
+
+    $ DEBUG=rtail:* rtail-server --web-version stable
 
 Open your browser and start tailing logs!
 
 ## Params
 
-    $ rtail-server
-    Usage: rtail-server [--udp-host [string] --udp-port [num] --web-host [string] --web-port [num]]
+    $ rtail-server -h
+    Usage: rtail-server [--udp-host [string] --udp-port [num] --web-host [string] --web-port [num] --web-version [stable,unstable,<version>]]
 
     Examples:
-      rtail-server --web-port 8080    custom http port
-      rtail-server --udp-port 8080    custom udp port
+      rtail-server --web-port 8080         Use custom http port
+      rtail-server --udp-port 8080         Use custom udp port
+      rtail-server --web-version stable    Always uses latest stable webapp
+      rtail-server --web-version 0.1.3     Use webapp v0.1.3
 
 
     Options:
-      --udp-host, --uh  the listening udp hostname   [default: "localhost"]
-      --udp-port, --up  the listening udp port       [default: 9999]
-      --web-host, --wh  the listening http hostname  [default: "localhost"]
-      --web-port, --wp  the listening http port      [default: 8888]
+      --udp-host, --uh  The listening udp hostname       [default: "127.0.0.1"]
+      --udp-port, --up  The listening udp port           [default: 9999]
+      --web-host, --wh  The listening http hostname      [default: "127.0.0.1"]
+      --web-port, --wp  The listening http port          [default: 8888]
+      --web-version     Define web app version to serve
       --help, -h        Show help
       --version, -v     Show version number
 

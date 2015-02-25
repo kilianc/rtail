@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="22px" height="22px" viewBox="0 0 22 22" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns">
+    <!-- Generator: Sketch 3.3.2 (12043) - http://www.bohemiancoding.com/sketch -->
+    <title>dark/icn-theme-dark</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="rTail---assets" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" sketch:type="MSPage">
+        <g id="webapp-assets@2x" sketch:type="MSArtboardGroup" transform="translate(-1603.000000, -2041.000000)" fill="#6B7780">
+            <g id="dark" sketch:type="MSLayerGroup" transform="translate(100.000000, 1243.000000)">
+                <g id="assets" transform="translate(40.000000, 71.000000)" sketch:type="MSShapeGroup">
+                    <g id="dark/icn-theme-dark" transform="translate(1463.000000, 727.000000)">
+                        <path d="M14.3324412,16.4875392 C9.4612892,16.4875392 5.5124608,12.5387108 5.5124608,7.6675588 C5.5124608,4.3817378 7.3104878,1.5176568 9.975196,0 C4.3787304,0.5287304 0,5.2402548 0,10.9750784 C0,17.0639656 4.9360344,22 11.0249216,22 C16.7597452,22 21.471054,17.6212696 22,12.024804 C20.4823432,14.6895122 17.6182622,16.4875392 14.3324412,16.4875392 L14.3324412,16.4875392 Z" id="Shape-4"></path>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>
