@@ -63,7 +63,7 @@
               ng-repeat="stream in ctrl.streams | filter:ctrl.streamsListFilter | orderBy:''"
               ng-class="{ selected: ctrl.isSelected(stream) }"
               ng-click="ctrl.selectStream(stream)"
-              ng-hide="ctrl.favorites[ctrl.activeStream]"
+              ng-hide="ctrl.favorites[ctrl.stream]"
             >
               <a href="#">{{::stream}}</a>
               <i ng-show="stream.unread"></i>
