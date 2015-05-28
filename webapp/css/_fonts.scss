@@ -1,59 +1,47 @@
 // **
+// font variables
+// **
+
+$font-families: (
+  "Inconsolata"
+  "Roboto Mono"
+  "Source Code Pro"
+  "Ubuntu Mono"
+  "Droid Sans Mono"
+  "Anonymous Pro"
+);
+
+$font-sizes: (
+  11px
+  12px
+  13px
+  14px
+  15px
+  16px
+  17px
+);
+
+// **
 // font families
 // **
 
-.font-family-1 & {
-  font-family: 'Avenir-Roman';
-}
+@each $font-family in $font-families {
+  $i: index($font-families, $font-family);
 
-.font-family-2 & {
-  font-family: 'Menlo';
-}
-
-.font-family-3 & {
-  font-family: 'Helvetica Neue';
-}
-
-.font-family-4 & {
-  font-family: 'Comic Sans MS';
-}
-
-.font-family-5 & {
-  font-family: 'Futura';
-}
-
-.font-family-6 & {
-  font-family: 'Trebuchet MS';
+  .font-family-#{$i} .stream-line,
+  .btn-font-#{$i} {
+    font-family: $font-family;
+  }
 }
 
 // **
 // font sizes
 // **
 
-.font-size-1 & {
-  font-size: xx-small;
-}
+@each $font-size in $font-sizes {
+  $i: index($font-sizes, $font-size);
 
-.font-size-2 & {
-  font-size: x-small;
-}
-
-.font-size-3 & {
-  font-size: small;
-}
-
-.font-size-4 & {
-  font-size: 14px;
-}
-
-.font-size-5 & {
-  font-size: large;
-}
-
-.font-size-6 & {
-  font-size: x-large;
-}
-
-.font-size-7 & {
-  font-size: xx-large;
+  .font-size-#{$i} .stream-line {
+    font-size: $font-size;
+  }
 }
