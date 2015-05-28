@@ -5,14 +5,12 @@
 angular
   .module('app', [
     'ngAnimate',
-    '$ansiToHtml',
     'angularMoment',
     'LocalForageModule',
     'rt.popup'
   ])
   .controller('MainController', function MainController($scope, $injector) {
     var $sce = $injector.get('$sce')
-    var $ansiToHtml = $injector.get('$ansiToHtml')
     var $moment = $injector.get('moment')
     var $localForage = $injector.get('$localForage')
     var $streamLines = $('.stream-lines')
@@ -75,7 +73,7 @@ angular
         line.html = $sce.trustAsHtml('<pre>' + JSON.stringify(line.content, null, '  ') + '</pre>')
       } else {
         // for log lines format ansi format
-        line.html = $ansiToHtml.toHtml(line.content || line.line)
+        line.html = ansi_up.ansi_to_html(line.content || line.line, { use_classes: true })
         line.html = $sce.trustAsHtml(line.html)
       }
 
