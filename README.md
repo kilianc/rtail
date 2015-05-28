@@ -8,13 +8,19 @@
 [![License](https://img.shields.io/npm/l/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
 [![Gitter](https://img.shields.io/badge/≡_gitter-join_chat_➝-04cd7e.svg?style=flat-square)](https://gitter.im/kilianc/rtail?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-Stupid simple UNIX style stream broadcast over UDP in your browser.
+## Pipe your terminal output to the browser in seconds, using UNIX pipes.
 
 `rtail` is a command line utility that grabs every line in `stdin` and broadcast it over **UDP**. That's it, nothing fancy, nothing complicated. You can tail your log files, your app output or whatever you wish to pipe, in `rtail` to a `rtail-server` and see multiple streams in the browser, realtime.
 
 ## Installation
 
     $ npm install -g rtail
+
+## Web app
+
+![](https://s3.amazonaws.com/rtail/github/dark.png)
+
+![](https://s3.amazonaws.com/rtail/github/light.png)
 
 ## Rationale
 
@@ -90,6 +96,10 @@ With default values
 
     $ rtail-server
 
+Stay up to date!
+
+    $ rtail-server --web-version stable
+
 With custom ports
 
     $ rtail-server --web-port 8080 --udp-port 9090
@@ -145,6 +155,12 @@ This project follows (more or less) the [Felix's Node.js Style Guide](http://nod
 The test suite is written on top of [visionmedia/mocha](http://visionmedia.github.com/mocha/) and it took hours of hard work. Please use the tests to check if your contribution is breaking some part of the library and add new tests for each new feature.
 
     $ npm test
+
+## Contributors
+
+* [Kilian Ciuffolo](https://github.com/kilianc)
+* [Luca Orio](https://www.behance.net/lucaorio)
+* [Sandaruwan Silva](https://github.com/s-silva)
 
 ## License
 
