@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="38px" height="38px" viewBox="0 0 38 38" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns">
+    <!-- Generator: Sketch 3.3.2 (12043) - http://www.bohemiancoding.com/sketch -->
+    <title>light/btn-info</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="rTail---assets" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" sketch:type="MSPage">
+        <g id="webapp-assets@2x" sketch:type="MSArtboardGroup" transform="translate(-1666.000000, -153.000000)" fill="#FFFFFF">
+            <g id="light" sketch:type="MSLayerGroup" transform="translate(100.000000, 83.000000)">
+                <g id="assets" transform="translate(40.000000, 70.000000)" sketch:type="MSShapeGroup">
+                    <g id="light/btn-info" transform="translate(1526.000000, 0.000000)">
+                        <path d="M19,38 C29.4934102,38 38,29.4934102 38,19 C38,8.50658975 29.4934102,0 19,0 C8.50658975,0 0,8.50658975 0,19 C0,29.4934102 8.50658975,38 19,38 Z M19,35 C27.836556,35 35,27.836556 35,19 C35,10.163444 27.836556,3 19,3 C10.163444,3 3,10.163444 3,19 C3,27.836556 10.163444,35 19,35 Z" id="Oval-5"></path>
+                        <rect id="Rectangle-49" x="17" y="15" width="4" height="14"></rect>
+                        <circle id="Oval-21" cx="19" cy="11" r="2"></circle>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

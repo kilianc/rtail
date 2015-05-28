@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="12px" height="15px" viewBox="0 0 12 15" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns">
+    <!-- Generator: Sketch 3.3.2 (12043) - http://www.bohemiancoding.com/sketch -->
+    <title>dark/btn-json-collapse</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="rTail---assets" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" sketch:type="MSPage">
+        <g id="webapp-assets@2x" sketch:type="MSArtboardGroup" transform="translate(-191.000000, -1564.000000)" fill="#CFCFCF" opacity="0.6">
+            <g id="dark" sketch:type="MSLayerGroup" transform="translate(100.000000, 1243.000000)">
+                <g id="assets" transform="translate(40.000000, 71.000000)" sketch:type="MSShapeGroup">
+                    <path d="M63.6267982,256.934582 L51.5386224,252.129559 C50.8214894,251.891329 50,251.916055 50,252.771249 L50,262.232941 C50,263.014744 50.8813035,263.137979 51.5386224,262.874631 L63.6267982,258.069608 C64.1244006,257.756024 64.1244006,257.248166 63.6267982,256.934582" id="dark/btn-json-collapse" transform="translate(57.000000, 257.500000) rotate(-270.000000) translate(-57.000000, -257.500000) "></path>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

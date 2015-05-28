@@ -1,0 +1,205 @@
+.#{$theme} {
+  header {
+    background: $header-bg-color;
+
+    .rtail-logo {
+      background-color: $main-color;
+      background-image: url('../images/common/logo-rtail.svg');
+    }
+
+    .btn-info {
+      background-image: url('../images/#{$theme}/btn-info.svg');
+    }
+
+    .btn-github {
+      background-image: url('../images/#{$theme}/btn-github.svg');
+    }
+
+    .btn-settings {
+      background-image: url('../images/#{$theme}/btn-settings.svg');
+    }
+  }
+
+  .sidebar {
+    background: $stream-list-bg-color;
+
+    .search-box {
+      background-color: $stream-search-bg-color;
+      background-image: url('../images/#{$theme}/icn-search.svg');
+
+      input {
+        color: #787E80;
+      }
+    }
+
+    .stream-section {
+      h4 {
+        color: $stream-list-title-color;
+      }
+
+      li {
+        color: $stream-list-color;
+
+        &:hover {
+          background: $stream-list-bg-hover-color;
+        }
+
+        &.selected {
+          background: $stream-list-selected-bg-color;
+          border-left-color: $stream-list-selected-color;
+          color: $stream-list-selected-color;
+        }
+
+        i {
+          background-color: $main-color;
+        }
+      }
+    }
+  }
+
+  .stream-view {
+    background-color: $stream-view-bg-color;
+
+    .stream-header {
+      background: #45a7b9;
+      color: #fff;
+
+      .stream-title-favorite {
+        background-image: url('../images/common/btn-fav-off.svg');
+
+        &.on {
+          background-image: url('../images/common/btn-fav-on.svg');
+        }
+      }
+
+      .filter-box {
+        background-image: url('../images/common/icn-filter.svg');
+
+        input::-webkit-input-placeholder {
+          color: white;
+        }
+      }
+    }
+
+    .stream-lines {
+      .stream-line:hover {
+        background: $stream-view-content-bg-hover-color;
+      }
+
+      .stream-line-timestamp {
+        color: $stream-view-timestamp-color;
+        border-right-color: $stream-view-timestamp-border-color;
+      }
+
+      .stream-line-content {
+        color: $stream-view-content-color;
+      }
+    }
+
+    .btn-resume {
+      background-color: $main-color;
+      background-image: url('../images/common/icn-resume.svg');
+      color: white;
+    }
+  }
+
+  .popover {
+    .popover-content {
+      background: $popover-bg-color;
+      color: $popover-font-color;
+
+      &:before {
+        border-bottom-color: $popover-alt-bg-color;
+      }
+    }
+
+    .popover-info {
+      .rtail-logo,
+      .lukibear-logo {
+        background-color: $popover-alt-bg-color;
+      }
+
+      .rtail-logo {
+        background-image: url('../images/#{$theme}/logo-rtail-info.svg');
+      }
+
+      .lukibear-logo {
+        background-image: url('../images/#{$theme}/logo-lukibear.svg');
+      }
+    }
+
+    .btn {
+      border-color: $popover-btn-border-color;
+      color: $popover-btn-font-color;
+
+      &:hover,
+      &.selected {
+        background-color: $popover-btn-bg-hover-color;
+      }
+
+      &:active {
+        background-color: $popover-btn-bg-active-color;
+      }
+    }
+  }
+
+  .popover-settings {
+    h4 {
+      color: $popover-font-color;
+    }
+
+    div.btn-group .btn {
+      &.btn-font-smaller {
+        background-image: url(../images/#{$theme}/icn-font-decrease.svg);
+      }
+
+      &.btn-font-reset {
+        background-image: url(../images/#{$theme}/icn-font-reset.svg);
+      }
+
+      &.btn-font-bigger {
+        background-image: url(../images/#{$theme}/icn-font-increase.svg);
+      }
+
+      &.btn-font-1 {
+        background-image: url(../images/#{$theme}/icn-font-decrease.svg);
+      }
+
+      &.btn-font-2 {
+        background-image: url(../images/#{$theme}/icn-font-decrease.svg);
+      }
+
+      &.btn-font-3 {
+        background-image: url(../images/#{$theme}/icn-font-decrease.svg);
+      }
+
+      &.btn-font-4 {
+        background-image: url(../images/#{$theme}/icn-font-decrease.svg);
+      }
+
+      &.btn-font-5 {
+        background-image: url(../images/#{$theme}/icn-font-decrease.svg);
+      }
+
+      &.btn-font-6 {
+        background-image: url(../images/#{$theme}/icn-font-decrease.svg);
+      }
+
+      &.btn-sorting-asc {
+        background-image: url(../images/#{$theme}/icn-sort-asc.svg);
+      }
+
+      &.btn-sorting-desc {
+        background-image: url(../images/#{$theme}/icn-sort-desc.svg);
+      }
+
+      &.btn-theme-dark {
+        background-image: url(../images/#{$theme}/icn-theme-dark.svg);
+      }
+
+      &.btn-theme-light {
+        background-image: url(../images/#{$theme}/icn-theme-light.svg);
+      }
+    }
+  }
+}
