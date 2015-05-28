@@ -62,6 +62,34 @@ gulp.task('ejs', function () {
     .pipe(gulp.dest('app'))
 })
 
+
+/**
+ * Compile templates
+ */
+
+gulp.task('hjs', function (done) {
+  var opts = {
+    cwd: __dirname + '/node_modules/highlight.js'
+  }
+
+  var npmInstall = spawn('npm', ['install'], opts)
+  npmInstall.stdout.pipe(process.stdout)
+  npmInstall.stderr.pipe(process.stderr)
+
+  npmInstall.on('close', function (code) {
+    if (0 !== code) throw new Error('npm install exited with ' + code)
+
+    var build = spawn('node', ['tools/build.js', '-n', 'json'], opts)
+    build.stdout.pipe(process.stdout)
+    build.stderr.pipe(process.stderr)
+
+    build.on('close', function (code) {
+      if (0 !== code) throw new Error('node tools/build.js exited with ' + code)
+      done()
+    })
+  })
+})
+
 /**
  * Launch server + livereload in dev mode
  */
@@ -147,7 +175,7 @@ gulp.task('app', ['build:app'], function (done) {
  */
 
 gulp.task('build:app', function (done) {
-  run('clean:sass', 'sass', 'ejs', done)
+  run('clean:sass', 'sass', 'ejs', 'hjs', done)
 })
 
 /**
