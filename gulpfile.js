@@ -42,7 +42,8 @@ gulp.task('copy:deps', function () {
     'node_modules/angular-moment/angular-moment.js',
     'node_modules/localforage/dist/localforage.js',
     'node_modules/angular-localforage/dist/angular-localForage.js',
-    'node_modules/angular-rt-popup/dist/angular-rt-popup.js'
+    'node_modules/angular-rt-popup/dist/angular-rt-popup.js',
+    'node_modules/ansi_up/ansi_up.js'
   ])
     .pipe(gulp.dest('webapp/scripts'))
 })

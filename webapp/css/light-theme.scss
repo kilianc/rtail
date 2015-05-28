@@ -31,8 +31,26 @@ $popover-btn-bg-active-color: darken($popover-btn-bg-hover-color, 10%);
 $popover-btn-border-color: #6B7780;
 $popover-btn-font-color: rgba(#FFFFFF, 0.6);
 
+$ansi-black: #6B6F72;
+$ansi-black-bright: #BDC3C7;
+$ansi-red: #C0392B;
+$ansi-red-bright: #E74C3C;
+$ansi-green: #27AF60;
+$ansi-green-bright: #2ECC71;
+$ansi-yellow: #F39C12;
+$ansi-yellow-bright: #F1C40F;
+$ansi-blue: #2E8DCD;
+$ansi-blue-bright: #3498DB;
+$ansi-magenta: #8E44AD;
+$ansi-magenta-bright: #9B59B6;
+$ansi-cyan: #0097A4;
+$ansi-cyan-bright: #02C8D9;
+$ansi-white: #D8D6D6;
+$ansi-white-bright: #A7A7A7;
+
 // **
-// define theme specific variables
+// import templates
 // **
 
 @import "_theme.scss";
+@import "_ansi.scss";
