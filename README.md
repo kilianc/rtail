@@ -1,6 +1,6 @@
 # `rtail(1)`
 
-[![Wercker CI](https://img.shields.io/wercker/kilianc/rtail.svg?style=flat-square)](https://app.wercker.com/project/bykey/54b073dac5b9156509c26031c78c98d4)
+[![Wercker CI](https://img.shields.io/wercker/ci/54b073dac5b9156509c26031c78c98d4.svg?style=flat-square)](https://app.wercker.com/project/bykey/54b073dac5b9156509c26031c78c98d4)
 [![Coveralls](https://img.shields.io/coveralls/kilianc/rtail.svg?style=flat-square)](https://coveralls.io/r/kilianc/rtail)
 [![NPM version](https://img.shields.io/npm/v/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
 [![NPM downloads](https://img.shields.io/npm/dm/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
