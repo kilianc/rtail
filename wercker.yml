@@ -1,0 +1,18 @@
+box: wercker/nodejs
+
+build:
+  steps:
+    - npm-install
+    - npm-test
+    - hgen/gulp
+
+deploy:
+  steps:
+    - script:
+        code: |
+            export VERSION=`node -e "console.log(require('./package.json').version)"`
+    - s3sync:
+        key_id: $AWS_ACCESS_KEY_ID
+        key_secret: $AWS_SECRET_ACCESS_KEY
+        bucket_url: $AWS_BUCKET_URL
+        source_dir: $SOURCE_DIR
