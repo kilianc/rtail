@@ -26,7 +26,6 @@ angular
      * Socket stuff
      */
 
-    // handle development mode
     ctrl.socket = io(document.location.origin, { path: document.location.pathname + 'socket.io' })
 
     ctrl.socket.on('streams', function (streams) {
