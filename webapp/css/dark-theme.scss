@@ -30,6 +30,7 @@ $popover-btn-bg-hover-color: #f0f0f0;
 $popover-btn-bg-active-color: darken($popover-btn-bg-hover-color, 10%);
 $popover-btn-border-color: #c7c7c7;
 $popover-btn-font-color: rgba(#7a8891, 0.6);
+$popover-btn-font-selected-color: darken($popover-btn-font-color, 30%);
 
 $ansi-black: #6B6F72;
 $ansi-black-bright: #BDC3C7;

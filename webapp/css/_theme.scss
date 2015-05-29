@@ -134,6 +134,7 @@
 
       &:hover,
       &.selected {
+        color: $popover-btn-font-selected-color;
         background-color: $popover-btn-bg-hover-color;
       }
 
@@ -159,30 +160,6 @@
 
       &.btn-font-bigger {
         background-image: url(../images/#{$theme}/icn-font-increase.svg);
-      }
-
-      &.btn-font-1 {
-        background-image: url(../images/#{$theme}/icn-font-decrease.svg);
-      }
-
-      &.btn-font-2 {
-        background-image: url(../images/#{$theme}/icn-font-decrease.svg);
-      }
-
-      &.btn-font-3 {
-        background-image: url(../images/#{$theme}/icn-font-decrease.svg);
-      }
-
-      &.btn-font-4 {
-        background-image: url(../images/#{$theme}/icn-font-decrease.svg);
-      }
-
-      &.btn-font-5 {
-        background-image: url(../images/#{$theme}/icn-font-decrease.svg);
-      }
-
-      &.btn-font-6 {
-        background-image: url(../images/#{$theme}/icn-font-decrease.svg);
       }
 
       &.btn-sorting-asc {

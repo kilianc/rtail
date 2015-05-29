@@ -18,7 +18,7 @@ $stream-list-selected-bg-color: rgba(69, 167, 185, 0.17);
 $stream-list-bg-hover-color: $stream-list-selected-bg-color;
 
 $stream-view-bg-color: #fff;
-$stream-view-content-color: #cfcfcf;
+$stream-view-content-color: #6D6D6D;
 $stream-view-content-bg-hover-color: darken($stream-view-bg-color, 3%);
 $stream-view-timestamp-color: #bbbbbb;
 $stream-view-timestamp-border-color: #ececec;
@@ -30,6 +30,7 @@ $popover-btn-bg-hover-color: lighten($popover-bg-color, 5%);
 $popover-btn-bg-active-color: darken($popover-btn-bg-hover-color, 10%);
 $popover-btn-border-color: #6B7780;
 $popover-btn-font-color: rgba(#FFFFFF, 0.6);
+$popover-btn-font-selected-color: darken($popover-btn-font-color, 10%);
 
 $ansi-black: #6B6F72;
 $ansi-black-bright: #BDC3C7;

@@ -4,6 +4,13 @@
 
 $spacing: 20px;
 $border-radius: 5px;
+$font-family: "Nunito";
+
+// **
+// imports
+// **
+
+@import "_fonts";
 
 // **
 // reset
@@ -27,7 +34,8 @@ ol, ul {
   list-style: none;
 }
 
-pre {
+pre,
+input {
   font-family: inherit !important;
 }
 
@@ -40,7 +48,7 @@ body {
   flex-direction: column;
   align-items: stretch;
   min-height: 100vh;
-  font-family: 'Avenir-Roman';
+  font-family: $font-family;
   font-size: 16px;
 }
 
@@ -97,7 +105,6 @@ header {
       flex: 1;
       height: 57px;
       font-size: 14px;
-      font-family: 'Avenir-Roman';
       margin-left: 56px;
       margin-right: $spacing;
     }
@@ -117,7 +124,6 @@ header {
         height: 32px;
         margin-top: $spacing;
         padding-left: $spacing;
-        font-family: 'Avenir-Medium';
         font-size: 16px;
         font-weight: normal;
       }
@@ -199,7 +205,6 @@ header {
     .stream-line {
       display: flex;
       line-height: 1.2em;
-      @import "_fonts.scss";
 
       .stream-line-timestamp {
         padding-right: $spacing;
@@ -333,6 +338,7 @@ header {
         background-size: auto 50%;
         background-repeat: no-repeat;
         background-position: 50% 50%;
+        font-size: 16px;
 
         &:nth-child(1) {
           border-right: 0;
