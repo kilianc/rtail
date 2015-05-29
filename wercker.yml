@@ -15,4 +15,27 @@ deploy:
         key_id: $AWS_ACCESS_KEY_ID
         key_secret: $AWS_SECRET_ACCESS_KEY
         bucket_url: $AWS_BUCKET_URL
-        source_dir: $SOURCE_DIR
+        source_dir: dist/
+    - script:
+        name: npm publish
+        code: |
+          if [ ! -n "$NPM_PUBLISH" ]; then
+            echo "Skipping npm publish, NPM_PUBLISH is not set."
+            setMessage "Skipping npm publish, NPM_PUBLISH is not set."
+            exit 0
+          fi
+
+          if [ ! -n "$NPM_TOKEN" ]; then
+            error "Please set NPM_TOKEN env variable"
+            exit 1
+          fi
+
+          if [ ! -n "$NPM_EMAIL" ]; then
+            error "Please set NPM_EMAIL env variable"
+            exit 1
+          fi
+
+          echo "_auth = $NPM_TOKEN > ~/.npmrc"
+          echo "email = $NPM_EMAIL >> ~/.npmrc"
+
+          npm publish
