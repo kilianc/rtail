@@ -27,11 +27,7 @@ angular
      */
 
     // handle development mode
-    if ($window.localStorage.development) {
-      ctrl.socket = io(document.location.origin)
-    } else {
-      ctrl.socket = io(document.location.origin, { path: document.location.pathname + 'socket.io' })
-    }
+    ctrl.socket = io(document.location.origin, { path: document.location.pathname + 'socket.io' })
 
     ctrl.socket.on('streams', function (streams) {
       ctrl.streams = streams
