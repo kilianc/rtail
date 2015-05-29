@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="34px" height="29px" viewBox="0 0 34 29" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns">
+    <!-- Generator: Sketch 3.3.2 (12043) - http://www.bohemiancoding.com/sketch -->
+    <title>dark/icn-font-decrease</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="rTail---assets" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" sketch:type="MSPage">
+        <g id="webapp-assets@2x" sketch:type="MSArtboardGroup" transform="translate(-1598.000000, -1541.000000)" stroke="#6B7780" fill="#6B7780">
+            <g id="dark" sketch:type="MSLayerGroup" transform="translate(100.000000, 1243.000000)">
+                <g id="assets" transform="translate(40.000000, 71.000000)" sketch:type="MSShapeGroup">
+                    <g id="dark/icn-font-decrease" transform="translate(1459.000000, 228.000000)">
+                        <path d="M5.772,16.835 L19.129,16.835 L12.432,1.036 L5.772,16.835 Z M1.184,27.38 L0,27.38 L11.729,0 L13.172,0 L24.901,27.38 L23.717,27.38 L19.61,17.834 L5.291,17.834 L1.184,27.38 Z" id="A-2"></path>
+                        <path d="M32,4 L32,5.276 L24,5.276 L24,4 L32,4 Z" id="-" stroke-width="2"></path>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

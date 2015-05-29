@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="10px" height="16px" viewBox="0 0 10 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns">
+    <!-- Generator: Sketch 3.3.2 (12043) - http://www.bohemiancoding.com/sketch -->
+    <title>light/icn-close-date</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="rTail---assets" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" sketch:type="MSPage">
+        <g id="webapp-assets@2x" sketch:type="MSArtboardGroup" transform="translate(-249.000000, -406.000000)" stroke="#6D6D6D" stroke-width="2" fill="#6D6D6D">
+            <g id="light" sketch:type="MSLayerGroup" transform="translate(100.000000, 83.000000)">
+                <g id="assets" transform="translate(40.000000, 70.000000)" sketch:type="MSShapeGroup">
+                    <path d="M111.391614,260.997083 L117.831383,254.999166 C118.056206,254.771619 118.056206,254.398208 117.831383,254.170661 C117.60656,253.943113 117.241581,253.943113 117.01733,254.170661 L110.163384,260.553657 C110.043822,260.676183 109.992335,260.83955 110.000916,260.997083 C109.992335,261.16045 110.043822,261.323817 110.163384,261.446343 L117.01733,267.829339 C117.241581,268.056887 117.60656,268.056887 117.831383,267.829339 C118.056206,267.595957 118.056206,267.228381 117.831383,267.000834 L111.391614,260.997083" id="light/icn-close-date"></path>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

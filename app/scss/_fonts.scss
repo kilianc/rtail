@@ -1,0 +1,47 @@
+// **
+// font variables
+// **
+
+$font-families: (
+  "Inconsolata"
+  "Roboto Mono"
+  "Source Code Pro"
+  "Ubuntu Mono"
+  "Droid Sans Mono"
+  "Anonymous Pro"
+);
+
+$font-sizes: (
+  11px
+  12px
+  13px
+  14px
+  15px
+  16px
+  17px
+);
+
+// **
+// font families
+// **
+
+@each $font-family in $font-families {
+  $i: index($font-families, $font-family);
+
+  .font-family-#{$i} .stream-line,
+  .btn-font-#{$i} {
+    font-family: $font-family;
+  }
+}
+
+// **
+// font sizes
+// **
+
+@each $font-size in $font-sizes {
+  $i: index($font-sizes, $font-size);
+
+  .font-size-#{$i} .stream-line {
+    font-size: $font-size;
+  }
+}

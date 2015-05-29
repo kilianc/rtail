@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html ng-app="app" ng-controller="MainController as ctrl">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title ng-if="!ctrl.loaded">rTail : loading ...</title>
+  <title ng-if="ctrl.loaded">rTail : {{ctrl.activeStream}}</title>
+  <!-- build:css(app) css/bundle.min.css -->
+  <link href="css/main.css" rel="stylesheet" type="text/css">
+  <link href="css/dark-theme.css" rel="stylesheet" type="text/css">
+  <link href="css/light-theme.css" rel="stylesheet" type="text/css">
+  <!-- endbuild -->
+  <link href='//fonts.googleapis.com/css?family=Source+Code+Pro|Roboto+Mono|Inconsolata|Anonymous+Pro|Ubuntu+Mono|Droid+Sans+Mono|Nunito:300' rel='stylesheet' type='text/css'>
+  <!-- favicon -->
+  <link rel="icon" href="images/common/favicon-16x16.png" sizes="16x16">
+  <link rel="icon" href="images/common/favicon-32x32.png" sizes="32x32">
+  <link rel="icon" href="images/common/favicon-96x96.png" sizes="96x96">
+</head>
+<body class="{{ctrl.theme}} font-family-{{ctrl.fontFamily}} font-size-{{ctrl.fontSize}}">
+
+  <header>
+    <div class="rtail-logo"></div>
+
+    <button
+      class="btn btn-info"
+      popup-show="popover-info"
+      popup-placement="bottom"
+    ></button>
+
+    <a class="btn btn-github" href="https://github.com/kilianc/rtail" target="_blank"></a>
+
+    <button
+      class="btn btn-settings"
+      popup-show="popover-settings"
+      popup-placement="bottom"
+    ></button>
+  </header>
+
+  <div class="split-pane">
+    <div class="sidebar">
+      <div class="search-box">
+        <input type="text" placeholder="Search streams" ng-model="ctrl.streamsListFilter">
+      </div>
+
+      <div class="stream-sections">
+        <div class="stream-section">
+          <h4>Favorites</h4>
+          <ul>
+            <li
+              ng-repeat="(stream, active) in ctrl.favorites | orderBy:''"
+              ng-class="{ selected: ctrl.isSelected(stream) }"
+              ng-click="ctrl.selectStream(stream)"
+            >
+              <a href="#">{{::stream}}</a>
+              <i ng-show="stream.unread"></i>
+            </li>
+          </ul>
+        </div>
+
+        <div class="stream-section">
+          <h4>Streams</h4>
+          <ul>
+            <li
+              ng-repeat="stream in ctrl.streams | filter:ctrl.streamsListFilter | orderBy:''"
+              ng-class="{ selected: ctrl.isSelected(stream) }"
+              ng-click="ctrl.selectStream(stream)"
+              ng-hide="ctrl.favorites[stream]"
+            >
+              <a href="#">{{::stream}}</a>
+              <i ng-show="stream.unread"></i>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="fade"></div>
+    </div>
+
+    <div class="stream-view">
+      <div class="stream-header">
+        <div class="stream-title" ng-click="ctrl.toggleFavorite(ctrl.activeStream)" ng-show="ctrl.activeStream">
+          <i class="stream-title-favorite" ng-class="{ on: ctrl.favorites[ctrl.activeStream] }"></i>
+          {{ctrl.activeStream}}
+        </div>
+        <div class="filter-box">
+          <input type="text" ng-model="ctrl.activeStreamFilter" placeholder="Type a filter [regexp allowed]">
+        </div>
+      </div>
+
+      <div class="stream-lines">
+        <div
+          class="stream-line"
+          ng-repeat="
+            line in ctrl.lines
+            | filter:{ content: ctrl.activeStreamFilter }
+            | orderBy:'timestamp':!ctrl.streamDirection
+          "
+        >
+          <div class="stream-line-timestamp">
+            {{::line.timestamp | amDateFormat:'MM/DD/YY hh:mm:ss'}}
+          </div>
+          <div class="stream-line-content {{::line.type}}">
+            <span ng-bind-html="::line.html"></span>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-resume" ng-click="ctrl.resume()" ng-show="ctrl.paused">Resume</button>
+    </div>
+  </div>
+
+  <script type="text/ng-template" id="popover-info">
+    <div class="popover-content popover-info">
+      <div class="rtail-logo"></div>
+      <div class="version">Version {{ctrl.version}}</div>
+      <a class="btn btn-issue" href="https://github.com/kilianc/rtail/issues" target="_blank">
+        Report issue
+      </a>
+      <a class="btn btn-fork" href="https://github.com/kilianc/rtail/fork" target="_blank">
+        Fork it
+      </a>
+      <div class="lukibear-logo"></div>
+    </div>
+  </script>
+
+  <script type="text/ng-template" id="popover-settings">
+    <div class="popover-content popover-settings">
+      <h4>Font size</h4>
+      <div class="btn-group">
+        <button class="btn btn-font-smaller" ng-class="{ selected: ctrl.fontSize < 4 }" ng-click="ctrl.decFontSize()"></button>
+        <button class="btn btn-font-reset" ng-class="{ selected: 4 === ctrl.fontSize }" ng-click="ctrl.resetFontSize()"></button>
+        <button class="btn btn-font-bigger" ng-class="{ selected: ctrl.fontSize > 4 }"  ng-click="ctrl.incFontSize()"></button>
+      </div>
+
+      <h4>Font family</h4>
+      <div class="btn-group six-grid">
+        <button class="btn btn-font-1 font-family-1" ng-class="{ selected: 1 === ctrl.fontFamily }" ng-click="ctrl.setFontFamily(1)">Ag</button>
+        <button class="btn btn-font-2 font-family-2" ng-class="{ selected: 2 === ctrl.fontFamily }" ng-click="ctrl.setFontFamily(2)">Ag</button>
+        <button class="btn btn-font-3 font-family-3" ng-class="{ selected: 3 === ctrl.fontFamily }" ng-click="ctrl.setFontFamily(3)">Ag</button>
+        <button class="btn btn-font-4 font-family-4" ng-class="{ selected: 4 === ctrl.fontFamily }" ng-click="ctrl.setFontFamily(4)">Ag</button>
+        <button class="btn btn-font-5 font-family-5" ng-class="{ selected: 5 === ctrl.fontFamily }" ng-click="ctrl.setFontFamily(5)">Ag</button>
+        <button class="btn btn-font-6 font-family-6" ng-class="{ selected: 6 === ctrl.fontFamily }" ng-click="ctrl.setFontFamily(6)">Ag</button>
+      </div>
+
+      <h4>Sorting</h4>
+      <div class="btn-group">
+        <button class="btn btn-sorting-asc" ng-class="{ selected: ctrl.streamDirection }" ng-click="ctrl.setStreamDirection(true)"></button>
+        <button class="btn btn-sorting-desc" ng-class="{ selected: !ctrl.streamDirection }" ng-click="ctrl.setStreamDirection(false)"></button>
+      </div>
+
+      <h4>Theme</h4>
+      <div class="btn-group">
+        <button class="btn btn-theme-dark" ng-class="{ selected: 'dark' === ctrl.theme }" ng-click="ctrl.setTheme('dark')"></button>
+        <button class="btn btn-theme-light" ng-class="{ selected: 'light' === ctrl.theme }" ng-click="ctrl.setTheme('light')"></button>
+      </div>
+    </div>
+  </script>
+
+  <!-- build:js(app) bundle.min.js -->
+  <script src="../node_modules/socket.io/node_modules/socket.io-client/socket.io.js"></script>
+  <script src="../node_modules/jquery/dist/jquery.js"></script>
+  <script src="../node_modules/moment/moment.js"></script>
+  <script src="../node_modules/localforage/dist/localforage.js"></script>
+  <script src="../node_modules/ansi_up/ansi_up.js"></script>
+  <script src="../node_modules/highlight.js/build/highlight.pack.js"></script>
+  <script src="../node_modules/angular/angular.js"></script>
+  <script src="../node_modules/angular-animate/angular-animate.js"></script>
+  <script src="../node_modules/angular-moment/angular-moment.js"></script>
+  <script src="../node_modules/angular-localforage/dist/angular-localForage.js"></script>
+  <script src="../node_modules/angular-rt-popup/dist/angular-rt-popup.js"></script>
+  <script src="app.js"></script>
+  <!-- endbuild -->
+</body>
+</html>
