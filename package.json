@@ -1,13 +1,14 @@
 {
   "name": "rtail",
-  "version": "0.0.6",
-  "description": "Tail everything in the browser in seconds",
+  "version": "0.1.0",
+  "description": "Pipe your terminal output to the browser in seconds, using UNIX pipes.",
   "keywords": [
     "tail",
     "log",
     "logs",
-    "remote",
-    "logio"
+    "logio",
+    "logging",
+    "udp"
   ],
   "bin": {
     "rtail": "./cli/rtail.js",
@@ -61,7 +62,6 @@
   },
   "scripts": {
     "test": "echo OK",
-    "start": "node server.js",
     "app": "DEBUG=rtail:*,api:* gulp app"
   },
   "author": "Kilian Ciuffolo <me@nailik.org>",

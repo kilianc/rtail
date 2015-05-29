@@ -166,7 +166,7 @@ The test suite is written on top of [visionmedia/mocha](http://visionmedia.githu
 
 _This software is released under the MIT license cited below_.
 
-    Copyright (c) 2014 Kilian Ciuffolo, me@nailik.org. All Rights Reserved.
+    Copyright (c) 2015 Kilian Ciuffolo, me@nailik.org. All Rights Reserved.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
