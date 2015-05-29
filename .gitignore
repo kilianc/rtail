@@ -1,2 +1,3 @@
-webapp/css/*.css
-webapp/scripts/*.js
+app/css/*
+app/*.js
+dist

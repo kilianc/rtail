@@ -14,10 +14,10 @@ const path = require('path')
 const app = require('express')()
 const serve = require('express').static
 const http = require('http').Server(app)
-const io = require('socket.io')(http)
+const io = require('socket.io')()
 const yargs = require('yargs')
 const debug = require('debug')('rtail:server')
-const webapp = require('./webapp')
+const webapp = require('./lib/webapp')
 const updateNotifier = require('update-notifier')
 const pkg = require('../package')
 
@@ -124,7 +124,11 @@ io.on('connection', function (socket) {
  */
 
 if (!argv.webVersion) {
-  app.use(serve(__dirname + '/../webapp'))
+  app.use(serve(__dirname + '/../dist'))
+} else if ('development' === argv.webVersion) {
+  app.use('/app', serve(__dirname + '/../app'))
+  app.use('/node_modules', serve(__dirname + '/../node_modules'))
+  io.path('/app/socket.io')
 } else {
   app.use(webapp({
     s3: 'http://rtail.s3-website-us-east-1.amazonaws.com/' + argv.webVersion,
@@ -138,6 +142,7 @@ if (!argv.webVersion) {
  * Listen!
  */
 
+io.attach(http, { serveClient: false })
 socket.bind(argv.udpPort, argv.udpHost)
 http.listen(argv.webPort, argv.webHost)
 

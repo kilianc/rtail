@@ -1,22 +1,22 @@
 <!DOCTYPE html>
-<html>
+<html ng-app="app" ng-controller="MainController as ctrl">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <title>rTail</title>
-
-  <!-- stlyles -->
+  <title ng-if="!ctrl.loaded">rTail : loading ...</title>
+  <title ng-if="ctrl.loaded">rTail : {{ctrl.activeStream}}</title>
+  <!-- build:css(app) css/bundle.min.css -->
   <link href="css/main.css" rel="stylesheet" type="text/css">
   <link href="css/dark-theme.css" rel="stylesheet" type="text/css">
   <link href="css/light-theme.css" rel="stylesheet" type="text/css">
-  <link href='http://fonts.googleapis.com/css?family=Source+Code+Pro|Roboto+Mono|Inconsolata|Anonymous+Pro|Ubuntu+Mono|Droid+Sans+Mono|Nunito:300' rel='stylesheet' type='text/css'>
-
+  <!-- endbuild -->
+  <link href='//fonts.googleapis.com/css?family=Source+Code+Pro|Roboto+Mono|Inconsolata|Anonymous+Pro|Ubuntu+Mono|Droid+Sans+Mono|Nunito:300' rel='stylesheet' type='text/css'>
   <!-- favicon -->
   <link rel="icon" href="images/common/favicon-16x16.png" sizes="16x16">
   <link rel="icon" href="images/common/favicon-32x32.png" sizes="32x32">
   <link rel="icon" href="images/common/favicon-96x96.png" sizes="96x96">
 </head>
-<body class="{{ctrl.theme}} font-family-{{ctrl.fontFamily}} font-size-{{ctrl.fontSize}}" ng-app="app" ng-controller="MainController as ctrl">
+<body class="{{ctrl.theme}} font-family-{{ctrl.fontFamily}} font-size-{{ctrl.fontSize}}">
 
   <header>
     <div class="rtail-logo"></div>
@@ -156,17 +156,18 @@
     </div>
   </script>
 
-  <!-- scripts -->
-  <script src="socket.io/socket.io.js"></script>
-  <script src="scripts/jquery.js"></script>
-  <script src="scripts/moment.js"></script>
-  <script src="scripts/localforage.js"></script>
-  <script src="scripts/ansi_up.js"></script>
-  <script src="scripts/angular.js"></script>
-  <script src="scripts/angular-animate.js"></script>
-  <script src="scripts/angular-moment.js"></script>
-  <script src="scripts/angular-localForage.js"></script>
-  <script src="scripts/angular-rt-popup.js"></script>
-  <script src="scripts/app.js"></script>
+  <!-- build:js(app) bundle.min.js -->
+  <script src="../node_modules/socket.io/node_modules/socket.io-client/socket.io.js"></script>
+  <script src="../node_modules/jquery/dist/jquery.js"></script>
+  <script src="../node_modules/moment/moment.js"></script>
+  <script src="../node_modules/localforage/dist/localforage.js"></script>
+  <script src="../node_modules/ansi_up/ansi_up.js"></script>
+  <script src="../node_modules/angular/angular.js"></script>
+  <script src="../node_modules/angular-animate/angular-animate.js"></script>
+  <script src="../node_modules/angular-moment/angular-moment.js"></script>
+  <script src="../node_modules/angular-localforage/dist/angular-localForage.js"></script>
+  <script src="../node_modules/angular-rt-popup/dist/angular-rt-popup.js"></script>
+  <script src="app.js"></script>
+  <!-- endbuild -->
 </body>
 </html>
