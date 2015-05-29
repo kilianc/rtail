@@ -21,7 +21,6 @@ deploy:
         code: |
           if [ ! -n "$NPM_PUBLISH" ]; then
             echo "Skipping npm publish, NPM_PUBLISH is not set."
-            setMessage "Skipping npm publish, NPM_PUBLISH is not set."
             exit 0
           fi
 
