@@ -13,19 +13,25 @@ angular
     var $sce = $injector.get('$sce')
     var $moment = $injector.get('moment')
     var $localForage = $injector.get('$localForage')
+    var $window = $injector.get('$window')
     var $streamLines = $('.stream-lines')
-    var ctrl = this
     var BUFFER_SIZE = 100
+    var ctrl = this
 
     ctrl.paused = false
-    ctrl.version = '0.2.0'
+    ctrl.version = '<%= version %>'
     ctrl.lines = []
 
     /**
      * Socket stuff
      */
 
-    ctrl.socket = io(document.location.origin, { path: document.location.pathname + 'socket.io' })
+    // handle development mode
+    if ($window.localStorage.development) {
+      ctrl.socket = io(document.location.origin)
+    } else {
+      ctrl.socket = io(document.location.origin, { path: document.location.pathname + 'socket.io' })
+    }
 
     ctrl.socket.on('streams', function (streams) {
       ctrl.streams = streams
@@ -68,12 +74,15 @@ angular
     }
 
     function formatLine(line) {
-      // for object just format JSON
-      if ('object' === line.type) {
+      if (!line.content) {
+        // handle empty line
+        line.html = $sce.trustAsHtml('')
+      } else if ('object' === line.type) {
+        // for object just format JSON
         line.html = $sce.trustAsHtml('<pre>' + JSON.stringify(line.content, null, '  ') + '</pre>')
       } else {
-        // for log lines format ansi format
-        line.html = ansi_up.ansi_to_html(line.content || line.line, { use_classes: true })
+        // for log lines use ansi format
+        line.html = ansi_up.ansi_to_html(line.content, { use_classes: true })
         line.html = $sce.trustAsHtml(line.html)
       }
 
@@ -170,4 +179,10 @@ angular
     $localForage.getItem('streamDirection').then(function (streamDirection) {
       ctrl.streamDirection = undefined === streamDirection ? true : streamDirection
     })
+
+    /**
+     * Tell UI we're ready to roll
+     */
+
+    ctrl.loaded = true
   })

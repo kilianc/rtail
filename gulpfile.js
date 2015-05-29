@@ -4,6 +4,8 @@ var plugins = require('gulp-load-plugins')()
 var del = require('del')
 var autoprefixer = require('autoprefixer-core')
 var express = require('express')
+var version = require('./package.json').version
+var spawn = require('child_process').spawn
 
 /**
  * Clean builds
@@ -14,7 +16,7 @@ gulp.task('clean:dist', function (done) {
 })
 
 gulp.task('clean:sass', function (done) {
-  del('webapp/css/*.css*', done)
+  del('app/css/*', done)
 })
 
 gulp.task('clean', function (done) {
@@ -30,49 +32,11 @@ gulp.task('clean:npm', function (done) {
 })
 
 /**
- * Copy npm deps
- */
-
-gulp.task('copy:deps', function () {
-  return gulp.src([
-    'node_modules/angular/angular.js',
-    'node_modules/angular-animate/angular-animate.js',
-    'node_modules/jquery/dist/jquery.js',
-    'node_modules/moment/moment.js',
-    'node_modules/angular-moment/angular-moment.js',
-    'node_modules/localforage/dist/localforage.js',
-    'node_modules/angular-localforage/dist/angular-localForage.js',
-    'node_modules/angular-rt-popup/dist/angular-rt-popup.js',
-    'node_modules/ansi_up/ansi_up.js'
-  ])
-    .pipe(gulp.dest('webapp/scripts'))
-})
-
-/**
- * Optimize images
- */
-
-gulp.task('copy:images', function () {
-  return gulp.src(['webapp/images/**/*', '!app/images/**/*.svg'])
-    .pipe(plugins.imagemin({ optimizationLevel: 3, progressive: true, interlaced: true }))
-    .pipe(gulp.dest('dist/images'))
-})
-
-/**
- * Copy SVG
- */
-
-gulp.task('copy:svg', function () {
-  return gulp.src('webapp/images/**/*.svg')
-    .pipe(gulp.dest('dist/images'))
-})
-
-/**
  * Compile CSS
  */
 
 gulp.task('sass', function () {
-  return gulp.src('webapp/css/*.scss', { base: 'webapp' })
+  return gulp.src('app/scss/*', { base: 'app/scss' })
     .pipe(plugins.sourcemaps.init())
     .pipe(plugins.sass())
     .on('error', function (err) {
@@ -81,49 +45,183 @@ gulp.task('sass', function () {
     })
     .pipe(plugins.postcss([ autoprefixer({ browsers: ['last 2 version'] }) ]))
     .pipe(plugins.sourcemaps.write())
-    .pipe(gulp.dest('webapp'))
+    .pipe(gulp.dest('app/css'))
+})
+
+/**
+ * Compile templates
+ */
+
+gulp.task('ejs', function () {
+  return gulp.src('app/app.ejs')
+    .pipe(plugins.ejs({ version: version }, { ext: '.js' }))
+      .on('error', function (err) {
+        plugins.util.log('ejs error', err.message)
+        plugins.util.beep()
+      })
+    .pipe(gulp.dest('app'))
 })
 
 /**
  * Launch server + livereload in dev mode
  */
 
-gulp.task('webapp', ['build:webapp'], function (done) {
-  gulp.watch('webapp/css/*.scss', ['sass'])
+gulp.task('app', ['build:app'], function (done) {
+  gulp.watch('app/css/*.scss', ['sass'])
+  gulp.watch('app/app.ejs', ['ejs'])
 
   plugins.livereload({ start: true })
 
   gulp.watch([
-    'webapp/**/*',
-    '!webapp/css/*.scss',
-    '!webapp/css/*.css.map',
+    'app/**/*',
+    '!app/app.ejs',
+    '!app/scss/*',
   ]).on('change', function (file) {
     plugins.livereload.changed(file.path)
   })
 
-  var PORT = process.env.PORT || 3000
-  var BASE = process.env.BASE || '/'
-  var DIR = '/webapp'
+  plugins.util.log('spinning rtail client and server ...')
 
-  var server = express()
-    .use(BASE, express.static(__dirname + DIR, { etag: false }))
+  var rTailServer = spawn('node', ['--harmony', 'cli/rtail-server.js', '--web-version', 'development'])
+  rTailServer.stdout.pipe(process.stdout)
+  rTailServer.stderr.pipe(process.stdout)
 
-  server.listen(PORT, function () {
-    plugins.util.log('Express server listening at http://localhost:' + PORT + BASE)
-    done()
-  })
+  var rTailClient = spawn('node', ['--harmony', 'cli/rtail.js'])
+  rTailClient.stdout.pipe(process.stdout)
+  rTailClient.stderr.pipe(process.stdout)
+
+  var lines = [
+    '200 GET /1/geocode?address=ny',
+    '200 GET /1/config',
+    '500 GET /1/users/556605ede9fa35333befa9e6/profile',
+    '200 POST /1/signin',
+    '200 GET /1/users/556605ede9fa35333befa9e6/profile',
+    '200 PUT /1/me/gcm_tokens/duUOo8jRIxq547jAaAHvsF9v',
+    '200 PUT /1/me/review_status/seen',
+    '301 GET /1/config',
+    '200 GET /1/users/555f7494e9fa35333befa9ab/profile',
+    '200 POST /1/signin',
+    '200 GET /1/users/555f7494e9fa35333befa9ab/profile',
+    '400 PUT /1/me/gcm_tokens/3G7ggYFcGXIHkIgaGLW16s4sobrkAPA91bGM8t9MJwfDbFA',
+    '200 GET /1/me/notifications',
+    '200 GET /1/me/picture',
+    '200 GET /1/alive'
+  ]
+
+  function log2rtail(str) {
+    rTailClient.stdin.write(str + '\n')
+  }
+
+  setInterval(function () {
+    var debug = require('debug')('api:logs')
+    var index = Math.round(Math.random() * lines.length)
+    var line = lines[index]
+
+    debug.log = log2rtail
+
+    if (Math.random() < 0.8) {
+      debug(line)
+    } else {
+      log2rtail(JSON.stringify({
+        foo: 'bar',
+        bar: 'foo',
+        count: Math.random() * 1000,
+        list: [
+          "foo",
+          "bar"
+        ],
+        doc: {
+          foo: 'bar',
+          bar: 'foo'
+        },
+        link: "http://google.com",
+        regexp: /a.?/,
+        color: "#fff"
+      }))
+    }
+  }, 1000)
 })
 
 /**
  * Build app
  */
 
-gulp.task('build:webapp', function (done) {
-  run('clean:sass', 'sass', 'copy:deps', done)
+gulp.task('build:app', function (done) {
+  run('clean:sass', 'sass', 'ejs', done)
+})
+
+/**
+ * Copy SVG
+ */
+
+gulp.task('copy:images', function () {
+  return gulp.src('app/images/**/*')
+    .pipe(gulp.dest('dist/images'))
+})
+
+/**
+ * Bundle CSS / JS
+ */
+
+gulp.task('html', function () {
+  var assets = plugins.useref.assets()
+
+  return gulp.src('app/index.html')
+    .pipe(assets)
+    .pipe(assets.restore())
+    .pipe(plugins.useref())
+    .pipe(gulp.dest('dist'))
+})
+
+/**
+ * Minify JS
+ */
+
+gulp.task('minify:js', function () {
+  return gulp.src('dist/bundle.min.js')
+    .pipe(plugins.ngAnnotate())
+    .pipe(plugins.uglify())
+    .pipe(gulp.dest('dist/'))
+})
+
+/**
+ * Minify CSS
+ */
+
+gulp.task('minify:css', function () {
+  return gulp.src('dist/css/bundle.min.css')
+    .pipe(plugins.minifyCss( { keepSpecialComments: 0, keepBreaks: true }))
+    .pipe(gulp.dest('dist/css/'))
+})
+
+/**
+ * Minify HTML
+ */
+
+gulp.task('minify:html', function () {
+  return gulp.src('dist/index.html')
+    .pipe(plugins.minifyHtml( { conditionals: true, quotes: true }))
+    .pipe(gulp.dest('dist/'))
+})
+
+/**
+ * Minify all
+ */
+
+gulp.task('minify', function (done) {
+  run(['minify:js', 'minify:css', 'minify:html'], done)
+})
+
+/**
+ * Build dist
+ */
+
+gulp.task('build:dist', function (done) {
+  run(['build:app', 'clean:dist'], 'copy:images', 'html', 'minify', done)
 })
 
 /**
  * Default task
  */
 
-gulp.task('default', ['build:webapp'])
+gulp.task('default', ['build:dist'])

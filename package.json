@@ -9,10 +9,9 @@
     "remote",
     "logio"
   ],
-  "main": "./lib/client.js",
   "bin": {
-    "rtail": "./lib/client.js",
-    "rtail-server": "./lib/server.js"
+    "rtail": "./cli/rtail.js",
+    "rtail-server": "./cli/rtail-server.js"
   },
   "repository": {
     "type": "git",
@@ -38,11 +37,17 @@
     "autoprefixer-core": "^5.1.11",
     "del": "^1.1.1",
     "gulp": "^3.8.11",
+    "gulp-ejs": "^1.1.0",
     "gulp-livereload": "^3.8.0",
     "gulp-load-plugins": "^0.10.0",
+    "gulp-minify-css": "^1.1.1",
+    "gulp-minify-html": "^1.0.2",
+    "gulp-ng-annotate": "^1.0.0",
     "gulp-postcss": "^5.1.6",
     "gulp-sass": "^2.0.1",
     "gulp-sourcemaps": "^1.5.2",
+    "gulp-uglify": "^1.2.0",
+    "gulp-useref": "^1.1.2",
     "gulp-util": "^3.0.4",
     "jquery": "^2.1.4",
     "moment": "^2.10.3",
@@ -51,7 +56,8 @@
   },
   "scripts": {
     "test": "echo OK",
-    "start": "node server.js"
+    "start": "node server.js",
+    "app": "DEBUG=rtail:*,api:* gulp app"
   },
   "author": "Kilian Ciuffolo <me@nailik.org>",
   "license": "MIT"
