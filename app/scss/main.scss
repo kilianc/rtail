@@ -34,9 +34,12 @@ ol, ul {
   list-style: none;
 }
 
-pre,
-input {
+pre {
   font-family: inherit !important;
+}
+
+input {
+  font: inherit !important;
 }
 
 // **
@@ -204,11 +207,20 @@ header {
 
     .stream-line {
       display: flex;
-      line-height: 1.2em;
+      line-height: 0.5em;
+
+      pre {
+        line-height: 1.2;
+      }
 
       .stream-line-timestamp {
+        flex-shrink: 0;
         padding-right: $spacing;
         border-right: 1px solid;
+      }
+
+      .stream-line-content {
+        white-space: nowrap;
       }
 
       .stream-line-timestamp,
@@ -229,7 +241,7 @@ header {
     width: 85px;
     height: 30px;
     padding-left: 25px;
-    border-radius: 8px;
+    border-radius: $border-radius;
     background-repeat: no-repeat;
     background-position: 10px 50%;
     background-size: 8px 10px;
