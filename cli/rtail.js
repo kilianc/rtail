@@ -99,7 +99,7 @@ if (!argv.mute) {
  */
 
 var isClosed = false
-var isSending = false
+var isSending = 0
 var socket = dgram.createSocket('udp4')
 var baseMessage = { id: argv.id }
 
@@ -115,7 +115,7 @@ process.stdin
   .pipe(split())
   .on('data', function (line) {
     // set semaphore
-    isSending = true
+    isSending ++
 
     // try to JSON parse
     try { line = JSON5.parse(line) }
@@ -128,8 +128,8 @@ process.stdin
     var buffer = new Buffer(JSON.stringify(baseMessage))
 
     socket.send(buffer, 0, buffer.length, argv.port, argv.host, function () {
-      if (isClosed) socket.close()
-      isSending = false
+      isSending --
+      if (isClosed && !isSending) socket.close()
     })
   })
 
@@ -137,7 +137,7 @@ process.stdin
  * Drain pipe and exit
  */
 
-process.stdin.on('close', function () {
+process.stdin.on('end', function () {
   isClosed = true
   if (!isSending) socket.close()
 })
