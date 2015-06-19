@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>rtail(1) - Your terminal output in the browser in seconds, using UNIX pipes.</title>
+  <!-- build:css(app) css/bundle.min.css -->
+  <link href="css/main.css" rel="stylesheet" type="text/css">
+  <!-- endbuild -->
+  <link href='//fonts.googleapis.com/css?family=Raleway:100' rel='stylesheet' type='text/css'>
+  <!-- favicon -->
+  <link rel="icon" href="images/favicon-16x16.png" sizes="16x16">
+  <link rel="icon" href="images/favicon-32x32.png" sizes="32x32">
+  <link rel="icon" href="images/favicon-96x96.png" sizes="96x96">
+</head>
+<body>
+
+  <header>
+    <div class="rtail-logo"></div>
+
+    <h1>rTail</h1>
+    <h3>Your terminal output in the browser in seconds, using UNIX pipes.</h3>
+
+    <div class="browser">
+      <iframe src="https://rtail-demo.lukibear.com"></iframe>
+    </div>
+  </header>
+
+  <div class="readme">
+    <h2>Ready to tail</h2>
+    <h3>Copy/paste the examples below and play with the demo above</h3>
+
+    <p>
+      Install rtail and start pushing lines to our demo server.<br>
+      You will see them appear right above
+    </p>
+
+    <div>
+      <code>
+        $ npm install -g rtail<br>
+        $ echo "Hello from the website!" | rtail --id website --host rtail-demo.lukibear.com
+        <div class="pbcopy">⌘ + C</div>
+      </code>
+    </div>
+
+    <p>Or just start typing to stdin</p>
+    <div>
+      <code>
+        $ rtail --id website --host rtail-demo.lukibear.com --mute
+        <div class="pbcopy">⌘ + C</div>
+      </code>
+    </div>
+
+    <a class="btn" href="https://github.com/kilianc/rtail#rationale">How it works</a>
+  </div>
+
+  <div class="github">
+    <div class="github-logo"></div>
+    <h2>Pull-Requests welcome</h2>
+    <h3>rTail is open source and free to use. The source code is available on GitHub.</h3>
+    <a class="btn" href="https://github.com/kilianc/rtail">github.com/kilianc/rtail</a>
+  </div>
+
+  <div class="contributors">
+    <h2>Top contributors</h2>
+    <h3>From the community to the community</h3>
+
+    <table>
+      <tbody>
+        <tr>
+          <td width="40%"><a href="https://github.com/kilianc">Kilian Ciuffolo</a></td>
+          <td>(original creator / mantainer)</td>
+        </tr>
+        <tr>
+          <td><a href="https://www.behance.net/lucaorio">Luca Orio</a></td>
+          <td>(UX/UI design)</td>
+        </tr>
+        <tr>
+          <td><a href="https://github.com/s-silva">Sandaruwan Silva</a></td>
+          <td>(contributor)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    <h2>Sponsors</h2>
+
+    <div class="sponsors-list">
+      <img src="images/sponsors/img-lukibear@2x.png" alt="lukibear, LLC">
+    </div>
+
+    <h3>❤ rTail? Consider <a href="mailto:info@rtail.org">sponsor this project</a> to keep it alive and free for the community.</h3>
+
+    <a class="button" href="mailto:info@lukibear.com">Professional support or ad-hoc is also available.</a>
+  </footer>
+
+  <!-- build:js(app) bundle.min.js -->
+  <script src="../node_modules/zeroclipboard/dist/ZeroClipboard.js"></script>
+  <script src="../node_modules/jquery/dist/jquery.js"></script>
+  <script src="../node_modules/highlight.js/build/highlight.pack.js"></script>
+  <script src="app.js"></script>
+  <!-- endbuild -->
+</body>
+</html>

@@ -1,0 +1,4 @@
+app/*.js
+app/css/*
+app/swf/ZeroClipboard.swf
+dist

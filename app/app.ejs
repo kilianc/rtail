@@ -1,0 +1,14 @@
+$(function () {
+  /*!
+   * Setup copy to clipboard
+   */
+
+  ZeroClipboard.config({ swfPath: './swf/ZeroClipboard.swf' })
+
+  $('.pbcopy').each(function (i, el) {
+    var $el = $(el)
+    var text = $el.parent().text().replace(/(\$ |  +|⌘ \+ C|\n*.*$)/g, '')
+    $el.attr('data-clipboard-text', text)
+    new ZeroClipboard(el)
+  })
+})

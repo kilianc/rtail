@@ -1,0 +1,263 @@
+// **
+// variables
+// **
+
+$spacing: 20px;
+$border-radius: 5px;
+$font-family: "Raleway";
+$colors: #45A7B9 #404E57 #F6F6F6 #E6E6E6;
+
+
+// **
+// imports
+// **
+
+// **
+// reset
+// **
+
+* {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: none;
+  text-decoration: none;
+  color: inherit;
+  box-sizing: border-box;
+  background-repeat: no-repeat;
+  background-position: 50% 50%;
+
+  &:focus {
+    outline: none;
+  }
+}
+
+ol, ul {
+  list-style: none;
+}
+
+pre {
+  font-family: inherit !important;
+}
+
+input {
+  font: inherit !important;
+}
+
+// **
+// styles
+// **
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 100vh;
+  font-family: $font-family;
+  font-size: 16px;
+  color: #E6E6E6;
+  text-align: center;
+}
+
+h1 {
+  font-size: 65px;
+  text-transform: uppercase;
+}
+
+h2 {
+  text-transform: uppercase;
+  font-size: 54px;
+}
+
+h1,
+h2 {
+  transform: scaleY(0.90);
+}
+
+h3 {
+  font-size: 25px;
+  margin-bottom: 33px;
+}
+
+a {
+  color: nth($colors, 1);
+  font-weight: bold;
+
+  &:hover {
+    color: lighten(nth($colors, 1), 5%);
+  }
+
+  &:active {
+    color: nth($colors, 1);
+  }
+}
+
+code {
+  position: relative;
+  display: inline-block;
+  border: 1px solid #D2D2D2;
+  border-radius: 4px;
+  padding: 20px 100px 20px 30px;
+  background: lighten(#D2D2D2, 15%);
+  margin-bottom: 25px;
+  text-align: left;
+  line-height: 25px;
+  font-weight: bold;
+
+  .pbcopy {
+    position: absolute;
+    top: 50%;
+    right: 20px;
+    transform: translateY(-50%);
+    display: inline-block;
+    font-family: $font-family;
+    font-size: 10px;
+    line-height: 23px;
+    background: #fff;
+    border: 1px solid #D2D2D2;
+    border-radius: 4px;
+    padding: 0px 5px;
+    cursor: pointer;
+
+    &:hover {
+      background: lighten(nth($colors, 3), 5%);
+    }
+
+    &:active {
+      background: nth($colors, 3);
+    }
+  }
+}
+
+.btn {
+  $height: 49px;
+  display: inline-block;
+  background: nth($colors, 1);
+  height: $height;
+  line-height: $height;
+  padding: 0 33px;
+  color: #fff;
+  border-radius: 4px;
+
+  &:hover {
+    background: lighten(nth($colors, 1), 5%);
+  }
+
+  &:active {
+    background: nth($colors, 1);
+  }
+}
+
+header {
+  position: relative;
+  height: 713px;
+  background: nth($colors, 1);
+  color: #FFFFFF;
+
+  .rtail-logo {
+    width: 45px;
+    height: 33px;
+    background-image: url(../images/icn-log@2x.png);
+    background-size: 100%;
+    margin: 73px auto 30px;
+  }
+
+  h2 {
+    color: #CCE4E9;
+  }
+
+  .browser {
+    $height: 766px;
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translate(-50%, 360px);
+    width: 1070px;
+    height: $height;
+    background-image: url(../images/img-chrome@2x.png);
+    background-size: 100%;
+    $padding: 87px 13px;
+    padding: nth($padding, 1) nth($padding, 2) nth($padding, 2);
+
+    iframe {
+      display: block;
+      height: 100%;
+      width: 100%;
+      border-radius: 0 0 4px 4px;
+    }
+  }
+}
+
+.readme {
+  background-image: url(../images/icn-live@2x.png);
+  background-position: 50% 427px;
+  background-size: 48px 36px;
+  padding-top: 460px;
+  padding-bottom: 80px;
+  color: #7B7B7B;
+
+  h2 {
+    margin-top: 30px;
+  }
+
+  p {
+    margin-bottom: 25px;
+  }
+}
+
+.github {
+  height: 518px;
+  background-color: #404E57;
+  background-image: url(../images/img-github@2x.png);
+  background-size: auto 100%;
+  padding-top: 125px;
+
+  .github-logo {
+    background-image: url(../images/icn-github@2x.png);
+    background-size: auto 100%;
+    height: 52px;
+    margin-bottom: 25px;
+  }
+}
+
+.contributors {
+  padding-top: 205px;
+  background-image: url(../images/icn-contrib@2x.png);
+  background-size: 44px 33px;
+  background-position: 50% 140px;
+  color: #555555;
+
+  h3 {
+    color: #7B7B7B;
+  }
+
+  table {
+    text-align: left;
+    margin: 0 auto;
+    width: 400px;
+    margin-bottom: 140px;
+  }
+}
+
+footer {
+  background-color: nth($colors, 3);
+  padding-bottom: 50px;
+  color: #555555;
+
+  h2 {
+    margin-top: 100px;
+  }
+
+  .sponsors-list {
+    margin-top: 50px;
+
+    img {
+      transform: scale(0.5);
+    }
+  }
+
+  h3 {
+    color: #7B7B7B;
+    margin-top: 50px;
+  }
+}
