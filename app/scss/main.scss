@@ -4,7 +4,7 @@
 
 $spacing: 20px;
 $border-radius: 5px;
-$font-family: "Raleway";
+$font-family: "Roboto";
 $colors: #45A7B9 #404E57 #F6F6F6 #E6E6E6;
 
 
@@ -26,6 +26,7 @@ $colors: #45A7B9 #404E57 #F6F6F6 #E6E6E6;
   box-sizing: border-box;
   background-repeat: no-repeat;
   background-position: 50% 50%;
+  font-weight: normal;
 
   &:focus {
     outline: none;
@@ -61,22 +62,19 @@ body {
 
 h1 {
   font-size: 65px;
-  text-transform: uppercase;
+  font-weight: 100;
 }
 
 h2 {
   text-transform: uppercase;
   font-size: 54px;
-}
-
-h1,
-h2 {
-  transform: scaleY(0.90);
+  font-weight: 100;
 }
 
 h3 {
   font-size: 25px;
   margin-bottom: 33px;
+  font-weight: 300;
 }
 
 a {
