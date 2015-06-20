@@ -141,10 +141,12 @@ code {
 
   &:hover {
     background: lighten(nth($colors, 1), 5%);
+    color: #fff;
   }
 
   &:active {
     background: nth($colors, 1);
+    color: #fff;
   }
 }
 
