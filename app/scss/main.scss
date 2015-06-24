@@ -121,12 +121,12 @@ code {
     padding: 0px 5px;
     cursor: pointer;
 
-    &:hover {
-      background: lighten(nth($colors, 3), 5%);
+    &.zeroclipboard-is-hover {
+      background: darken(nth($colors, 3), 3%);
     }
 
-    &:active {
-      background: nth($colors, 3);
+    &.zeroclipboard-is-active {
+      background: darken(nth($colors, 3), 5%);
     }
   }
 }

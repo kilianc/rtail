@@ -63,7 +63,16 @@ $(function () {
     var $el = $(el)
     var text = $el.parent().text().replace(/(\$ |  +|⌘ \+ C|\n*.*$)/g, '')
     $el.attr('data-clipboard-text', text)
-    new ZeroClipboard(el)
+
+    var zc = new ZeroClipboard(el)
+    zc.on('aftercopy', function (e) {
+      setTimeout(function () {
+        $el.addClass('animated flash')
+        $el.one('webkitAnimationEnd mozAnimationEnd MSAnimationEnd oanimationend animationend', function () {
+          $el.removeClass('animated flash')
+        })
+      }, 100)
+    })
   })
 
   /*!
