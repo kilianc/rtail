@@ -1,6 +1,60 @@
 $(function () {
   /*!
-   * Setup copy to clipboard
+   * header animation
+   */
+
+  (function () {
+    var TYPE_SPEED = 150
+    var DETELE_SPEED = 20
+    var PAUSE_TIME = 1000
+    var $command = $('header h1 span.command')
+
+    var i = 0
+    var commands = [
+      'node server.js',
+      'tail -F /var/log/redis/redis-server.log',
+      'npm start',
+      'npm test',
+      'gulp build:dist'
+    ]
+
+    $command.text(commands[0])
+
+    function clearCommand() {
+      var oldCommand = $command.text()
+      var interval = setInterval(function () {
+        var oldCommand = $command.text()
+
+        if (0 === oldCommand.length) {
+          clearInterval(interval)
+          setTimeout(setCommand, 0) // avoid long stacks
+          return
+        }
+
+        $command.text(oldCommand.slice(0, -1))
+      }, DETELE_SPEED)
+    }
+
+    function setCommand() {
+      i = (i + 1) % commands.length
+      var newCommand = commands[i]
+      var charIndex = 0
+
+      var interval = setInterval(function () {
+        if (charIndex > newCommand.length) {
+          clearInterval(interval)
+          setTimeout(clearCommand, PAUSE_TIME)
+          return
+        }
+        $command.text(newCommand.slice(0, charIndex ++))
+      }, TYPE_SPEED - (100 * Math.random() + 20))
+    }
+
+    setTimeout(clearCommand, PAUSE_TIME * 2)
+  })()
+
+  /*!
+   * setup copy to clipboard
    */
 
   ZeroClipboard.config({ swfPath: './swf/ZeroClipboard.swf' })
@@ -16,10 +70,10 @@ $(function () {
    * setup GA
    */
 
-  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
-  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
-  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
-  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
-  ga('create', 'UA-64479821-2', 'auto');
-  ga('send', 'pageview');
+  // (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  // (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  // m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  // })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+  // ga('create', 'UA-64479821-2', 'auto');
+  // ga('send', 'pageview');
 })

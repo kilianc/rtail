@@ -6,6 +6,7 @@
   <title>rtail(1) - Your terminal output in the browser in seconds, using UNIX pipes.</title>
   <!-- build:css(app) css/bundle.min.css -->
   <link href="css/main.css" rel="stylesheet" type="text/css">
+  <link href="../node_modules/animate.css/animate.css" rel="stylesheet" type="text/css">
   <!-- endbuild -->
   <link href='//fonts.googleapis.com/css?family=Roboto:400,300,100' rel='stylesheet' type='text/css'>
   <!-- favicon -->
@@ -18,7 +19,11 @@
   <header>
     <div class="rtail-logo"></div>
 
-    <h1>> _ | rtail</h1>
+    <h1>>
+      <span class="command"></span>
+      <span class="cursor animated infinite flash">_</span>
+      | rtail
+    </h1>
     <h3>Your terminal output in the browser in seconds, using UNIX pipes.</h3>
 
     <div class="browser">
@@ -69,15 +74,19 @@
       <tbody>
         <tr>
           <td width="40%"><a href="https://github.com/kilianc">Kilian Ciuffolo</a></td>
-          <td>(original creator / mantainer)</td>
+          <td class="contributor-type">(original creator / mantainer)</td>
         </tr>
         <tr>
           <td><a href="https://www.behance.net/lucaorio">Luca Orio</a></td>
-          <td>(UX/UI design)</td>
+          <td class="contributor-type">(UX/UI design)</td>
         </tr>
         <tr>
           <td><a href="https://github.com/s-silva">Sandaruwan Silva</a></td>
-          <td>(contributor)</td>
+          <td class="contributor-type">(contributor)</td>
+        </tr>
+        <tr>
+          <td><a href="https://github.com/timriot">Tim Riot</a></td>
+          <td class="contributor-type">(contributor)</td>
         </tr>
       </tbody>
     </table>
@@ -98,7 +107,6 @@
   <!-- build:js(app) bundle.min.js -->
   <script src="../node_modules/zeroclipboard/dist/ZeroClipboard.js"></script>
   <script src="../node_modules/jquery/dist/jquery.js"></script>
-  <script src="../node_modules/highlight.js/build/highlight.pack.js"></script>
   <script src="app.js"></script>
   <!-- endbuild -->
 </body>

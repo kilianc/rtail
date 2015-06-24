@@ -7,6 +7,7 @@
     "url": "git@github.com:kilianc/rtail.git"
   },
   "devDependencies": {
+    "animate.css": "^3.2.5",
     "autoprefixer-core": "^5.2.0",
     "del": "^1.2.0",
     "express": "^4.12.4",

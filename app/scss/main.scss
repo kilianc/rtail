@@ -63,6 +63,10 @@ body {
 h1 {
   font-size: 65px;
   font-weight: 100;
+
+  span {
+    font-weight: 100;
+  }
 }
 
 h2 {
@@ -234,8 +238,12 @@ header {
   table {
     text-align: left;
     margin: 0 auto;
-    width: 400px;
+    width: 350px;
     margin-bottom: 140px;
+
+    .contributor-type {
+      color: #ccc;
+    }
   }
 }
 
