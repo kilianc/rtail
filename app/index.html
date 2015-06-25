@@ -37,7 +37,7 @@
   </header>
 
   <div class="split-pane">
-    <div class="sidebar">
+    <div class="sidebar" ng-style="{ width: ctrl.sidebarWidth }" resizable>
       <div class="search-box">
         <input type="text" placeholder="Search streams" ng-model="ctrl.streamsListFilter">
       </div>
@@ -73,6 +73,7 @@
         </div>
       </div>
 
+      <div class="resize-handler"></div>
       <div class="fade"></div>
     </div>
 
