@@ -2,10 +2,10 @@
 
 ### Install and initial setup
 
-    $ npm Install
+    $ npm install
     $ gulp app
 
-This will spin up a local server with autoreload.
+This will spin up a local server with livereload.
 
 ### Create dist version
 
