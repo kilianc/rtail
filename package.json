@@ -28,7 +28,9 @@
     "zeroclipboard": "^2.2.0"
   },
   "scripts": {
-    "test": "echo OK"
+    "test": "echo OK",
+    "deploy-dev": "git push dokku/dev website:master",
+    "deploy-prod": "git push dokku/prod website:master"
   },
   "author": "Kilian Ciuffolo <me@nailik.org>",
   "license": "MIT"
