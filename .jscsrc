@@ -1,0 +1,28 @@
+{
+  "preset": "airbnb",
+  "esnext": true,
+  "verbose": true,
+  "disallowCapitalizedComments": true,
+  "disallowMultipleLineBreaks": true,
+  "disallowMultipleSpaces": true,
+  "disallowSemicolons": true,
+  "disallowSpacesInAnonymousFunctionExpression": null,
+  "disallowSpacesInFunctionExpression": null,
+  "disallowYodaConditions": null,
+  "requireCamelCaseOrUpperCaseIdentifiers": null,
+  "requirePaddingNewLinesAfterUseStrict": true,
+  "requireSpacesInAnonymousFunctionExpression": {
+    "beforeOpeningRoundBrace": true,
+    "beforeOpeningCurlyBrace": true
+  },
+  "safeContextKeyword": ["self", "doc", "ctx"],
+  "validateIndentation": 2,
+  "plugins": [
+    "jscs-jsdoc"
+  ],
+  "jsDoc": {
+    "checkAnnotations": "closurecompiler",
+    "checkTypes": "strictNativeCase",
+    "enforceExistence": "exceptExports"
+  }
+}
