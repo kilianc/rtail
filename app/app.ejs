@@ -8,6 +8,34 @@ angular
     'LocalForageModule',
     'rt.popup'
   ])
+  .directive('resizable', function ($localForage) {
+    return {
+      restrict: 'A',
+      link: function ($scope, $element) {
+        var $window = $(window)
+        var $body = $('body')
+        var handler = $element.find('.resize-handler')
+        var handlerWidth = handler.width()
+        var minWidth = $element.width()
+
+        handler.on('mousedown', function () {
+          $body.addClass('resizing')
+          $window.on('mousemove', onMouseMove)
+        })
+
+        $window.on('mouseup', function () {
+          $body.removeClass('resizing')
+          $window.off('mousemove', onMouseMove)
+          $localForage.setItem('sidebarWidth', $element.width())
+        })
+
+        function onMouseMove(e) {
+          var width = Math.min(600, Math.max(minWidth, e.clientX + handlerWidth))
+          $element.css('width', width)
+        }
+      }
+    }
+  })
   .controller('MainController', function MainController($scope, $injector) {
     var $sce = $injector.get('$sce')
     var $localForage = $injector.get('$localForage')
@@ -144,6 +172,10 @@ angular
     /*!
      * load storage in memory and boot
      */
+    $localForage.getItem('sidebarWidth').then(function (sidebarWidth) {
+      ctrl.sidebarWidth = sidebarWidth
+    })
+
     $localForage.getItem('theme').then(function (theme) {
       ctrl.theme = theme || 'dark'
     })

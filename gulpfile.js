@@ -95,7 +95,7 @@ gulp.task('hjs', function (done) {
  */
 
 gulp.task('app', ['build:app'], function (done) {
-  gulp.watch('app/css/*.scss', ['sass'])
+  gulp.watch('app/scss/*.scss', ['sass'])
   gulp.watch('app/app.ejs', ['ejs'])
 
   plugins.livereload({ start: true })
@@ -108,7 +108,7 @@ gulp.task('app', ['build:app'], function (done) {
     plugins.livereload.changed(file.path)
   })
 
-  plugins.util.log('spinning rtail client and server ...')
+  plugins.util.log('spinning rtail client and server ... http://localhost:8888/app')
 
   var rTailServer = spawn('node', ['--harmony', 'cli/rtail-server.js', '--web-version', 'development'])
   rTailServer.stdout.pipe(process.stdout)

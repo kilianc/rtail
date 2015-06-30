@@ -54,6 +54,10 @@ body {
   font-family: $font-family;
   font-size: 16px;
   min-height: 100vh;
+
+  &.resizing {
+    user-select: none;
+  }
 }
 
 header {
@@ -96,7 +100,17 @@ header {
   display: flex;
   flex-direction: column;
   font-size: 16px;
+  position: relative;
   width: 230px;
+
+  .resize-handler {
+    cursor: col-resize;
+    height: 100%;
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 10px;
+  }
 
   .search-box {
     background-position: $spacing 50%;
