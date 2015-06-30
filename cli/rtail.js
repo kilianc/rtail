@@ -11,6 +11,7 @@
 
 const dgram = require('dgram')
 const split = require('split')
+const chrono = require('chrono-node')
 const JSON5 = require('json5')
 const yargs = require('yargs')
 const map = require('through2-map')
@@ -112,6 +113,16 @@ process.stdin
     // try to JSON parse
     try { line = JSON5.parse(line) }
     catch (e) {}
+
+    // look for timestamps
+    let timestamp = chrono.parse(line)[0]
+
+    if (timestamp) {
+      line = line.replace(new RegExp(' ?[^ ]?' + timestamp.text + '[^ ]? ?'), '')
+      baseMessage.timestamp = Date.parse(timestamp.ref)
+    } else {
+      baseMessage.timestamp = Date.now()
+    }
 
     // update default message
     baseMessage.content = line
