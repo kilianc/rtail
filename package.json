@@ -29,8 +29,8 @@
   },
   "scripts": {
     "test": "echo OK",
-    "deploy-dev": "git push dokku/dev website:master",
-    "deploy-prod": "git push dokku/prod website:master"
+    "deploy-dev": "git push -f dokku/dev website:master",
+    "deploy-prod": "git push -f dokku/prod website:master"
   },
   "author": "Kilian Ciuffolo <me@nailik.org>",
   "license": "MIT"

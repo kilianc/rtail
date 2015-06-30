@@ -2,7 +2,6 @@ $(function () {
   /*!
    * header animation
    */
-
   (function () {
     var TYPE_SPEED = 150
     var DETELE_SPEED = 20
@@ -56,7 +55,6 @@ $(function () {
   /*!
    * setup copy to clipboard
    */
-
   ZeroClipboard.config({ swfPath: './swf/ZeroClipboard.swf' })
 
   $('.pbcopy').each(function (i, el) {
@@ -78,11 +76,12 @@ $(function () {
   /*!
    * setup GA
    */
-
-  ;(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
-  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
-  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
-  })(window,document,'script','','ga');
-  ga('create', 'UA-64479821-2', 'auto');
-  ga('send', 'pageview');
+  if ('rtail.org' === document.location.host) {
+    ;(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+    ga('create', 'UA-64479821-2', 'auto');
+    ga('send', 'pageview');
+  }
 })
