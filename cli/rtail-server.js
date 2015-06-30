@@ -85,7 +85,7 @@ socket.on('message', function (data, remote) {
   }
 
   let message = {
-    timestamp: Date.now(),
+    timestamp: data.timestamp,
     streamid: data.id,
     host: remote.address,
     port: remote.port,
