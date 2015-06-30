@@ -10,7 +10,6 @@
 'use strict'
 
 const dgram = require('dgram')
-const path = require('path')
 const app = require('express')()
 const serve = require('express').static
 const http = require('http').Server(app)
@@ -21,20 +20,18 @@ const webapp = require('./lib/webapp')
 const updateNotifier = require('update-notifier')
 const pkg = require('../package')
 
-/**
- * Inform the user of updates
+/*!
+ * inform the user of updates
  */
-
 updateNotifier({
   packageName: pkg.name,
   packageVersion: pkg.version
 }).notify()
 
-/**
- * Parsing argv
+/*!
+ * parsing argv
  */
-
-var argv = yargs
+let argv = yargs
   .usage('Usage: rtail-server [--udp-host [string] --udp-port [num] --web-host [string] --web-port [num] --web-version [stable,unstable,<version>]]')
   .example('rtail-server --web-port 8080', 'Use custom http port')
   .example('rtail-server --udp-port 8080', 'Use custom udp port')
@@ -71,12 +68,11 @@ var argv = yargs
   .strict()
   .argv
 
-/**
+/*!
  * UDP sockets setup
  */
-
-var streams = {}
-var socket = dgram.createSocket('udp4')
+let streams = {}
+let socket = dgram.createSocket('udp4')
 
 socket.on('message', function (data, remote) {
   // try to decode JSON
@@ -88,7 +84,7 @@ socket.on('message', function (data, remote) {
     io.sockets.emit('streams', Object.keys(streams))
   }
 
-  var message = {
+  let message = {
     timestamp: Date.now(),
     streamid: data.id,
     host: remote.address,
@@ -105,10 +101,9 @@ socket.on('message', function (data, remote) {
   io.sockets.to(data.id).emit('line', message)
 })
 
-/**
+/*!
  * socket.io
  */
-
 io.on('connection', function (socket) {
   socket.emit('streams', Object.keys(streams))
   socket.on('select stream', function (stream) {
@@ -119,10 +114,9 @@ io.on('connection', function (socket) {
   })
 })
 
-/**
- * Serve static webapp from s3
+/*!
+ * serve static webapp from S3
  */
-
 if (!argv.webVersion) {
   app.use(serve(__dirname + '/../dist'))
 } else if ('development' === argv.webVersion) {
@@ -138,10 +132,9 @@ if (!argv.webVersion) {
   debug('serving webapp from: http://rtail.s3-website-us-east-1.amazonaws.com/%s', argv.webVersion)
 }
 
-/**
- * Listen!
+/*!
+ * listen!
  */
-
 io.attach(http, { serveClient: false })
 socket.bind(argv.udpPort, argv.udpHost)
 http.listen(argv.webPort, argv.webHost)

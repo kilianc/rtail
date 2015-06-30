@@ -4,19 +4,20 @@
  * (c) 2014-2015
  */
 
-var debug = require('debug')('rtail:webapp')
-  , get = require('request').defaults({ encoding: null })
+'use strict'
+
+const debug = require('debug')('rtail:webapp')
+const get = require('request').defaults({ encoding: null })
 
 // serve frontend from s3
 module.exports = function webapp(opts) {
-  var cache = Object.create(null)
-  var cacheTTL = opts.cacheTTL
-  var s3 = opts.s3
+  let cache = Object.create(null)
+  let cacheTTL = opts.cacheTTL
+  let s3 = opts.s3
 
-  /**
-   * Middleware
+  /*!
+   * middleware
    */
-
   return function (req, res) {
     if (cache[req.path]) {
       return serveCache(req, res)
@@ -34,18 +35,16 @@ module.exports = function webapp(opts) {
     })
   }
 
-  /**
-   * Wipes out cache every cacheTTL ms
+  /*!
+   * wipes out cache every cachettl ms
    */
-
   setInterval(function () {
     cache = Object.create(null)
   }, cacheTTL)
 
-  /**
-   * Serves req from cache
+  /*!
+   * serves req from cache
    */
-
   function serveCache(req, res) {
     debug('serving from cache %s', req.path)
     res.writeHead(200, cache[req.path].headers)
