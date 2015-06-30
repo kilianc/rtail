@@ -10,7 +10,7 @@
 
 ## Pipe terminal output to the browser in seconds, using UNIX pipes.
 
-`rtail` is a command line utility that grabs every line in `stdin` and broadcasts it over **UDP**. That's it. Nothing fancy. Nothing complicated. You can tail log files, app output, or whatever you wish, in `rtail` to a `rtail-server` and see multiple streams in the browser, in realtime.
+`rtail` is a command line utility that grabs every line in `stdin` and broadcasts it over **UDP**. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using `rtail` broadcasting to an `rtail-server` – See multiple streams in the browser, in realtime.
 
 ## Installation
 
@@ -28,14 +28,14 @@ Whether you deploy your code on remote servers using multiple environments or si
 
 There are many log aggregation tools out there, but few of them are realtime. **Most other tools require you to change your application source code to support their logging protocol/transport**.
 
-`rtail` is meant to be a replacement of [logio](https://github.com/NarrativeScience/Log.io/commits/master), which isn't actively maintained anymore, doesn't support node v0.12., and uses *TCP*.
+`rtail` is meant to be a replacement of [logio](https://github.com/NarrativeScience/Log.io/commits/master), which isn't actively maintained anymore, doesn't support node v0.12., and uses *TCP. (TCP requires strict client / server handshaking, is resource-hungry, and very difficult to scale.)*
 
 **The `rtail` approach is very simple:**
 * pipe something into `rtail` using [UNIX I/O redirection](http://www.westwind.com/reference/os-x/commandline/pipes.html) [[2]](http://www.codecoffee.com/tipsforlinux/articles2/042.html)
 * broadcast every line using UDP
 * `rtail-server`, **if listening**, will dispatch the stream into your browser, using [socket.io](http://socket.io/).
 
-`rtail` is a realtime monitoring tool meant to aggregate multiple streams and serve them with a modern web interface, primarily for debugging and monitoring. **There is no persistent layer, nor does the tool store any data**. If you need a persistent layer, use something like [loggly](https://www.loggly.com/).
+`rtail` is a realtime debugging and monitoring tool, which can display multiple aggregate streams via a modern web interface. **There is no persistent layer, nor does the tool store any data**. If you need a persistent layer, use something like [loggly](https://www.loggly.com/).
 
 ## Examples
 
@@ -86,7 +86,7 @@ For fun and debugging:
 
 ## `rtail-server(1)`
 
-`rtail-server` receives all messages broadcast from every `rtail` client, displaying all incoming log streams in a realtime web view. **Under the hood the server uses [socket.io](http://socket.io) to pipe every incoming UDP message to the browser.**
+`rtail-server` receives all messages broadcast from every `rtail` client, displaying all incoming log streams in a realtime web view. **Under the hood, the server uses [socket.io](http://socket.io) to pipe every incoming UDP message to the browser.**
 
 There is little to no configuration – The default UDP/HTTP ports can be changed, but that's it.
 
@@ -133,18 +133,18 @@ Open your browser and start tailing logs!
 
 ## UDP Broadcasting
 
-Should you want to scale and broadcast on multiple servers, instruct the `rtail` client to stream to the broadcast address. Every message will then be delivered to all servers in your subnet.
+To scale and broadcast on multiple servers, instruct the `rtail` client to stream to the broadcast address. Every message will then be delivered to all servers in your subnet.
 
 ## Authentication layer
 
-The webapp doesn't have an authentication layer for the time being. It assumes that you will run it behind a VPN or reverse proxy, with a simple `Authorization` header check.
+For the time being, the webapp doesn't have an authentication layer; it assumes that you will run it behind a VPN or reverse proxy, with a simple `Authorization` header check.
 
 # How to contribute
 
 This project follows the awesome [Vincent Driessen](http://nvie.com/about/) [branching model](http://nvie.com/posts/a-successful-git-branching-model/).
 
-* You must add a new feature on his own topic branch
-* You must contribute to hot-fixing directly into the master branch (and pull-request to it)
+* You must add a new feature on its own branch
+* You must contribute to hot-fixing, directly into the master branch (and pull-request to it)
 
 This project (more or less) follows [Felix's Node.js Style Guide](http://nodeguide.com/style.html). Your contribution must be consistent with this style.
 
