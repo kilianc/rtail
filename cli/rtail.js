@@ -11,9 +11,6 @@
 
 const dgram = require('dgram')
 const split = require('split')
-const crypto = require('crypto')
-const Writable = require('stream').Writable
-const tty = require('tty')
 const JSON5 = require('json5')
 const yargs = require('yargs')
 const map = require('through2-map')
@@ -22,10 +19,9 @@ const moniker = require('moniker').choose
 const updateNotifier = require('update-notifier')
 const pkg = require('../package')
 
-/**
- * Inform the user of updates
+/*!
+ * inform the user of updates
  */
-
 updateNotifier({
   packageName: pkg.name,
   packageVersion: pkg.version
@@ -34,11 +30,10 @@ updateNotifier({
 // fix yargs help
 moniker.toString = function () { return 'moniker()' }
 
-/**
- * Parsing argv
+/*!
+ * parsing argv
  */
-
-var argv = yargs
+let argv = yargs
   .usage('Usage: cmd | rtail --host [string] --port [num] [--mute] [--id [string]]')
   .example('server | rtail --host 127.0.0.1 > server.log', 'Broadcast to localhost + file')
   .example('server | rtail --port 43567', 'Custom port')
@@ -78,10 +73,9 @@ var argv = yargs
   .strict()
   .argv
 
-/**
- * Setup pipes
+/*!
+ * setup pipes
  */
-
 if (!argv.mute) {
   if (!process.stdout.isTTY || argv['not-tty']) {
     process.stdin
@@ -94,23 +88,21 @@ if (!argv.mute) {
   }
 }
 
-/**
- * Initialize socket
+/*!
+ * initialize socket
  */
-
-var isClosed = false
-var isSending = 0
-var socket = dgram.createSocket('udp4')
-var baseMessage = { id: argv.id }
+let isClosed = false
+let isSending = 0
+let socket = dgram.createSocket('udp4')
+let baseMessage = { id: argv.id }
 
 socket.bind(function () {
   socket.setBroadcast(true)
 })
 
-/**
- * Broadcast lines to browser
+/*!
+ * broadcast lines to browser
  */
-
 process.stdin
   .pipe(split())
   .on('data', function (line) {
@@ -125,7 +117,7 @@ process.stdin
     baseMessage.content = line
 
     // prepare binary message
-    var buffer = new Buffer(JSON.stringify(baseMessage))
+    let buffer = new Buffer(JSON.stringify(baseMessage))
 
     socket.send(buffer, 0, buffer.length, argv.port, argv.host, function () {
       isSending --
@@ -133,10 +125,9 @@ process.stdin
     })
   })
 
-/**
- * Drain pipe and exit
+/*!
+ * drain pipe and exit
  */
-
 process.stdin.on('end', function () {
   isClosed = true
   if (!isSending) socket.close()

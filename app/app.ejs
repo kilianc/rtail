@@ -1,7 +1,6 @@
-/**
- * Main JS controller for webapp
+/*!
+ * main js controller for webapp
  */
-
 angular
   .module('app', [
     'ngAnimate',
@@ -11,9 +10,7 @@ angular
   ])
   .controller('MainController', function MainController($scope, $injector) {
     var $sce = $injector.get('$sce')
-    var $moment = $injector.get('moment')
     var $localForage = $injector.get('$localForage')
-    var $window = $injector.get('$window')
     var $streamLines = $('.stream-lines')
     var BUFFER_SIZE = 100
     var ctrl = this
@@ -22,10 +19,9 @@ angular
     ctrl.version = '<%= version %>'
     ctrl.lines = []
 
-    /**
-     * Socket stuff
+    /*!
+     * socket stuff
      */
-
     ctrl.socket = io(document.location.origin, { path: document.location.pathname + 'socket.io' })
 
     ctrl.socket.on('streams', function (streams) {
@@ -102,10 +98,9 @@ angular
 
     $streamLines.on('mousewheel', ctrl.pause)
 
-    /**
-     * Settings and preferences
+    /*!
+     * settings and preferences
      */
-
     ctrl.toggleFavorite = function toggleFavorite(stream) {
       if (ctrl.favorites[stream]) {
         delete ctrl.favorites[stream]
@@ -126,7 +121,7 @@ angular
       $localForage.setItem('fontFamily', fontFamily)
     }
 
-    ctrl.incFontSize = function incFontSize(fontSize) {
+    ctrl.incFontSize = function incFontSize() {
       ctrl.fontSize = Math.min(7, ctrl.fontSize + 1)
       $localForage.setItem('fontSize', ctrl.fontSize)
     }
@@ -146,10 +141,9 @@ angular
       $localForage.setItem('streamDirection', streamDirection)
     }
 
-    /**
-     * Load storage in memory and boot
+    /*!
+     * load storage in memory and boot
      */
-
     $localForage.getItem('theme').then(function (theme) {
       ctrl.theme = theme || 'dark'
     })
@@ -176,9 +170,8 @@ angular
       ctrl.streamDirection = undefined === streamDirection ? true : streamDirection
     })
 
-    /**
-     * Tell UI we're ready to roll
+    /*!
+     * tell UI we're ready to roll
      */
-
     ctrl.loaded = true
   })
