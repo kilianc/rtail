@@ -157,6 +157,26 @@ The test suite is written on top of [visionmedia/mocha](http://visionmedia.githu
 * [Kilian Ciuffolo](https://github.com/kilianc)
 * [Luca Orio](https://www.behance.net/lucaorio)
 * [Sandaruwan Silva](https://github.com/s-silva)
+* [Sorel Mihai](https://dribbble.com/sorelmihai)
+* [Tim Riot](https://www.linkedin.com/in/timriot)
+
+## Roadmap (aka where you can help)
+
+* Allow use of DTLS (waiting for node to support this https://github.com/joyent/node/pull/6704)
+* Add GitHub OAuth and basic auth for teams (join proposal convo here: https://github.com/kilianc/rtail/issues/44)
+* CLI should recognize timestamps at the beginning of the line, strip it and use it as timestamp
+* Implement infinite-scroll like behavior in the webapp to support bigger backlogs and make it future proof.
+* Publish base rtail docker image to DockerHub
+* Create a catch all docker logs image
+
+## Sponsors
+❤ rTail? Consider sponsoring this project to keep it alive and free for the community.
+
+* Lukibear (domain)
+* ? (wildcard TLS cert)
+* ? (.io domain)
+
+<a href="mailto:info@lukibear.com">Professional support or ad-hoc is also available.</a>
 
 ## License
 
