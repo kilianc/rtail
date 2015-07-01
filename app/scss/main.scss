@@ -64,7 +64,8 @@ h1 {
   font-size: 65px;
   font-weight: 100;
 
-  span {
+  span,
+  div {
     font-weight: 100;
   }
 }
@@ -97,6 +98,7 @@ a {
 code {
   position: relative;
   display: inline-block;
+  width: 1000px;
   border: 1px solid #D2D2D2;
   border-radius: 4px;
   padding: 20px 100px 20px 30px;
@@ -164,6 +166,15 @@ header {
     background-image: url(../images/icn-log@2x.png);
     background-size: 100%;
     margin: 73px auto 30px;
+  }
+
+  h1 {
+    div {
+      margin: 0 auto;
+      text-align: left;
+      transform: translateX(30px);
+      width: 890px;
+    }
   }
 
   h2 {
@@ -276,7 +287,7 @@ footer {
       font-weight: 300;
       font-size: 13px;
       line-height: 18px;
-      margin-right: 50px; 
+      margin-right: 50px;
     }
     a:nth-child(2) {
       padding: 37px 0 28px 0;
@@ -291,7 +302,7 @@ footer {
       margin-top: 25px;
       margin-right: 0;
     }
-    a:nth-child(4):before { 
+    a:nth-child(4):before {
       content: "";
       position: absolute;
       top: -25px;
@@ -302,7 +313,7 @@ footer {
       border-right: 50px solid transparent;
       border-bottom: 25px solid #e9e9e9;
     }
-    a:nth-child(4):after {  
+    a:nth-child(4):after {
       content: "";
       position: absolute;
       bottom: -25px;

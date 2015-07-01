@@ -10,11 +10,9 @@ $(function () {
 
     var i = 0
     var commands = [
-      'node server.js',
-      'tail -F /var/log/redis/redis-server.log',
-      'npm start',
-      'npm test',
-      'gulp build:dist'
+      'node --harmony app.js',
+      'tail -F /var/log/redis.log',
+      'npm test --bail --colors'
     ]
 
     $command.text(commands[0])
