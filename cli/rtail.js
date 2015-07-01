@@ -105,7 +105,7 @@ socket.bind(function () {
  * broadcast lines to browser
  */
 process.stdin
-  .pipe(split())
+  .pipe(split(null, null, { trailing: false }))
   .on('data', function (line) {
     // set semaphore
     isSending ++
