@@ -32,30 +32,31 @@ updateNotifier({
  * parsing argv
  */
 let argv = yargs
-  .usage('Usage: rtail-server [--udp-host [string] --udp-port [num] --web-host [string] --web-port [num] --web-version [stable,unstable,<version>]]')
-  .example('rtail-server --web-port 8080', 'Use custom http port')
-  .example('rtail-server --udp-port 8080', 'Use custom udp port')
+  .usage('Usage: rtail-server [OPTIONS]')
+  .example('rtail-server --web-port 8080', 'Use custom HTTP port')
+  .example('rtail-server --udp-port 8080', 'Use custom UDP port')
   .example('rtail-server --web-version stable', 'Always uses latest stable webapp')
+  .example('rtail-server --web-version unstable', 'Always uses latest develop webapp')
   .example('rtail-server --web-version 0.1.3', 'Use webapp v0.1.3')
   .option('udp-host', {
     alias: 'uh',
     default: '127.0.0.1',
-    describe: 'The listening udp hostname'
+    describe: 'The listening UDP hostname'
   })
   .option('udp-port', {
     alias: 'up',
     default: 9999,
-    describe: 'The listening udp port'
+    describe: 'The listening UDP port'
   })
   .option('web-host', {
     alias: 'wh',
     default: '127.0.0.1',
-    describe: 'The listening http hostname'
+    describe: 'The listening HTTP hostname'
   })
   .option('web-port', {
     alias: 'wp',
     default: 8888,
-    describe: 'The listening http port'
+    describe: 'The listening HTTP port'
   })
   .option('web-version', {
     type: 'string',

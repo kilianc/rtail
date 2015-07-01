@@ -16,7 +16,7 @@ const JSON5 = require('json5')
 const yargs = require('yargs')
 const map = require('through2-map')
 const stripAnsi = require('strip-ansi')
-const moniker = require('moniker').choose
+const moniker_ = require('moniker').choose
 const updateNotifier = require('update-notifier')
 const pkg = require('../package')
 
@@ -28,45 +28,50 @@ updateNotifier({
   packageVersion: pkg.version
 }).notify()
 
-// fix yargs help
-moniker.toString = function () { return 'moniker()' }
-
 /*!
  * parsing argv
  */
 let argv = yargs
-  .usage('Usage: cmd | rtail --host [string] --port [num] [--mute] [--id [string]]')
-  .example('server | rtail --host 127.0.0.1 > server.log', 'Broadcast to localhost + file')
-  .example('server | rtail --port 43567', 'Custom port')
-  .example('server | rtail --mute', 'Only remote', 'No stdout')
+  .usage('Usage: cmd | rtail [OPTIONS]')
+  .example('server | rtail > server.log', 'localhost + file')
   .example('server | rtail --id api.domain.com', 'Name the log stream')
-  .example('server | rtail --not-tty', 'Strips ansi colors')
-  .option('mute', {
-    alias: 'm',
-    type: 'boolean',
-    describe: 'Don\'t pipe stdin with stdout'
-  })
+  .example('server | rtail --host example.com', 'Sends to example.com')
+  .example('server | rtail --port 43567', 'Uses custom port')
+  .example('server | rtail --mute', 'No stdout')
+  .example('server | rtail --no-tty', 'Strips ansi colors')
+  .example('server | rtail --no-date-parse', 'Disable date parsing/stripping')
   .option('host', {
     alias: 'h',
     type: 'string',
     default: '127.0.0.1',
-    describe: 'The recipient server host'
+    describe: 'The server host'
   })
   .option('port', {
     alias: 'p',
     type: 'string',
     default: 9999,
-    describe: 'The recipient server port'
+    describe: 'The server port'
   })
   .option('id', {
     alias: 'name',
     type: 'string',
-    default: moniker,
+    default: function moniker() { return moniker_() } ,
     describe: 'The log stream id'
   })
-  .option('not-tty', {
+  .option('mute', {
+    alias: 'm',
     type: 'boolean',
-    describe: 'Strips ansi colors'
+    describe: 'Don\'t pipe stdin with stdout'
+  })
+  .option('tty', {
+    type: 'boolean',
+    default: true,
+    describe: 'Keeps ansi colors'
+  })
+  .option('parse-date', {
+    type: 'boolean',
+    default: true,
+    describe: 'Looks for dates to use as timestamp'
   })
   .help('help')
   .version(pkg.version, 'version')
@@ -78,7 +83,7 @@ let argv = yargs
  * setup pipes
  */
 if (!argv.mute) {
-  if (!process.stdout.isTTY || argv['not-tty']) {
+  if (!process.stdout.isTTY || !argv.tty) {
     process.stdin
       .pipe(map(function (chunk) {
         return stripAnsi(chunk.toString('utf8'))
@@ -115,7 +120,7 @@ process.stdin
     catch (e) {}
 
     // look for timestamps
-    let timestamp = chrono.parse(line)[0]
+    let timestamp = argv.parseDate ? chrono.parse(line)[0] : null
 
     if (timestamp) {
       line = line.replace(new RegExp(' ?[^ ]?' + timestamp.text + '[^ ]? ?'), '')

@@ -39,7 +39,7 @@ There are many log aggregation tools out there, but few of them are realtime. **
 
 ## Examples
 
-In your init script:
+In your app init script:
 
     $ node server.js 2>&1 | rtail --id "api.myproject.com"
 
@@ -47,10 +47,11 @@ In your init script:
 
     $ node server.js 2>&1 | rtail --mute
 
-Supports JSON lines:
+Supports JSON5 lines:
 
     $ while true; do echo [1, 2, 3, "hello"]; sleep 1; done | rtail
     $ echo { "foo": "bar" } | rtail
+    $ echo { format: 'JSON5' } | rtail
 
 Using log files (log rotate safe!):
 
@@ -64,25 +65,28 @@ For fun and debugging:
 
 ## Params
 
-    $ rtail  -h
-    Usage: cmd | rtail --host [string] --port [num] [--mute] [--id [string]]
-
-    Examples:
-      server | rtail --host 127.0.0.1 > server.log    Broadcast to localhost + file
-      server | rtail --port 43567                     Custom port
-      server | rtail --mute                           Only remote
-      server | rtail --id api.domain.com              Name the log stream
-      server | rtail --not-tty                        Strips ANSI colors
-
+    $ rtail --help
+    Usage: cmd | rtail [OPTIONS]
 
     Options:
-      --mute, -m     Don't pipe stdin with stdout
-      --host         The recipient server host     [default: "127.0.0.1"]
-      --port, -p     The recipient server port     [default: 9999]
-      --id, --name   The log stream id             [default: moniker()]
-      --not-tty      Strips ansi colors
-      --help, -h     Show help
-      --version, -v  Show version number
+      --host, -h     The server host                 [string] [default: "127.0.0.1"]
+      --port, -p     The server port                        [string] [default: 9999]
+      --id, --name   The log stream id                 [string] [default: (moniker)]
+      --mute, -m     Don't pipe stdin with stdout                          [boolean]
+      --tty          Keeps ansi colors                     [boolean] [default: true]
+      --parse-date   Looks for dates to use as timestamp   [boolean] [default: true]
+      --help         Show help                                             [boolean]
+      --version, -v  Show version number                                   [boolean]
+
+    Examples:
+      server | rtail > server.log         localhost + file
+      server | rtail --id api.domain.com  Name the log stream
+      server | rtail --host example.com   Sends to example.com
+      server | rtail --port 43567         Uses custom port
+      server | rtail --mute               No stdout
+      server | rtail --no-tty             Strips ansi colors
+      server | rtail --no-date-parse      Disable date parsing/stripping
+
 
 ## `rtail-server(1)`
 
@@ -112,24 +116,24 @@ Open your browser and start tailing logs!
 
 ## Params
 
-    $ rtail-server -h
-    Usage: rtail-server [--udp-host [string] --udp-port [num] --web-host [string] --web-port [num] --web-version [stable,unstable,<version>]]
-
-    Examples:
-      rtail-server --web-port 8080         Use custom http port
-      rtail-server --udp-port 8080         Use custom udp port
-      rtail-server --web-version stable    Always use latest, stable webapp
-      rtail-server --web-version 0.1.3     Use webapp v0.1.3
-
+    $ rtail-server --help
+    Usage: rtail-server [OPTIONS]
 
     Options:
-      --udp-host, --uh  The listening udp hostname       [default: "127.0.0.1"]
-      --udp-port, --up  The listening udp port           [default: 9999]
-      --web-host, --wh  The listening http hostname      [default: "127.0.0.1"]
-      --web-port, --wp  The listening http port          [default: 8888]
-      --web-version     Define web app version to serve
-      --help, -h        Show help
-      --version, -v     Show version number
+    --udp-host, --uh  The listening UDP hostname            [default: "127.0.0.1"]
+    --udp-port, --up  The listening UDP port                       [default: 9999]
+    --web-host, --wh  The listening HTTP hostname           [default: "127.0.0.1"]
+    --web-port, --wp  The listening HTTP port                      [default: 8888]
+    --web-version     Define web app version to serve                     [string]
+    --help, -h        Show help                                          [boolean]
+    --version, -v     Show version number                                [boolean]
+
+    Examples:
+    rtail-server --web-port 8080         Use custom HTTP port
+    rtail-server --udp-port 8080         Use custom UDP port
+    rtail-server --web-version stable    Always uses latest stable webapp
+    rtail-server --web-version unstable  Always uses latest develop webapp
+    rtail-server --web-version 0.1.3     Use webapp v0.1.3
 
 ## UDP Broadcasting
 
@@ -146,9 +150,9 @@ This project follows the awesome [Vincent Driessen](http://nvie.com/about/) [bra
 * You must add a new feature on its own branch
 * You must contribute to hot-fixing, directly into the master branch (and pull-request to it)
 
-This project (more or less) follows [Felix's Node.js Style Guide](http://nodeguide.com/style.html). Your contribution must be consistent with this style.
+This project uses JSCS to enforce a consistent code style. Your contribution must be pass jscs validation.
 
-The test suite is written on top of [visionmedia/mocha](http://visionmedia.github.com/mocha/). Use the tests to check if your contribution breaks some part of the library and be sure to add new tests for each new feature.
+The test suite is written on top of [mochajs/mocha](http://mochajs.org/). Use the tests to check if your contribution breaks some part of the library and be sure to add new tests for each new feature.
 
     $ npm test
 
@@ -162,12 +166,13 @@ The test suite is written on top of [visionmedia/mocha](http://visionmedia.githu
 
 ## Roadmap (aka where you can help)
 
+* Write a rock solid test suite
 * Allow use of DTLS (waiting for node to support this https://github.com/joyent/node/pull/6704)
 * Add GitHub OAuth and basic auth for teams (join proposal convo here: https://github.com/kilianc/rtail/issues/44)
-* CLI should recognize timestamps at the beginning of the line, strip it and use it as timestamp
 * Implement infinite-scroll like behavior in the webapp to support bigger backlogs and make it future proof.
 * Publish base rtail docker image to DockerHub
 * Create a catch all docker logs image
+* Rewrite webapp using ng2
 
 ## Sponsors
 ❤ rTail? Consider sponsoring this project to keep it alive and free for the community.
@@ -182,7 +187,7 @@ The test suite is written on top of [visionmedia/mocha](http://visionmedia.githu
 
 _This software is released under the MIT license cited below_.
 
-    Copyright (c) 2015 Kilian Ciuffolo, me@nailik.org. All Rights Reserved.
+    Copyright (c) 2014 Kilian Ciuffolo, me@nailik.org. All Rights Reserved.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
