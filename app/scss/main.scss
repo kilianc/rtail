@@ -107,7 +107,7 @@ header {
     cursor: col-resize;
     height: 100%;
     position: absolute;
-    right: 0;
+    right: -5px;
     top: 0;
     width: 10px;
   }
@@ -156,6 +156,12 @@ header {
         &.selected {
           border-left: 2px solid;
           padding-left: 38px;
+        }
+
+        a {
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          overflow: hidden;
         }
 
         i {

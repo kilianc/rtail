@@ -30,7 +30,7 @@ angular
         })
 
         function onMouseMove(e) {
-          var width = Math.min(600, Math.max(minWidth, e.clientX + handlerWidth))
+          var width = Math.min(600, Math.max(minWidth, e.clientX))
           $element.css('width', width)
         }
       }
