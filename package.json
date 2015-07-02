@@ -41,7 +41,7 @@
     "ansi_up": "^1.2.1",
     "autoprefixer-core": "^5.1.11",
     "del": "^1.1.1",
-    "gulp": "^3.8.11",
+    "gulp": "^3.9.0",
     "gulp-ejs": "^1.1.0",
     "gulp-livereload": "^3.8.0",
     "gulp-load-plugins": "^0.10.0",
