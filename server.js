@@ -12,7 +12,7 @@ const NODE_ENV = process.env.NODE_ENV
 var app = express()
 app.use(express.static(__dirname + '/dist'))
 
-if ('prod' !== NODE_ENV) {
+if ('production' !== NODE_ENV) {
   app.use(function (req, res, next) {
     if ('/robots.txt' !== req.url) return next()
     res.type('text/plain')
