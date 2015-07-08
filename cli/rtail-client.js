@@ -2,7 +2,7 @@
 ":" //# comment; exec /usr/bin/env node --harmony "$0" "$@"
 
 /*!
- * client.js
+ * rtail-client.js
  * Created by Kilian Ciuffolo on Oct 26, 2014
  * (c) 2014-2015
  */
@@ -120,7 +120,7 @@ process.stdin
     catch (e) {}
 
     // look for timestamps
-    let timestamp = argv.parseDate ? chrono.parse(line)[0] : null
+    let timestamp// = argv.parseDate ? chrono.parse(line)[0] : null
 
     if (timestamp) {
       line = line.replace(new RegExp(' ?[^ ]?' + timestamp.text + '[^ ]? ?'), '')

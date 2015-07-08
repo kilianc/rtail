@@ -1,0 +1,137 @@
+/*!
+ * cli.test.js
+ * Created by Kilian Ciuffolo on Jul 7, 2015
+ * (c) 2015
+ */
+
+'use strict'
+
+const assert = require('chai').assert
+const spawn = require('child_process').spawn
+const dgram = require('dgram')
+const dns = require('dns')
+
+describe('rtail-client.js', function () {
+  it('should split stdin by \\n', function (done) {
+    spawnClient({
+      args: [],
+      done: done,
+      test: function (messages) {
+        assert.equal(3, messages.length, s(messages))
+
+        assert.equal(messages[0].content, '0')
+        assert.equal(messages[1].content, '1')
+        assert.equal(messages[2].content, '2')
+
+        assert.isDefined(messages[0].id)
+        assert.isNumber(messages[0].timestamp)
+      }
+    }).stdin.end(['0', '1', '2', ''].join('\n'))
+  })
+
+  it('should use custom name', function (done) {
+    spawnClient({
+      args: ['--name', 'test'],
+      done: done,
+      test: function (messages) {
+        assert.equal(3, messages.length, s(messages))
+        assert.equal(messages[0].id, 'test')
+      }
+    }).stdin.end(['0', '1', '2', ''].join('\n'))
+  })
+
+  it('should respect --mute', function (done) {
+    let client = spawnClient({ args: ['--mute'], done: done })
+    client.stdout.on('data', function (data) {
+      done(new Error('Expected no output instead got: "' + data.toString() + '"'))
+    })
+    client.stdin.end(['0', '1', '2', ''].join('\n'))
+  })
+
+  it('should parse JSON lines', function (done) {
+    spawnClient({
+      args: [],
+      done: done,
+      test: function (messages) {
+        assert.equal(1, messages.length, s(messages))
+        assert.equal(messages[0].content.foo, 'bar')
+      }
+    }).stdin.end(['{ "foo": "bar" }', ''].join('\n'))
+  })
+
+  it('should parse JSON5 lines', function (done) {
+    spawnClient({
+      args: [],
+      done: done,
+      test: function (messages) {
+        assert.equal(1, messages.length, s(messages))
+        assert.equal(messages[0].content.foo, 'bar')
+      }
+    }).stdin.end(['{ foo: "bar" }', ''].join('\n'))
+  })
+
+  it('should support custom port / host', function (done) {
+    dns.lookup(require('os').hostname(), function (err, address) {
+      let socket = dgram.createSocket('udp4')
+      socket.bind(9998, address)
+
+      spawnClient({
+        done: done,
+        socket: socket,
+        args: ['-p', '9998', '-h', address],
+        test: function (messages) {
+          assert.equal(1, messages.length, s(messages))
+          assert.equal(messages[0].content.foo, 'bar')
+        }
+      }).stdin.end(['{ foo: "bar" }', ''].join('\n'))
+    })
+  })
+
+  it('should strip colors with --no-tty', function (done) {
+    let client = spawnClient({
+      args: ['--no-tty'],
+      done: done
+    })
+
+    client.stdout.on('data', function (data) {
+      assert.equal(data.toString(), 'Hello world\n')
+    })
+
+    client.stdin.end(['\u001b[31mHello world\u001b[0m', ''].join('\n'))
+  })
+})
+
+/**
+ *
+ */
+function spawnClient(opts) {
+  if (!opts.socket) {
+    opts.socket = dgram.createSocket('udp4')
+    opts.socket.bind(9999)
+  }
+
+  let client = spawn('cli/rtail-client.js', opts.args)
+  let messages = []
+
+  client.stderr.pipe(process.stderr)
+
+  opts.socket.on('message', function (data) {
+    messages.push(JSON.parse(data))
+  })
+
+  client.on('exit', function (code) {
+    let err = code ? new Error('rtail exited with code: ' + code) : null
+    opts.test && opts.test(messages)
+    opts.socket.close()
+    opts.done(err)
+  })
+
+  return client
+}
+
+/**
+ *
+ */
+function s(obj) {
+  return JSON.stringify(obj, null, '  ')
+}

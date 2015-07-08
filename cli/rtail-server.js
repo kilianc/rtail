@@ -78,7 +78,7 @@ let socket = dgram.createSocket('udp4')
 socket.on('message', function (data, remote) {
   // try to decode JSON
   try { data = JSON.parse(data) }
-  catch (e) { return debug('invalid data sent') }
+  catch (err) { return debug('invalid data sent') }
 
   if (!streams[data.id]) {
     streams[data.id] = []
