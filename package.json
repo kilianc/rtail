@@ -11,7 +11,7 @@
     "udp"
   ],
   "bin": {
-    "rtail": "./cli/rtail.js",
+    "rtail": "./cli/rtail-client.js",
     "rtail-server": "./cli/rtail-server.js"
   },
   "repository": {
@@ -40,6 +40,7 @@
     "angular-rt-popup": "^1.0.5",
     "ansi_up": "^1.2.1",
     "autoprefixer-core": "^5.1.11",
+    "chai": "^3.0.0",
     "del": "^1.1.1",
     "gulp": "^3.9.0",
     "gulp-ejs": "^1.1.0",
@@ -57,13 +58,16 @@
     "highlight.js": "isagalaev/highlight.js",
     "jquery": "^2.1.4",
     "localforage": "^1.2.2",
+    "mocha": "^2.2.5",
     "moment": "^2.10.3",
     "node-sass": "^3.1.1",
+    "request": "^2.58.0",
     "run-sequence": "^1.1.0"
   },
   "scripts": {
-    "test": "echo OK",
-    "app": "DEBUG=rtail:*,api:* gulp app"
+    "app": "DEBUG=rtail:*,api:* gulp app",
+    "test": "DEBUG=local:bootstrap NODE_ENV=test node --harmony test/runner.js",
+    "test:watch": "DEBUG=local:bootstrap NODE_ENV=test nodemon --harmony test/runner.js"
   },
   "author": "Kilian Ciuffolo <me@nailik.org>",
   "license": "MIT"

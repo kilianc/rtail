@@ -2,7 +2,7 @@
 ":" //# comment; exec /usr/bin/env node --harmony "$0" "$@"
 
 /*!
- * client.js
+ * rtail-client.js
  * Created by Kilian Ciuffolo on Oct 26, 2014
  * (c) 2014-2015
  */
@@ -112,19 +112,22 @@ socket.bind(function () {
 process.stdin
   .pipe(split(null, null, { trailing: false }))
   .on('data', function (line) {
-    // set semaphore
-    isSending ++
+    let timestamp = null
 
-    // try to JSON parse
-    try { line = JSON5.parse(line) }
-    catch (e) {}
-
-    // look for timestamps
-    let timestamp = argv.parseDate ? chrono.parse(line)[0] : null
+    try {
+      // try to JSON parse
+      line = JSON5.parse(line)
+    } catch (err) {
+      // look for timestamps if not an object
+      timestamp = argv.parseDate ? chrono.parse(line)[0] : null
+    }
 
     if (timestamp) {
-      line = line.replace(new RegExp(' ?[^ ]?' + timestamp.text + '[^ ]? ?'), '')
-      baseMessage.timestamp = Date.parse(timestamp.ref)
+      // escape for regexp and remove from line
+      timestamp.text = timestamp.text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')
+      line = line.replace(new RegExp(' *[^ ]?' + timestamp.text + '[^ ]? *'), '')
+      // use timestamp as line timestamp
+      baseMessage.timestamp = Date.parse(timestamp.start.date())
     } else {
       baseMessage.timestamp = Date.now()
     }
@@ -134,6 +137,9 @@ process.stdin
 
     // prepare binary message
     let buffer = new Buffer(JSON.stringify(baseMessage))
+
+    // set semaphore
+    isSending ++
 
     socket.send(buffer, 0, buffer.length, argv.port, argv.host, function () {
       isSending --
