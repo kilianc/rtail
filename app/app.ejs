@@ -102,11 +102,22 @@ angular
         line.html = $sce.trustAsHtml('<pre>' + line.html + '</pre>')
       } else {
         // for log lines use ansi format
-        line.html = ansi_up.ansi_to_html(line.content, { use_classes: true })
+        line.html = escapeHtml(line.content)
+        line.html = ansi_up.ansi_to_html(line.html, { use_classes: true })
         line.html = $sce.trustAsHtml(line.html)
       }
 
       return line
+    }
+
+    // https://github.com/component/escape-html/blob/master/index.js#L22
+    function escapeHtml(html) {
+      return String(html)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
     }
 
     ctrl.resume = function resume() {
