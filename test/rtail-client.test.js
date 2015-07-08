@@ -101,4 +101,31 @@ describe('rtail-client.js', function () {
 
     client.stdin.end(['\u001b[31mHello world\u001b[0m', ''].join('\n'))
   })
+
+  it('should parse date if --parse-date', function (done) {
+    let date = 'Wed Jul 08 2010 01:01:03 GMT-0700 (PDT)'
+    let client = spawnClient({
+      done: done,
+      test: function (messages) {
+        assert.equal(messages[0].timestamp, Date.parse(date))
+        assert.equal(messages[0].content, 'hello')
+      }
+    })
+
+    client.stdin.end(['[' + date + ']  hello', ''].join('\n'))
+  })
+
+  it('should not parse date if --no-parse-date', function (done) {
+    let date = 'Wed Jul 08 2010 01:01:03 GMT-0700 (PDT)'
+    let client = spawnClient({
+      args: ['--no-parse-date'],
+      done: done,
+      test: function (messages) {
+        assert.notEqual(messages[0].timestamp, Date.parse(date))
+        assert.equal(messages[0].content, '[' + date + ']  hello')
+      }
+    })
+
+    client.stdin.end(['[' + date + ']  hello', ''].join('\n'))
+  })
 })
