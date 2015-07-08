@@ -3,7 +3,6 @@ var run = require('run-sequence')
 var plugins = require('gulp-load-plugins')()
 var del = require('del')
 var autoprefixer = require('autoprefixer-core')
-var express = require('express')
 var version = require('./package.json').version
 var spawn = require('child_process').spawn
 
@@ -114,11 +113,12 @@ gulp.task('app', ['build:app'], function (done) {
   rTailServer.stdout.pipe(process.stdout)
   rTailServer.stderr.pipe(process.stdout)
 
-  var rTailClient = spawn('node', ['--harmony', 'cli/rtail.js'])
+  var rTailClient = spawn('node', ['--harmony', 'cli/rtail-client.js'])
   rTailClient.stdout.pipe(process.stdout)
   rTailClient.stderr.pipe(process.stdout)
 
   var lines = [
+    '<script>alert(1)</script>',
     '200 GET /1/geocode?address=ny',
     '200 GET /1/config',
     '500 GET /1/users/556605ede9fa35333befa9e6/profile',
@@ -142,7 +142,7 @@ gulp.task('app', ['build:app'], function (done) {
 
   setInterval(function () {
     var debug = require('debug')('api:logs')
-    var index = Math.round(Math.random() * lines.length)
+    var index = Math.floor(Math.random() * lines.length)
     var line = lines[index]
 
     debug.log = log2rtail
