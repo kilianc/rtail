@@ -7,9 +7,11 @@
 'use strict'
 
 const assert = require('chai').assert
-const spawn = require('child_process').spawn
 const dgram = require('dgram')
 const dns = require('dns')
+const os = require('os')
+const s = require('./util').s
+const spawnClient = require('./util').spawnClient
 
 describe('rtail-client.js', function () {
   it('should split stdin by \\n', function (done) {
@@ -71,7 +73,7 @@ describe('rtail-client.js', function () {
   })
 
   it('should support custom port / host', function (done) {
-    dns.lookup(require('os').hostname(), function (err, address) {
+    dns.lookup(os.hostname(), function (err, address) {
       let socket = dgram.createSocket('udp4')
       socket.bind(9998, address)
 
@@ -100,38 +102,3 @@ describe('rtail-client.js', function () {
     client.stdin.end(['\u001b[31mHello world\u001b[0m', ''].join('\n'))
   })
 })
-
-/**
- *
- */
-function spawnClient(opts) {
-  if (!opts.socket) {
-    opts.socket = dgram.createSocket('udp4')
-    opts.socket.bind(9999)
-  }
-
-  let client = spawn('cli/rtail-client.js', opts.args)
-  let messages = []
-
-  client.stderr.pipe(process.stderr)
-
-  opts.socket.on('message', function (data) {
-    messages.push(JSON.parse(data))
-  })
-
-  client.on('exit', function (code) {
-    let err = code ? new Error('rtail exited with code: ' + code) : null
-    opts.test && opts.test(messages)
-    opts.socket.close()
-    opts.done(err)
-  })
-
-  return client
-}
-
-/**
- *
- */
-function s(obj) {
-  return JSON.stringify(obj, null, '  ')
-}
