@@ -119,6 +119,7 @@ gulp.task('app', ['build:app'], function (done) {
 
   var lines = [
     '<script>alert(1)</script>',
+    'A                    B                        C',
     '200 GET /1/geocode?address=ny',
     '200 GET /1/config',
     '500 GET /1/users/556605ede9fa35333befa9e6/profile',
