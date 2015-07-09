@@ -120,6 +120,14 @@ angular
         .replace(/>/g, '&gt;');
     }
 
+    ctrl.activeStreamFilter = function activeStreamFilter(line) {
+      try {
+        return (new RegExp(ctrl.activeStreamRegExp)).test(line.content)
+      } catch (err) {
+        return true
+      }
+    }
+
     ctrl.resume = function resume() {
       if (!ctrl.paused) return
       ctrl.paused = false
