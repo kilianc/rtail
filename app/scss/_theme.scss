@@ -149,6 +149,10 @@
       color: $popover-font-color;
     }
 
+    &:before {
+      border-bottom-color: $popover-bg-color !important;
+    }
+
     div.btn-group .btn {
       &.btn-font-smaller {
         background-image: url(../images/#{$theme}/icn-font-decrease.svg);
