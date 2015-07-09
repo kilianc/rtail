@@ -84,7 +84,7 @@
           {{ctrl.activeStream}}
         </div>
         <div class="filter-box">
-          <input type="text" ng-model="ctrl.activeStreamFilter" placeholder="Type a filter [regexp allowed]">
+          <input type="text" ng-model="ctrl.activeStreamRegExp" ng-trim="false" placeholder="filter stream (regexp allowed)">
         </div>
       </div>
 
@@ -93,7 +93,7 @@
           class="stream-line"
           ng-repeat="
             line in ctrl.lines
-            | filter:{ content: ctrl.activeStreamFilter }
+            | filter:ctrl.activeStreamFilter
             | orderBy:'timestamp':!ctrl.streamDirection
           "
         >
