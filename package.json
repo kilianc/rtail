@@ -24,7 +24,7 @@
     "express": "^4.10.0",
     "json5": "^0.4.0",
     "moniker": "^0.1.2",
-    "request": "^2.47.0",
+    "request": "^2.58.0",
     "socket.io": "^1.1.0",
     "split": "^1.0.0",
     "strip-ansi": "^3.0.0",
@@ -56,18 +56,19 @@
     "gulp-useref": "^1.1.2",
     "gulp-util": "^3.0.4",
     "highlight.js": "isagalaev/highlight.js",
+    "istanbul": "^0.3.17",
+    "istanbul-harmony": "^0.3.16",
     "jquery": "^2.1.4",
     "localforage": "^1.2.2",
     "mocha": "^2.2.5",
     "moment": "^2.10.3",
     "node-sass": "^3.1.1",
-    "request": "^2.58.0",
     "run-sequence": "^1.1.0"
   },
   "scripts": {
     "app": "DEBUG=rtail:*,api:* gulp app",
-    "test": "DEBUG=local:bootstrap NODE_ENV=test node --harmony test/runner.js",
-    "test:watch": "DEBUG=local:bootstrap NODE_ENV=test nodemon --harmony test/runner.js"
+    "test": "NODE_ENV=test node --harmony test/runner.js",
+    "test:watch": "NODE_ENV=test nodemon --harmony test/runner.js"
   },
   "author": "Kilian Ciuffolo <me@nailik.org>",
   "license": "MIT"
