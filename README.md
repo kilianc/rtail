@@ -181,6 +181,8 @@ The test suite is written on top of [mochajs/mocha](http://mochajs.org/). Use th
 * ? (wildcard TLS cert)
 * ? (.io domain)
 
+[![PayPal donate button](https://img.shields.io/badge/$_paypal-one_time_donation_➝-04cd7e.svg?style=flat-square)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=info%40rtail%2eorg&lc=US&item_name=rtail&item_number=rtail&currency_code=USD&bn=PP%2dDonationsBF%3abtn_donateCC_LG%2egif%3aNonHosted)
+
 <a href="mailto:info@lukibear.com">Professional support or ad-hoc is also available.</a>
 
 ## License
