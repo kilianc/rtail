@@ -38,6 +38,7 @@
     "angular-localforage": "^1.2.2",
     "angular-moment": "^0.10.1",
     "angular-rt-popup": "^1.0.5",
+    "angular-ui-router": "^0.2.15",
     "ansi_up": "^1.2.1",
     "autoprefixer-core": "^5.1.11",
     "chai": "^3.0.0",

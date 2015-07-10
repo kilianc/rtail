@@ -45,31 +45,27 @@
       <div class="stream-sections">
         <div class="stream-section">
           <h4>Favorites</h4>
-          <ul>
-            <li
-              ng-repeat="(stream, active) in ctrl.favorites | orderBy:''"
-              ng-class="{ selected: ctrl.isSelected(stream) }"
-              ng-click="ctrl.selectStream(stream)"
-            >
-              <a href="#">{{::stream}}</a>
-              <i ng-show="stream.unread"></i>
-            </li>
-          </ul>
+          <a
+            ng-repeat="(stream, active) in ctrl.favorites | orderBy:''"
+            ng-class="{ selected: ctrl.isSelected(stream) }"
+            ui-sref="streams({ stream: stream })"
+          >
+            <span>{{::stream}}</span>
+            <i ng-show="stream.unread"></i>
+          </a>
         </div>
 
         <div class="stream-section">
           <h4>Streams</h4>
-          <ul>
-            <li
-              ng-repeat="stream in ctrl.streams | filter:ctrl.streamsListFilter | orderBy:''"
-              ng-class="{ selected: ctrl.isSelected(stream) }"
-              ng-click="ctrl.selectStream(stream)"
-              ng-hide="ctrl.favorites[stream]"
-            >
-              <a href="#">{{::stream}}</a>
-              <i ng-show="stream.unread"></i>
-            </li>
-          </ul>
+          <a
+            ng-repeat="stream in ctrl.streams | filter:ctrl.streamsListFilter | orderBy:''"
+            ng-class="{ selected: ctrl.isSelected(stream) }"
+            ng-hide="ctrl.favorites[stream]"
+            ui-sref="streams({ stream: stream })"
+          >
+            <span>{{::stream}}</span>
+            <i ng-show="stream.unread"></i>
+          </a>
         </div>
       </div>
 
@@ -169,6 +165,7 @@
   <script src="../node_modules/angular-moment/angular-moment.js"></script>
   <script src="../node_modules/angular-localforage/dist/angular-localForage.js"></script>
   <script src="../node_modules/angular-rt-popup/dist/angular-rt-popup.js"></script>
+  <script src="../node_modules/angular-ui-router/release/angular-ui-router.js"></script>
   <script src="app.js"></script>
   <!-- endbuild -->
 </body>
