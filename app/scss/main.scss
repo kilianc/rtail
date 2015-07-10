@@ -146,7 +146,7 @@ header {
         padding-left: $spacing;
       }
 
-      li {
+      a {
         align-items: center;
         cursor: pointer;
         display: flex;
@@ -158,7 +158,7 @@ header {
           padding-left: 38px;
         }
 
-        a {
+        span {
           text-overflow: ellipsis;
           white-space: nowrap;
           overflow: hidden;

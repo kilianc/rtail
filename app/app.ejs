@@ -1,3 +1,7 @@
+/* global angular, $, window, io, document, hljs, ansi_up */
+
+'use strict'
+
 /*!
  * main js controller for webapp
  */
@@ -6,8 +10,14 @@ angular
     'ngAnimate',
     'angularMoment',
     'LocalForageModule',
-    'rt.popup'
+    'rt.popup',
+    'ui.router'
   ])
+  .config(function ($stateProvider) {
+    $stateProvider.state('streams', {
+      url: '/streams/:stream'
+    })
+  })
   .directive('resizable', function ($localForage) {
     return {
       restrict: 'A',
@@ -38,6 +48,9 @@ angular
   .controller('MainController', function MainController($scope, $injector) {
     var $sce = $injector.get('$sce')
     var $localForage = $injector.get('$localForage')
+    var $rootScope = $injector.get('$rootScope')
+    var $state = $injector.get('$state')
+    var $stateParams = $injector.get('$stateParams')
     var $streamLines = $('.stream-lines')
     var BUFFER_SIZE = 100
     var ctrl = this
@@ -76,6 +89,7 @@ angular
     })
 
     ctrl.selectStream = function selectStream(stream) {
+      ctrl.lines = []
       ctrl.activeStream = stream
       ctrl.socket.emit('select stream', stream)
       ctrl.resume()
@@ -211,13 +225,21 @@ angular
     })
 
     $localForage.getItem('activeStream').then(function (activeStream) {
-      if (!activeStream) return
+      if (!activeStream || ('streams' === $state.current.name && $stateParams.stream)) return
       console.info('%s: restoring session', activeStream)
-      ctrl.selectStream(activeStream)
+      $state.go('streams', { stream: activeStream })
     })
 
     $localForage.getItem('streamDirection').then(function (streamDirection) {
       ctrl.streamDirection = undefined === streamDirection ? true : streamDirection
+    })
+
+    /*!
+     * respond to url change
+     */
+    $rootScope.$on('$stateChangeStart', function (e, toState, toParams) {
+      if ('streams' !== toState.name) return
+      ctrl.selectStream(toParams.stream)
     })
 
     /*!
