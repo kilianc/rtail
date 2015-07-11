@@ -99,7 +99,7 @@
 
           <button
             class="btn-toggle-timestamp"
-            ng-if="99 === $index"
+            ng-if="$last"
             ng-style="{ left: ctrl.toggleTimestampButtonX }"
             ng-class="{ closed: ctrl.hiddenTimestamps[ctrl.activeStream] }"
             ng-click="ctrl.toggleTimestamp(ctrl.activeStream)"
