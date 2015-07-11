@@ -171,6 +171,16 @@ angular
       $localForage.setItem('favorites', ctrl.favorites)
     }
 
+    ctrl.toggleTimestamp = function toggleTimestamp(stream) {
+      if (ctrl.hiddenTimestamps[stream]) {
+        delete ctrl.hiddenTimestamps[stream]
+      } else {
+        ctrl.hiddenTimestamps[stream] = true
+      }
+
+      $localForage.setItem('hiddenTimestamps', ctrl.hiddenTimestamps)
+    }
+
     ctrl.setTheme = function setTheme(theme) {
       ctrl.theme = theme
       $localForage.setItem('theme', theme)
@@ -222,6 +232,10 @@ angular
 
     $localForage.getItem('favorites').then(function (favorites) {
       ctrl.favorites = favorites || {}
+    })
+
+    $localForage.getItem('hiddenTimestamps').then(function (hiddenTimestamps) {
+      ctrl.hiddenTimestamps = hiddenTimestamps || {}
     })
 
     $localForage.getItem('activeStream').then(function (activeStream) {

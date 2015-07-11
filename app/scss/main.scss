@@ -177,6 +177,7 @@ header {
 }
 
 .stream-view {
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -253,6 +254,20 @@ header {
         padding-left: $spacing;
         padding-top: 5px;
       }
+    }
+  }
+
+  .btn-toggle-timestamp {
+    position: absolute;
+    bottom: 15px;
+    width: 20px;
+    height: 20px;
+    border-radius: $border-radius;
+    cursor: pointer;
+    transform: translateX(-50%);
+
+    &.closed {
+      transform: translateX(-50%) rotate(180deg);
     }
   }
 

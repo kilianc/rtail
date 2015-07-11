@@ -96,6 +96,15 @@
       }
     }
 
+    .btn-toggle-timestamp {
+      background-color: $stream-view-bg-color;
+      background-repeat: no-repeat;
+      background-size: 4px 7px;
+      background-position: 50%;
+      border: 1px solid $stream-view-timestamp-border-color;
+      background-image: url('../images/#{$theme}/icn-close-date.svg');
+    }
+
     .btn-resume {
       background-color: $main-color;
       background-image: url('../images/common/icn-resume.svg');
