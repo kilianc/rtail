@@ -8,9 +8,9 @@
 [![License](https://img.shields.io/npm/l/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
 [![Gitter](https://img.shields.io/badge/≡_gitter-join_chat_➝-04cd7e.svg?style=flat-square)](https://gitter.im/kilianc/rtail?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-## Pipe your terminal output to the browser in seconds, using UNIX pipes.
+## Terminal output to the browser in seconds, using UNIX pipes.
 
-`rtail` is a command line utility that grabs every line in `stdin` and broadcast it over **UDP**. That's it, nothing fancy, nothing complicated. You can tail your log files, your app output or whatever you wish to pipe, in `rtail` to a `rtail-server` and see multiple streams in the browser, realtime.
+`rtail` is a command line utility that grabs every line in `stdin` and broadcasts it over **UDP**. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using `rtail` broadcasting to an `rtail-server` – See multiple streams in the browser, in realtime.
 
 ## Installation
 
@@ -24,22 +24,22 @@
 
 ## Rationale
 
-If you develop software for work and you deploy your code on remote servers using multiple environments, or simply have multiple projects, you know that to monitor realtime your logs **you need to `ssh` to every single machine running your code**.
+Whether you deploy your code on remote servers using multiple environments or simply have multiple projects, **you must `ssh` to each machine running your code, in order to monitor the logs in realtime**.
 
-There are many log aggregation tools out there, and few of them are realtime. **Most of them require you to change your application source code to support their logging protocol/transport**.
+There are many log aggregation tools out there, but few of them are realtime. **Most other tools require you to change your application source code to support their logging protocol/transport**.
 
-This is meant to be a replacement of [logio](https://github.com/NarrativeScience/Log.io/commits/master) which was a cool idea, but not actively maintained anymore, doesn't support node v0.12.* and uses *TCP*, which means strict handshaking between servers and clients other than being resource consuming and very difficult to scale.
+`rtail` is meant to be a replacement of [logio](https://github.com/NarrativeScience/Log.io/commits/master), which isn't actively maintained anymore, doesn't support node v0.12., and uses *TCP. (TCP requires strict client / server handshaking, is resource-hungry, and very difficult to scale.)*
 
-**`rtail` approach is very simple:**
-* pipe something into it using [UNIX I/O redirection](http://www.westwind.com/reference/os-x/commandline/pipes.html) [[2]](http://www.codecoffee.com/tipsforlinux/articles2/042.html)
+**The `rtail` approach is very simple:**
+* pipe something into `rtail` using [UNIX I/O redirection](http://www.westwind.com/reference/os-x/commandline/pipes.html) [[2]](http://www.codecoffee.com/tipsforlinux/articles2/042.html)
 * broadcast every line using UDP
-* `rtail-server` **if listening** will dispatch the stream into your browser using [socket.io](http://socket.io/).
+* `rtail-server`, **if listening**, will dispatch the stream into your browser, using [socket.io](http://socket.io/).
 
-**There is no persistent layer and it is not meant to persist any data**, `rtail` is a realtime monitoring tool meant to aggregate multiple streams and serve them with a modern web interface, mostly for debugging and realtime monitoring. If you need a persistent layer use something like [loggly](https://www.loggly.com/).
+`rtail` is a realtime debugging and monitoring tool, which can display multiple aggregate streams via a modern web interface. **There is no persistent layer, nor does the tool store any data**. If you need a persistent layer, use something like [loggly](https://www.loggly.com/).
 
 ## Examples
 
-In your init script:
+In your app init script:
 
     $ node server.js 2>&1 | rtail --id "api.myproject.com"
 
@@ -47,112 +47,112 @@ In your init script:
 
     $ node server.js 2>&1 | rtail --mute
 
-Supports JSON lines
+Supports JSON5 lines:
 
     $ while true; do echo [1, 2, 3, "hello"]; sleep 1; done | rtail
     $ echo { "foo": "bar" } | rtail
+    $ echo { format: 'JSON5' } | rtail
 
-Using log files (log rotate safe!)
+Using log files (log rotate safe!):
 
     $ node server.js 2>&1 > log.txt
     $ tail -F log.txt | rtail
 
-For fun and debugging
+For fun and debugging:
 
     $ cat ~/myfile.txt | rtail
     $ echo "Server rebooted!" | rtail --id `hostname`
 
 ## Params
 
-    $ rtail  -h
-    Usage: cmd | rtail --host [string] --port [num] [--mute] [--id [string]]
-
-    Examples:
-      server | rtail --host 127.0.0.1 > server.log    Broadcast to localhost + file
-      server | rtail --port 43567                     Custom port
-      server | rtail --mute                           Only remote
-      server | rtail --id api.domain.com              Name the log stream
-      server | rtail --not-tty                        Strips ANSI colors
-
+    $ rtail --help
+    Usage: cmd | rtail [OPTIONS]
 
     Options:
-      --mute, -m     Don't pipe stdin with stdout
-      --host         The recipient server host     [default: "127.0.0.1"]
-      --port, -p     The recipient server port     [default: 9999]
-      --id, --name   The log stream id             [default: moniker()]
-      --not-tty      Strips ansi colors
-      --help, -h     Show help
-      --version, -v  Show version number
+      --host, -h     The server host                 [string] [default: "127.0.0.1"]
+      --port, -p     The server port                        [string] [default: 9999]
+      --id, --name   The log stream id                 [string] [default: (moniker)]
+      --mute, -m     Don't pipe stdin with stdout                          [boolean]
+      --tty          Keeps ansi colors                     [boolean] [default: true]
+      --parse-date   Looks for dates to use as timestamp   [boolean] [default: true]
+      --help         Show help                                             [boolean]
+      --version, -v  Show version number                                   [boolean]
+
+    Examples:
+      server | rtail > server.log         localhost + file
+      server | rtail --id api.domain.com  Name the log stream
+      server | rtail --host example.com   Sends to example.com
+      server | rtail --port 43567         Uses custom port
+      server | rtail --mute               No stdout
+      server | rtail --no-tty             Strips ansi colors
+      server | rtail --no-date-parse      Disable date parsing/stripping
+
 
 ## `rtail-server(1)`
 
-`rtail-server` catches all messages broadcasted from every `rtail` client and serves a web interface to view the incoming log streams in realtime. **Under the hood uses [socket.io](http://socket.io) to pipe every incoming UDP message to the browser.**
+`rtail-server` receives all messages broadcast from every `rtail` client, displaying all incoming log streams in a realtime web view. **Under the hood, the server uses [socket.io](http://socket.io) to pipe every incoming UDP message to the browser.**
 
-There is tiny to nothing to configure, you can chage the default UDP/HTTP ports, but other than that you're all set.
+There is little to no configuration – The default UDP/HTTP ports can be changed, but that's it.
 
 ## Examples
 
-With default values
+Use default values:
 
     $ rtail-server
 
-Stay up to date!
+Always use latest, stable webapp:
 
     $ rtail-server --web-version stable
 
-With custom ports
+Use custom ports:
 
     $ rtail-server --web-port 8080 --udp-port 9090
 
-With debugging on
+Set debugging on:
 
     $ DEBUG=rtail:* rtail-server
-
-With serving always latest stable webapp
-
-    $ DEBUG=rtail:* rtail-server --web-version stable
 
 Open your browser and start tailing logs!
 
 ## Params
 
-    $ rtail-server -h
-    Usage: rtail-server [--udp-host [string] --udp-port [num] --web-host [string] --web-port [num] --web-version [stable,unstable,<version>]]
-
-    Examples:
-      rtail-server --web-port 8080         Use custom http port
-      rtail-server --udp-port 8080         Use custom udp port
-      rtail-server --web-version stable    Always uses latest stable webapp
-      rtail-server --web-version 0.1.3     Use webapp v0.1.3
-
+    $ rtail-server --help
+    Usage: rtail-server [OPTIONS]
 
     Options:
-      --udp-host, --uh  The listening udp hostname       [default: "127.0.0.1"]
-      --udp-port, --up  The listening udp port           [default: 9999]
-      --web-host, --wh  The listening http hostname      [default: "127.0.0.1"]
-      --web-port, --wp  The listening http port          [default: 8888]
-      --web-version     Define web app version to serve
-      --help, -h        Show help
-      --version, -v     Show version number
+    --udp-host, --uh  The listening UDP hostname            [default: "127.0.0.1"]
+    --udp-port, --up  The listening UDP port                       [default: 9999]
+    --web-host, --wh  The listening HTTP hostname           [default: "127.0.0.1"]
+    --web-port, --wp  The listening HTTP port                      [default: 8888]
+    --web-version     Define web app version to serve                     [string]
+    --help, -h        Show help                                          [boolean]
+    --version, -v     Show version number                                [boolean]
+
+    Examples:
+    rtail-server --web-port 8080         Use custom HTTP port
+    rtail-server --udp-port 8080         Use custom UDP port
+    rtail-server --web-version stable    Always uses latest stable webapp
+    rtail-server --web-version unstable  Always uses latest develop webapp
+    rtail-server --web-version 0.1.3     Use webapp v0.1.3
 
 ## UDP Broadcasting
 
-You may want to scale and broadcast on multiple servers, in that case just instruct the `rtail` client to stream to the broadcast address and every message will be delivered to all servers in your subnet.
+To scale and broadcast on multiple servers, instruct the `rtail` client to stream to the broadcast address. Every message will then be delivered to all servers in your subnet.
 
 ## Authentication layer
 
-The webapp doesn't have an authentication layer for the time being, it's assumed you run it behind a VPN or a reverse proxy with a simple `Authorization` header check.
+For the time being, the webapp doesn't have an authentication layer; it assumes that you will run it behind a VPN or reverse proxy, with a simple `Authorization` header check.
 
 # How to contribute
 
 This project follows the awesome [Vincent Driessen](http://nvie.com/about/) [branching model](http://nvie.com/posts/a-successful-git-branching-model/).
 
-* You must add a new feature on his own topic branch
-* You must contribute to hot-fixing directly into the master branch (and pull-request to it)
+* You must add a new feature on its own branch
+* You must contribute to hot-fixing, directly into the master branch (and pull-request to it)
 
-This project follows (more or less) the [Felix's Node.js Style Guide](http://nodeguide.com/style.html), your contribution must be consistent with this style.
+This project uses JSCS to enforce a consistent code style. Your contribution must be pass jscs validation.
 
-The test suite is written on top of [visionmedia/mocha](http://visionmedia.github.com/mocha/) and it took hours of hard work. Please use the tests to check if your contribution is breaking some part of the library and add new tests for each new feature.
+The test suite is written on top of [mochajs/mocha](http://mochajs.org/). Use the tests to check if your contribution breaks some part of the library and be sure to add new tests for each new feature.
 
     $ npm test
 
@@ -161,12 +161,35 @@ The test suite is written on top of [visionmedia/mocha](http://visionmedia.githu
 * [Kilian Ciuffolo](https://github.com/kilianc)
 * [Luca Orio](https://www.behance.net/lucaorio)
 * [Sandaruwan Silva](https://github.com/s-silva)
+* [Sorel Mihai](https://dribbble.com/sorelmihai)
+* [Tim Riot](https://www.linkedin.com/in/timriot)
+
+## Roadmap (aka where you can help)
+
+* Write a rock solid test suite
+* Allow use of DTLS (waiting for node to support this https://github.com/joyent/node/pull/6704)
+* Add GitHub OAuth and basic auth for teams (join proposal convo here: https://github.com/kilianc/rtail/issues/44)
+* Implement infinite-scroll like behavior in the webapp to support bigger backlogs and make it future proof.
+* Publish base rtail docker image to DockerHub
+* Create a catch all docker logs image
+* Rewrite webapp using ng2
+
+## Sponsors
+❤ rTail? Consider sponsoring this project to keep it alive and free for the community.
+
+* Lukibear (domain)
+* ? (wildcard TLS cert)
+* ? (.io domain)
+
+[![PayPal donate button](https://img.shields.io/badge/$_paypal-one_time_donation_➝-04cd7e.svg?style=flat-square)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=info%40rtail%2eorg&lc=US&item_name=rtail&item_number=rtail&currency_code=USD&bn=PP%2dDonationsBF%3abtn_donateCC_LG%2egif%3aNonHosted)
+
+<a href="mailto:info@lukibear.com">Professional support or ad-hoc is also available.</a>
 
 ## License
 
 _This software is released under the MIT license cited below_.
 
-    Copyright (c) 2015 Kilian Ciuffolo, me@nailik.org. All Rights Reserved.
+    Copyright (c) 2014 Kilian Ciuffolo, me@nailik.org. All Rights Reserved.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation

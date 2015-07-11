@@ -10,7 +10,6 @@
 'use strict'
 
 const dgram = require('dgram')
-const path = require('path')
 const app = require('express')()
 const serve = require('express').static
 const http = require('http').Server(app)
@@ -21,44 +20,43 @@ const webapp = require('./lib/webapp')
 const updateNotifier = require('update-notifier')
 const pkg = require('../package')
 
-/**
- * Inform the user of updates
+/*!
+ * inform the user of updates
  */
-
 updateNotifier({
   packageName: pkg.name,
   packageVersion: pkg.version
 }).notify()
 
-/**
- * Parsing argv
+/*!
+ * parsing argv
  */
-
-var argv = yargs
-  .usage('Usage: rtail-server [--udp-host [string] --udp-port [num] --web-host [string] --web-port [num] --web-version [stable,unstable,<version>]]')
-  .example('rtail-server --web-port 8080', 'Use custom http port')
-  .example('rtail-server --udp-port 8080', 'Use custom udp port')
+let argv = yargs
+  .usage('Usage: rtail-server [OPTIONS]')
+  .example('rtail-server --web-port 8080', 'Use custom HTTP port')
+  .example('rtail-server --udp-port 8080', 'Use custom UDP port')
   .example('rtail-server --web-version stable', 'Always uses latest stable webapp')
+  .example('rtail-server --web-version unstable', 'Always uses latest develop webapp')
   .example('rtail-server --web-version 0.1.3', 'Use webapp v0.1.3')
   .option('udp-host', {
     alias: 'uh',
     default: '127.0.0.1',
-    describe: 'The listening udp hostname'
+    describe: 'The listening UDP hostname'
   })
   .option('udp-port', {
     alias: 'up',
     default: 9999,
-    describe: 'The listening udp port'
+    describe: 'The listening UDP port'
   })
   .option('web-host', {
     alias: 'wh',
     default: '127.0.0.1',
-    describe: 'The listening http hostname'
+    describe: 'The listening HTTP hostname'
   })
   .option('web-port', {
     alias: 'wp',
     default: 8888,
-    describe: 'The listening http port'
+    describe: 'The listening HTTP port'
   })
   .option('web-version', {
     type: 'string',
@@ -71,25 +69,24 @@ var argv = yargs
   .strict()
   .argv
 
-/**
+/*!
  * UDP sockets setup
  */
-
-var streams = {}
-var socket = dgram.createSocket('udp4')
+let streams = {}
+let socket = dgram.createSocket('udp4')
 
 socket.on('message', function (data, remote) {
   // try to decode JSON
   try { data = JSON.parse(data) }
-  catch (e) { return debug('invalid data sent') }
+  catch (err) { return debug('invalid data sent') }
 
   if (!streams[data.id]) {
     streams[data.id] = []
     io.sockets.emit('streams', Object.keys(streams))
   }
 
-  var message = {
-    timestamp: Date.now(),
+  let message = {
+    timestamp: data.timestamp,
     streamid: data.id,
     host: remote.address,
     port: remote.port,
@@ -105,10 +102,9 @@ socket.on('message', function (data, remote) {
   io.sockets.to(data.id).emit('line', message)
 })
 
-/**
+/*!
  * socket.io
  */
-
 io.on('connection', function (socket) {
   socket.emit('streams', Object.keys(streams))
   socket.on('select stream', function (stream) {
@@ -119,10 +115,9 @@ io.on('connection', function (socket) {
   })
 })
 
-/**
- * Serve static webapp from s3
+/*!
+ * serve static webapp from S3
  */
-
 if (!argv.webVersion) {
   app.use(serve(__dirname + '/../dist'))
 } else if ('development' === argv.webVersion) {
@@ -138,10 +133,9 @@ if (!argv.webVersion) {
   debug('serving webapp from: http://rtail.s3-website-us-east-1.amazonaws.com/%s', argv.webVersion)
 }
 
-/**
- * Listen!
+/*!
+ * listen!
  */
-
 io.attach(http, { serveClient: false })
 socket.bind(argv.udpPort, argv.udpHost)
 http.listen(argv.webPort, argv.webHost)

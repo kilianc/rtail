@@ -37,7 +37,7 @@
         color: $stream-list-title-color;
       }
 
-      li {
+      a {
         color: $stream-list-color;
 
         &:hover {
@@ -96,6 +96,15 @@
       }
     }
 
+    .btn-toggle-timestamp {
+      background-color: $stream-view-bg-color;
+      background-repeat: no-repeat;
+      background-size: 4px 7px;
+      background-position: 50%;
+      border: 1px solid $stream-view-timestamp-border-color;
+      background-image: url('../images/#{$theme}/icn-close-date.svg');
+    }
+
     .btn-resume {
       background-color: $main-color;
       background-image: url('../images/common/icn-resume.svg');
@@ -147,6 +156,10 @@
   .popover-settings {
     h4 {
       color: $popover-font-color;
+    }
+
+    &:before {
+      border-bottom-color: $popover-bg-color !important;
     }
 
     div.btn-group .btn {

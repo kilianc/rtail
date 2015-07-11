@@ -37,7 +37,7 @@
   </header>
 
   <div class="split-pane">
-    <div class="sidebar">
+    <div class="sidebar" ng-style="{ width: ctrl.sidebarWidth }" resizable>
       <div class="search-box">
         <input type="text" placeholder="Search streams" ng-model="ctrl.streamsListFilter">
       </div>
@@ -45,34 +45,31 @@
       <div class="stream-sections">
         <div class="stream-section">
           <h4>Favorites</h4>
-          <ul>
-            <li
-              ng-repeat="(stream, active) in ctrl.favorites | orderBy:''"
-              ng-class="{ selected: ctrl.isSelected(stream) }"
-              ng-click="ctrl.selectStream(stream)"
-            >
-              <a href="#">{{::stream}}</a>
-              <i ng-show="stream.unread"></i>
-            </li>
-          </ul>
+          <a
+            ng-repeat="(stream, active) in ctrl.favorites | orderBy:''"
+            ng-class="{ selected: ctrl.isSelected(stream) }"
+            ui-sref="streams({ stream: stream })"
+          >
+            <span>{{::stream}}</span>
+            <i ng-show="stream.unread"></i>
+          </a>
         </div>
 
         <div class="stream-section">
           <h4>Streams</h4>
-          <ul>
-            <li
-              ng-repeat="stream in ctrl.streams | filter:ctrl.streamsListFilter | orderBy:''"
-              ng-class="{ selected: ctrl.isSelected(stream) }"
-              ng-click="ctrl.selectStream(stream)"
-              ng-hide="ctrl.favorites[stream]"
-            >
-              <a href="#">{{::stream}}</a>
-              <i ng-show="stream.unread"></i>
-            </li>
-          </ul>
+          <a
+            ng-repeat="stream in ctrl.streams | filter:ctrl.streamsListFilter | orderBy:''"
+            ng-class="{ selected: ctrl.isSelected(stream) }"
+            ng-hide="ctrl.favorites[stream]"
+            ui-sref="streams({ stream: stream })"
+          >
+            <span>{{::stream}}</span>
+            <i ng-show="stream.unread"></i>
+          </a>
         </div>
       </div>
 
+      <div class="resize-handler"></div>
       <div class="fade"></div>
     </div>
 
@@ -83,7 +80,7 @@
           {{ctrl.activeStream}}
         </div>
         <div class="filter-box">
-          <input type="text" ng-model="ctrl.activeStreamFilter" placeholder="Type a filter [regexp allowed]">
+          <input type="text" ng-model="ctrl.activeStreamRegExp" ng-trim="false" placeholder="filter stream (regexp allowed)">
         </div>
       </div>
 
@@ -92,13 +89,24 @@
           class="stream-line"
           ng-repeat="
             line in ctrl.lines
-            | filter:{ content: ctrl.activeStreamFilter }
+            | filter:ctrl.activeStreamFilter
             | orderBy:'timestamp':!ctrl.streamDirection
           "
         >
-          <div class="stream-line-timestamp">
+          <div class="stream-line-timestamp" ng-hide="ctrl.hiddenTimestamps[ctrl.activeStream]">
             {{::line.timestamp | amDateFormat:'MM/DD/YY hh:mm:ss'}}
           </div>
+
+          <button
+            class="btn-toggle-timestamp"
+            ng-if="$last"
+            ng-style="{ left: ctrl.toggleTimestampButtonX }"
+            ng-class="{ closed: ctrl.hiddenTimestamps[ctrl.activeStream] }"
+            ng-click="ctrl.toggleTimestamp(ctrl.activeStream)"
+            title="Toggle timestamp column"
+          >
+          </button>
+
           <div class="stream-line-content {{::line.type}}">
             <span ng-bind-html="::line.html"></span>
           </div>
@@ -168,6 +176,7 @@
   <script src="../node_modules/angular-moment/angular-moment.js"></script>
   <script src="../node_modules/angular-localforage/dist/angular-localForage.js"></script>
   <script src="../node_modules/angular-rt-popup/dist/angular-rt-popup.js"></script>
+  <script src="../node_modules/angular-ui-router/release/angular-ui-router.js"></script>
   <script src="app.js"></script>
   <!-- endbuild -->
 </body>

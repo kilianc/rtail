@@ -1,0 +1,11 @@
+{
+  "asi": true,
+  "esnext": true,
+  "expr": true,
+  "mocha": true,
+  "node": true,
+  "noyield": true,
+  "strict": true,
+  "unused": true,
+  "validthis": true
+}

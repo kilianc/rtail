@@ -1,0 +1,11 @@
+linters:
+  ImportantRule:
+    enabled: false
+  Compass::*:
+    enabled: false
+  SelectorDepth:
+    enabled: false
+  NestingDepth:
+    enabled: false
+  PropertyCount:
+    enabled: false

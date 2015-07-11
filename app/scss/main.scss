@@ -4,33 +4,34 @@
 
 $spacing: 20px;
 $border-radius: 5px;
-$font-family: "Nunito";
+$font-family: 'Nunito';
 
 // **
 // imports
 // **
 
-@import "_fonts";
+@import 'fonts';
 
 // **
 // reset
 // **
 
 * {
-  border: 0;
-  padding: 0;
-  margin: 0;
   background: none;
-  text-decoration: none;
-  color: inherit;
+  border: 0;
   box-sizing: border-box;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+  text-decoration: none;
 
   &:focus {
     outline: none;
   }
 }
 
-ol, ul {
+ol,
+ul {
   list-style: none;
 }
 
@@ -47,37 +48,41 @@ input {
 // **
 
 body {
+  align-items: stretch;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  min-height: 100vh;
   font-family: $font-family;
   font-size: 16px;
+  min-height: 100vh;
+
+  &.resizing {
+    user-select: none;
+  }
 }
 
 header {
+  align-items: center;
   display: flex;
   flex-direction: row;
-  align-items: center;
   height: 58px;
 
   .rtail-logo {
+    background-position: 50% 50%;
+    background-repeat: no-repeat;
+    background-size: 53px 13px;
     height: 100px;
     width: 94px;
-    background-repeat: no-repeat;
-    background-position: 50% 50%;
-    background-size: 53px 13px;
   }
 
   .btn {
-    width: 19px;
-    height: 19px;
     background-position: 50% 50%;
     background-repeat: no-repeat;
     background-size: 100%;
-    margin-right: $spacing;
-    opacity: 0.4;
     cursor: pointer;
+    height: 19px;
+    margin-right: $spacing;
+    opacity: .4;
+    width: 19px;
 
     &.btn-info {
       margin-left: auto;
@@ -86,28 +91,38 @@ header {
 }
 
 .split-pane {
-  flex: 1;
   display: flex;
+  flex: 1;
   flex-direction: row;
 }
 
 .sidebar {
   display: flex;
   flex-direction: column;
-  width: 230px;
   font-size: 16px;
+  position: relative;
+  width: 230px;
+
+  .resize-handler {
+    cursor: col-resize;
+    height: 100%;
+    position: absolute;
+    right: -5px;
+    top: 0;
+    width: 10px;
+  }
 
   .search-box {
-    display: flex;
-    height: 57px;
+    background-position: $spacing 50%;
     background-repeat: no-repeat;
     background-size: 16px 16px;
-    background-position: $spacing 50%;
+    display: flex;
+    height: 57px;
 
     input {
       flex: 1;
-      height: 57px;
       font-size: 14px;
+      height: 57px;
       margin-left: 56px;
       margin-right: $spacing;
     }
@@ -115,40 +130,46 @@ header {
 
   .stream-sections {
     flex: 1;
-    overflow-y: auto;
     height: 0;
+    overflow-y: auto;
 
     .stream-section {
       flex: 1;
 
       h4 {
-        display: flex;
         align-items: center;
+        display: flex;
+        font-size: 16px;
+        font-weight: normal;
         height: 32px;
         margin-top: $spacing;
         padding-left: $spacing;
-        font-size: 16px;
-        font-weight: normal;
       }
 
-      li {
-        display: flex;
+      a {
         align-items: center;
+        cursor: pointer;
+        display: flex;
         height: 32px;
         padding-left: 40px;
-        cursor: pointer;
 
         &.selected {
-          padding-left: 38px;
           border-left: 2px solid;
+          padding-left: 38px;
+        }
+
+        span {
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          overflow: hidden;
         }
 
         i {
-          width: 8px;
-          height: 8px;
           border-radius: 50%;
+          height: 8px;
           margin-left: auto;
           margin-right: $spacing;
+          width: 8px;
         }
       }
     }
@@ -156,99 +177,114 @@ header {
 }
 
 .stream-view {
-  flex: 1;
+  position: relative;
   display: flex;
+  flex: 1;
   flex-direction: column;
 
   .stream-header {
-    display: flex;
     align-items: center;
-    height: 57px;
+    display: flex;
     font-size: 16px;
+    height: 57px;
 
     .stream-title {
-      display: flex;
       align-items: center;
+      display: flex;
+    }
 
-      .stream-title-favorite {
-        display: inline-block;
-        margin: 0 $spacing;
-        background-repeat: no-repeat;
-        background-size: 15px 15px;
-        width: 15px;
-        height: 15px;
-      }
+    .stream-title-favorite {
+      background-repeat: no-repeat;
+      background-size: 15px 15px;
+      display: inline-block;
+      height: 15px;
+      margin: 0 $spacing;
+      width: 15px;
     }
 
     .filter-box {
-      display: flex;
-      width: 210px;
-      height: 30px;
+      background-position: 0 50%;
       background-repeat: no-repeat;
       background-size: 14px 14px;
-      background-position: 0 50%;
-      opacity: 0.7;
+      display: flex;
       font-size: 14px;
+      height: 30px;
       margin-left: auto;
       margin-right: $spacing;
+      opacity: .7;
+      width: 210px;
+    }
 
-      input {
-        flex: 1;
-        margin-left: 24px;
-      }
+    input {
+      flex: 1;
+      margin-left: 24px;
     }
   }
 
   .stream-lines {
     flex: 1;
-    overflow-y: auto;
-    height: 0;
     font-size: 12px;
+    height: 0;
+    overflow-y: auto;
     padding: 2px 0;
 
     .stream-line {
       display: flex;
-      line-height: 0.5em;
+      line-height: .5em;
 
       pre {
         line-height: 1.2;
       }
 
       .stream-line-timestamp {
+        border-right: 1px solid;
         flex-shrink: 0;
         padding-right: $spacing;
-        border-right: 1px solid;
       }
 
       .stream-line-content {
-        white-space: nowrap;
+        white-space: pre;
       }
 
       .stream-line-timestamp,
       .stream-line-content {
-        display: flex;
         align-items: center;
+        display: flex;
+        padding-bottom: 5px;
         padding-left: $spacing;
         padding-top: 5px;
-        padding-bottom: 5px;
       }
     }
   }
 
-  .btn-resume {
+  .btn-toggle-timestamp {
     position: absolute;
+    bottom: 15px;
+    width: 20px;
+    height: 20px;
+    border-radius: $border-radius;
+    cursor: pointer;
+    transform: translateX(-50%);
+
+    &.closed {
+      transform: translateX(-50%) rotate(180deg);
+    }
+  }
+
+  .btn-resume {
+    background-position: 10px 50%;
+    background-repeat: no-repeat;
+    background-size: 8px 10px;
+    border-radius: $border-radius;
     bottom: $spacing;
-    right: $spacing;
-    width: 85px;
+    cursor: pointer;
+    font-size: 14px;
     height: 30px;
     padding-left: 25px;
-    border-radius: $border-radius;
-    background-repeat: no-repeat;
-    background-position: 10px 50%;
-    background-size: 8px 10px;
-    font-size: 14px;
+    position: absolute;
+    right: $spacing;
     text-align: left;
-    cursor: pointer;
+    width: 85px;
   }
 }
 
@@ -256,46 +292,46 @@ header {
   position: absolute;
 
   .popover-content {
+    border-radius: 5px;
     display: flex;
     flex-direction: column;
+    font-size: 12px;
+    margin-top: $spacing * 2;
+    overflow: visible !important;
     position: relative;
     width: 156px;
-    margin-top: $spacing * 2;
-    border-radius: 5px;
-    overflow: visible !important;
-    font-size: 12px;
 
     &:before {
-      position: absolute;
-      left: 50%;
-      top: 0;
-      content: "";
-      width: 0;
-      height: 0;
+      border-bottom: $spacing / 2 solid transparent;
       border-left: $spacing / 2 solid transparent;
       border-right: $spacing / 2 solid transparent;
-      border-bottom: $spacing / 2 solid transparent;
+      content: '';
+      height: 0;
+      left: 50%;
+      position: absolute;
+      top: 0;
       transform: translate(-50%, -100%);
+      width: 0;
     }
 
     .btn {
-      border-width: 1px;
-      border-style: solid;
       border-radius: $border-radius;
+      border-style: solid;
+      border-width: 1px;
     }
   }
 
   .popover-info {
-    height: 265px;
     align-items: center;
+    height: 265px;
 
     .rtail-logo {
-      height: 48px;
-      width: 100%;
-      background-repeat: no-repeat;
       background-position: 50% 50%;
+      background-repeat: no-repeat;
       background-size: 53px 13px;
       border-radius: $border-radius $border-radius 0 0;
+      height: 48px;
+      width: 100%;
     }
 
     .version {
@@ -303,22 +339,22 @@ header {
     }
 
     .btn {
-      display: flex;
       align-items: center;
-      justify-content: center;
-      width: 87px;
+      display: flex;
       height: 30px;
+      justify-content: center;
       margin-bottom: 5px;
+      width: 87px;
     }
 
     .lukibear-logo {
+      background-position: 50% 50%;
+      background-repeat: no-repeat;
+      background-size: 30%;
+      border-radius: 0 0 $border-radius $border-radius;
       flex: 1;
       margin-top: 10px;
       width: 100%;
-      background-repeat: no-repeat;
-      background-position: 50% 50%;
-      background-size: 30%;
-      border-radius: 0 0 $border-radius $border-radius;
     }
   }
 
@@ -334,7 +370,7 @@ header {
       font-weight: normal;
     }
 
-    div.btn-group {
+    .btn-group {
       display: flex;
       flex-direction: row;
       flex-wrap: wrap;
@@ -345,40 +381,36 @@ header {
       }
 
       .btn {
-        width: 42px;
-        height: 30px;
-        display: block;
-        background-size: auto 50%;
-        background-repeat: no-repeat;
         background-position: 50% 50%;
+        background-repeat: no-repeat;
+        background-size: auto 50%;
+        display: block;
         font-size: 16px;
+        height: 30px;
+        width: 42px;
 
         &:nth-child(1) {
-          border-right: 0;
           border-radius: $border-radius 0 0 $border-radius;
+          border-right: 0;
         }
 
-        & + .btn {
+        + .btn {
           border-radius: 0;
         }
 
         &:nth-child(3) {
           border-left: 0;
-          border-radius: 0 $border-radius $border-radius 0;
-        }
-
-        &:nth-child(3) {
           border-radius: 0 $border-radius 0 0;
         }
 
         &:nth-child(4) {
-          border-top: 0;
-          border-right: 0;
           border-radius: 0 0 0 $border-radius;
+          border-right: 0;
+          border-top: 0;
         }
 
         &:last-child {
-         border-radius: 0 $border-radius $border-radius 0;
+          border-radius: 0 $border-radius $border-radius 0;
         }
 
         &:nth-child(5) {
@@ -386,16 +418,16 @@ header {
         }
 
         &:nth-child(6) {
-          border-top: 0;
           border-left: 0;
-          border-radius: 0 0 $border-radius 0;
+          border-radius: 0 0 $border-radius;
+          border-top: 0;
         }
       }
 
       &.six-grid {
         .btn:nth-child(1) {
+          border-radius: $border-radius 0 0;
           border-right: 0;
-          border-radius: $border-radius 0 0 0;
         }
 
         .btn:nth-child(n + 4) {

@@ -3,8 +3,8 @@ box: wercker/nodejs
 build:
   steps:
     - npm-install
-    - npm-test
     - hgen/gulp
+    - npm-test
 
 deploy:
   steps:
