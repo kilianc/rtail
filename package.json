@@ -1,6 +1,6 @@
 {
   "name": "rtail",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Terminal output to the browser in seconds, using UNIX pipes.",
   "keywords": [
     "tail",
