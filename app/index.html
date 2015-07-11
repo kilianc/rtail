@@ -93,9 +93,20 @@
             | orderBy:'timestamp':!ctrl.streamDirection
           "
         >
-          <div class="stream-line-timestamp">
+          <div class="stream-line-timestamp" ng-hide="ctrl.hiddenTimestamps[ctrl.activeStream]">
             {{::line.timestamp | amDateFormat:'MM/DD/YY hh:mm:ss'}}
           </div>
+
+          <button
+            class="btn-toggle-timestamp"
+            ng-if="99 === $index"
+            ng-style="{ left: ctrl.toggleTimestampButtonX }"
+            ng-class="{ closed: ctrl.hiddenTimestamps[ctrl.activeStream] }"
+            ng-click="ctrl.toggleTimestamp(ctrl.activeStream)"
+            title="Toggle timestamp column"
+          >
+          </button>
+
           <div class="stream-line-content {{::line.type}}">
             <span ng-bind-html="::line.html"></span>
           </div>
