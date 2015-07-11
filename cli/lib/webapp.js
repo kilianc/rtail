@@ -12,8 +12,16 @@ const get = require('request').defaults({ encoding: null })
 // serve frontend from s3
 module.exports = function webapp(opts) {
   let cache = Object.create(null)
-  let cacheTTL = opts.cacheTTL
+  let cacheTTL = opts.ttl
   let s3 = opts.s3
+
+  /*!
+   * wipes out cache every cacheTTL ms
+   */
+  setInterval(function () {
+    cache = Object.create(null)
+    debug('cleared cache')
+  }, cacheTTL)
 
   /*!
    * middleware
@@ -34,13 +42,6 @@ module.exports = function webapp(opts) {
       serveCache(req, res)
     })
   }
-
-  /*!
-   * wipes out cache every cachettl ms
-   */
-  setInterval(function () {
-    cache = Object.create(null)
-  }, cacheTTL)
 
   /*!
    * serves req from cache

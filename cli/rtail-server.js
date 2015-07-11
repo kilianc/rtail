@@ -127,7 +127,7 @@ if (!argv.webVersion) {
 } else {
   app.use(webapp({
     s3: 'http://rtail.s3-website-us-east-1.amazonaws.com/' + argv.webVersion,
-    ttl: 6000 * 60 * 60
+    ttl: 1000 * 60 * 60 * 6 // 6H
   }))
 
   debug('serving webapp from: http://rtail.s3-website-us-east-1.amazonaws.com/%s', argv.webVersion)
