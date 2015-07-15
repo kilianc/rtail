@@ -54,10 +54,12 @@ angular
     var $streamLines = $('.stream-lines')
     var BUFFER_SIZE = 100
     var ctrl = this
+    var isPushing = false
 
     ctrl.paused = false
     ctrl.version = '<%= version %>'
     ctrl.lines = []
+    ctrl.buffer = []
 
     /*!
      * socket stuff
@@ -78,7 +80,18 @@ angular
     })
 
     ctrl.socket.on('line', function (line) {
-      ctrl.lines.push(formatLine(line))
+      if (!isPushing) {
+        isPushing = true
+        ctrl.lines.push(formatLine(line))
+        isPushing = false
+      } else {
+        ctrl.buffer.push(formatLine(line))
+      }
+
+      if (ctrl.buffer.length > 0 && !isPushing) {
+        Array.prototype.push.apply(ctrl.lines, ctrl.buffer.map(formatLine))
+        ctrl.buffer = []
+      }
 
       if (ctrl.lines.length > BUFFER_SIZE) {
         ctrl.lines.length >= 100 && ctrl.lines.shift()
