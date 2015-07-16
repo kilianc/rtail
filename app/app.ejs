@@ -64,6 +64,15 @@ angular
      */
     ctrl.socket = io(document.location.origin, { path: document.location.pathname + 'socket.io' })
 
+    ctrl.socket.on('connect', function () {
+      console.info('connected')
+      ctrl.activeStream && ctrl.socket.emit('select stream', ctrl.activeStream)
+    })
+
+    ctrl.socket.on('disconnect', function (err) {
+      console.warn('disconnected: %s', err)
+    })
+
     ctrl.socket.on('streams', function (streams) {
       ctrl.streams = streams
       $scope.$apply()
