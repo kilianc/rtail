@@ -94,7 +94,7 @@
           "
         >
           <div class="stream-line-timestamp" ng-hide="ctrl.hiddenTimestamps[ctrl.activeStream]">
-            {{::line.timestamp | amDateFormat:'MM/DD/YY hh:mm:ss'}}
+            {{::line.timestamp | amDateFormat:ctrl.timestampFormat}}
           </div>
 
           <button

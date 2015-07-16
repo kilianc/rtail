@@ -247,6 +247,10 @@ angular
       ctrl.hiddenTimestamps = hiddenTimestamps || {}
     })
 
+    $localForage.getItem('timestampFormat').then(function (timestampFormat) {
+      ctrl.timestampFormat = timestampFormat || 'MM/DD/YY hh:mm:ss'
+    })
+
     $localForage.getItem('activeStream').then(function (activeStream) {
       if (!activeStream || ('streams' === $state.current.name && $stateParams.stream)) return
       console.info('%s: restoring session', activeStream)
