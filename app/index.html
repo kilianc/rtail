@@ -113,7 +113,7 @@
         </div>
       </div>
 
-      <button class="btn-resume" ng-click="ctrl.resume()" ng-show="ctrl.paused">Resume</button>
+      <button class="btn-resume" ng-click="ctrl.resume()" ng-show="ctrl.paused" hotkey="{ space: ctrl.resume }">Resume</button>
     </div>
   </div>
 
@@ -177,6 +177,7 @@
   <script src="../node_modules/angular-localforage/dist/angular-localForage.js"></script>
   <script src="../node_modules/angular-rt-popup/dist/angular-rt-popup.js"></script>
   <script src="../node_modules/angular-ui-router/release/angular-ui-router.js"></script>
+  <script src="../node_modules/angular-hotkeys/build/hotkeys.js"></script>
   <script src="app.js"></script>
   <!-- endbuild -->
 </body>
