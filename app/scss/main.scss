@@ -53,7 +53,7 @@ body {
   flex-direction: column;
   font-family: $font-family;
   font-size: 16px;
-  min-height: 100vh;
+  height: 100vh;
 
   &.resizing {
     user-select: none;
@@ -94,6 +94,7 @@ header {
   display: flex;
   flex: 1;
   flex-direction: row;
+  min-height: 0;
 }
 
 .sidebar {
@@ -181,6 +182,7 @@ header {
   display: flex;
   flex: 1;
   flex-direction: column;
+  min-width: 0;
 
   .stream-header {
     align-items: center;
@@ -225,7 +227,7 @@ header {
     flex: 1;
     font-size: 12px;
     height: 0;
-    overflow-y: auto;
+    overflow: auto;
     padding: 2px 0;
 
     .stream-line {

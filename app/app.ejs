@@ -155,18 +155,18 @@ angular
       if (!ctrl.paused) return
       ctrl.paused = false
       ctrl.socket.emit('select stream', ctrl.activeStream)
-      $streamLines.on('mousewheel', ctrl.pause)
+      $streamLines.on('wheel', ctrl.pause)
     }
 
     ctrl.pause = function pause() {
       if (ctrl.paused) return
       ctrl.paused = true
       ctrl.socket.emit('select stream')
-      $streamLines.off('mousewheel', ctrl.pause)
+      $streamLines.off('wheel', ctrl.pause)
       $scope.$apply()
     }
 
-    $streamLines.on('mousewheel', ctrl.pause)
+    $streamLines.on('wheel', ctrl.pause)
 
     /*!
      * settings and preferences
