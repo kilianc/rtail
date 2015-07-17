@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta property="og:og:site_name" content="rtail(1)" />
-  <meta property="og:title" content="Instantly stream terminal output to the browser with socket.io" />
+  <meta property="og:title" content="<%= tagline %>" />
   <meta property="og:description" content="rtail is a command line utility that grabs every line in stdin and broadcasts it over UDP. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using rtail broadcasting to an rtail-server – See multiple streams in the browser, in realtime." />
   <meta property="og:image" content="http://rtail.org/images/social.png" />
   <meta name="Description" content="rtail is a command line utility that grabs every line in stdin and broadcasts it over UDP. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using rtail broadcasting to an rtail-server – See multiple streams in the browser, in realtime.">
-  <title>rtail(1) - Instantly stream terminal output to the browser with socket.io</title>
+  <title>rtail(1) - <%= tagline %></title>
   <!-- build:css(app) css/bundle.min.css -->
   <link href="css/main.css" rel="stylesheet">
   <link href="../node_modules/animate.css/animate.css" rel="stylesheet">
@@ -29,7 +29,7 @@
           > <span class="command">node --harmony app.js</span><span class="cursor animated infinite flash">_</span> | rtail
       </div>
     </h1>
-    <h3>Instantly stream terminal output to the browser with <a href="http://socket.io">socket.io</a></h3>
+    <h3><%= tagline %></h3>
 
     <div class="browser">
       <iframe src="https://rtail-demo.lukibear.com/#/streams/rtail.org"></iframe>

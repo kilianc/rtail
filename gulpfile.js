@@ -6,6 +6,13 @@ var autoprefixer = require('autoprefixer-core')
 var express = require('express')
 var version = require('./package.json').version
 var spawn = require('child_process').spawn
+var get = require('request').defaults({ json: true }).get
+
+/**
+ * rTail package URL
+ */
+
+var REPO_URL = 'https://registry.npmjs.org/rtail/latest'
 
 /**
  * Clean builds
@@ -52,7 +59,7 @@ gulp.task('sass', function () {
  * Compile templates
  */
 
-gulp.task('ejs', function () {
+gulp.task('app.ejs', function () {
   return gulp.src('app/app.ejs')
     .pipe(plugins.ejs({}, { ext: '.js' }))
       .on('error', function (err) {
@@ -62,19 +69,36 @@ gulp.task('ejs', function () {
     .pipe(gulp.dest('app'))
 })
 
+gulp.task('index.ejs', function (done) {
+  get(REPO_URL, function (err, res, body){
+    var data = { tagline: body.description }
+
+    gulp.src('app/index.ejs')
+      .pipe(plugins.ejs(data))
+        .on('error', function (err) {
+          plugins.util.log('ejs error', err.message)
+          plugins.util.beep()
+        })
+      .pipe(gulp.dest('app'))
+        .on('end', done)
+  })
+})
+
 /**
  * Launch server + livereload in dev mode
  */
 
 gulp.task('app', ['build:app'], function (done) {
   gulp.watch('app/scss/*', ['sass'])
-  gulp.watch('app/app.ejs', ['ejs'])
+  gulp.watch('app/app.ejs', ['app.ejs'])
+  gulp.watch('app/index.ejs', ['index.ejs'])
 
   plugins.livereload({ start: true })
 
   gulp.watch([
     'app/**/*',
     '!app/app.ejs',
+    '!app/index.ejs',
     '!app/scss/*',
   ]).on('change', function (file) {
     plugins.livereload.changed(file.path)
@@ -103,7 +127,7 @@ gulp.task('app', ['build:app'], function (done) {
  */
 
 gulp.task('build:app', function (done) {
-  run('clean:sass', ['sass', 'ejs', 'copy:zc:app'], done)
+  run('clean:sass', ['sass', 'app.ejs', 'index.ejs', 'copy:zc:app'], done)
 })
 
 /**
