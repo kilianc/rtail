@@ -24,6 +24,7 @@
     "gulp-useref": "^1.2.0",
     "gulp-util": "^3.0.6",
     "jquery": "^2.1.4",
+    "request": "^2.58.0",
     "run-sequence": "^1.1.1",
     "zeroclipboard": "^2.2.0"
   },
