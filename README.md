@@ -7,6 +7,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/kilianc/rtail.svg?style=flat-square)](https://github.com/kilianc/rtail)
 [![License](https://img.shields.io/npm/l/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
 [![Gitter](https://img.shields.io/badge/≡_gitter-join_chat_➝-04cd7e.svg?style=flat-square)](https://gitter.im/kilianc/rtail?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+[![CodeHunt.io](https://img.shields.io/badge/vote-codehunt.io-02AFD1.svg?style=flat-square)](http://codehunt.io/sub/rtail1/?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)   
 
 ## Terminal output to the browser in seconds, using UNIX pipes.
 
