@@ -259,7 +259,7 @@ angular
     })
 
     $localForage.getItem('streamDirection').then(function (streamDirection) {
-      ctrl.streamDirection = undefined === streamDirection ? true : streamDirection
+      ctrl.streamDirection = undefined === streamDirection || streamDirection === null ? true : streamDirection
     })
 
     /*!
