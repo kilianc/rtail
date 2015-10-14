@@ -2,7 +2,7 @@ var gulp = require('gulp')
 var run = require('run-sequence')
 var plugins = require('gulp-load-plugins')()
 var del = require('del')
-var autoprefixer = require('autoprefixer-core')
+var autoprefixer = require('autoprefixer')
 var express = require('express')
 var version = require('./package.json').version
 var spawn = require('child_process').spawn
@@ -19,11 +19,11 @@ var REPO_URL = 'https://registry.npmjs.org/rtail/latest'
  */
 
 gulp.task('clean:dist', function (done) {
-  del('dist', done)
+  return del('dist', done)
 })
 
 gulp.task('clean:sass', function (done) {
-  del('app/css/*', done)
+  return del('app/css/*', done)
 })
 
 gulp.task('clean', function (done) {
@@ -35,7 +35,7 @@ gulp.task('clean', function (done) {
  */
 
 gulp.task('clean:npm', function (done) {
-  del('node_modules', done)
+  return del('node_modules', done)
 })
 
 /**
@@ -46,10 +46,7 @@ gulp.task('sass', function () {
   return gulp.src('app/scss/*', { base: 'app/scss' })
     .pipe(plugins.sourcemaps.init())
     .pipe(plugins.sass())
-    .on('error', function (err) {
-      plugins.util.beep()
-      plugins.util.log('sass error', err.message)
-    })
+    .on('error', plugins.sass.logError)
     .pipe(plugins.postcss([ autoprefixer({ browsers: ['last 2 version'] }) ]))
     .pipe(plugins.sourcemaps.write())
     .pipe(gulp.dest('app/css'))
