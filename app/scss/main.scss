@@ -60,6 +60,48 @@ body {
   text-align: center;
 }
 
+.menu {
+  width: 1045px;
+  margin: 35px auto 0;
+  text-align: left;
+  position: relative;
+
+  a {
+    color: white;
+    margin-right: 20px;
+    opacity: .7;
+    font-weight: 500;
+    font-size: 15px;
+
+    &:hover {
+      opacity: 1;
+      color: white;
+    }
+
+    &.nav-logo {
+      margin-bottom: -1px;
+      overflow: hidden;
+      display: inline-block;
+      background-image: url(../images/navbar-logo@2x.png);
+      background-size: 100%;
+      width: 66px;
+      height: 15px;
+      opacity: 1;
+    }
+
+    &.hosted {
+      position: absolute;
+      right: 0;
+      opacity: 1;
+      margin-right: 0;
+
+      &:hover {
+        opacity: .7;
+      }
+    }
+  }
+}
+
 h1 {
   font-size: 65px;
   font-weight: 100;
