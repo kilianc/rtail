@@ -1,5 +1,5 @@
 # boilerplate
-FROM kilianciuffolo/node
+FROM kilianciuffolo/node:0.12.7
 MAINTAINER me@nailik.org
 
 RUN npm install -g rtail
