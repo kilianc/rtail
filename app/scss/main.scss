@@ -293,6 +293,7 @@ header {
   position: relative;
   height: 688px;
   background-image: url("../images/bg-header.jpg");
+  z-index: 10;
 
   h1 {
     margin: 0 auto 20px;
@@ -302,7 +303,7 @@ header {
   }
 
   .browser {
-    $height: 780px;
+    $height: 781px;
 
     position: absolute;
     bottom: 0;
@@ -325,6 +326,8 @@ header {
 }
 
 .readme {
+  position: relative;
+  z-index: 1;
   padding-top: 392px;
 }
 
