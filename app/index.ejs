@@ -8,12 +8,13 @@
   <meta property="og:description" content="rtail is a command line utility that grabs every line in stdin and broadcasts it over UDP. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using rtail broadcasting to an rtail-server – See multiple streams in the browser, in realtime." />
   <meta property="og:image" content="http://rtail.org/images/social.png" />
   <meta name="Description" content="rtail is a command line utility that grabs every line in stdin and broadcasts it over UDP. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using rtail broadcasting to an rtail-server – See multiple streams in the browser, in realtime.">
+  <meta name="viewport" content="user-scalable=yes, width=device-width, initial-scale=1, maximum-scale=1">
   <title>rtail(1) - <%= tagline %></title>
   <!-- build:css(app) css/bundle.min.css -->
   <link href="css/main.css" rel="stylesheet">
   <link href="../node_modules/animate.css/animate.css" rel="stylesheet">
   <!-- endbuild -->
-  <link href="//fonts.googleapis.com/css?family=Roboto:400,300,100" rel="stylesheet">
+  <link href="//fonts.googleapis.com/css?family=Roboto:100,300,400,500|Roboto+Mono" rel="stylesheet">
   <!-- favicon -->
   <link rel="icon" href="images/favicon-16x16.png" sizes="16x16">
   <link rel="icon" href="images/favicon-32x32.png" sizes="32x32">
@@ -21,25 +22,32 @@
 </head>
 <body>
 
-  <a name="header"></a>
-  <header>
-    <div class="menu">
+  <div class="ticker">
+    <img src="images/logo-nodejs.svg" alt="Node.js" width="62">
+    <p class="alt">
+      We’re giving a talk at the Node.js Interactive 2015! See you there!
+    </p>
+    <a href="http://events.linuxfoundation.org/events/node-interactive/program/schedule">Learn More ></a>
+  </div>
+
+  <header id="header">
+    <nav class="nav">
       <a class="nav-logo" href="#header"></a>
       <a href="#demo">Live Demo</a>
       <a href="https://github.com/kilianc/rtail">GitHub</a>
       <a href="#contributors">Contributors</a>
       <a href="#sponsors">Sponsors</a>
       <a class="hosted" href="https://rtail.lukibear.com">Hosted Solution</a>
-    </div>
+    </nav>
 
-    <div class="rtail-logo"></div>
-
-    <h1>
-      <div>
-          > <span class="command">node --harmony app.js</span><span class="cursor animated infinite flash">_</span> | rtail
-      </div>
+    <h1 class="type-fx">
+      >
+      <span class="command">node --harmony app.js</span>
+      <span class="command">tail -F /var/log/redis.log</span>
+      <span class="command">npm test --bail --colors</span>
+      <span class="cursor animated infinite flash">_</span>| rtail
     </h1>
-    <h3><%= tagline %></h3>
+    <h2><%= tagline %></h2>
 
     <a name="demo"></a>
     <div class="browser">
@@ -47,9 +55,9 @@
     </div>
   </header>
 
-  <div class="readme">
-    <h2>Want to try rTail?</h2>
-    <h3>Add your streams to the live demo.</h3>
+  <section class="readme">
+    <h3 class="dark">Want to try rTail?</h3>
+    <h4 class="dark">Add your streams to the live demo.</h4>
 
     <p>
       Install rtail and start streaming to the demo server – see the results above.
@@ -71,68 +79,92 @@
       </code>
     </div>
 
-    <a class="btn" href="https://github.com/kilianc/rtail#rationale">How it works</a>
-  </div>
+    <p>
+      For other examples and a full rationale, follow the link below.
+    </p>
+    <a class="btn main" href="https://github.com/kilianc/rtail#rationale">How it works</a>
+  </section>
 
-  <div class="github">
+  <section class="github">
     <div class="github-logo"></div>
-    <h2>Pull-Requests welcome</h2>
-    <h3>rTail is open source and completely free to use. The source code is available on GitHub.</h3>
-    <a class="btn" href="https://github.com/kilianc/rtail">github.com/kilianc/rtail</a>
-  </div>
+    <h3 class="light">Pull-Requests welcome</h3>
+    <h4 class="light">
+      rTail is open source and completely free to use.<br>
+      The source code is available on GitHub.
+    </h4>
+    <a class="btn alt-light" href="https://github.com/kilianc/rtail">github.com/kilianc/rtail</a>
+  </section>
 
-  <a name="contributors"></a>
-  <div class="contributors">
-    <h2>Contributors</h2>
-    <h3>From the community to the community</h3>
+  <section class="contributors" id="contributors">
+    <h3 class="dark">Contributors</h3>
+    <h4 class="dark">From the community to the community</h4>
 
     <table>
       <tbody>
         <tr>
-          <td width="40%"><a href="https://github.com/kilianc">Kilian Ciuffolo</a></td>
-          <td class="contributor-type">(original creator / mantainer)</td>
+          <td width="50%">
+            <a href="https://github.com/kilianc">Kilian Ciuffolo</a>
+            <p>(original creator / mantainer)</p>
+          </td>
+          <td>
+            <a href="https://www.behance.net/lucaorio">Luca Orio</a>
+            <p>(UX/UI design)</p>
+            </td>
         </tr>
         <tr>
-          <td><a href="https://www.behance.net/lucaorio">Luca Orio</a></td>
-          <td class="contributor-type">(UX/UI design)</td>
+          <td>
+            <a href="https://github.com/s-silva">Sandaruwan Silva</a>
+            <p>(contributor)</p>
+          </td>
+          <td>
+            <a href="https://dribbble.com/sorelmihai">Sorel Mihai</a>
+            <p>(contributor)</p>
+          </td>
         </tr>
         <tr>
-          <td><a href="https://github.com/s-silva">Sandaruwan Silva</a></td>
-          <td class="contributor-type">(contributor)</td>
-        </tr>
-        <tr>
-          <td><a href="https://dribbble.com/sorelmihai">Sorel Mihai</a></td>
-          <td class="contributor-type">(contributor)</td>
-        </tr>
-        <tr>
-          <td><a href="https://www.linkedin.com/in/timriot">Tim Riot</a></td>
-          <td class="contributor-type">(contributor)</td>
+          <td>
+            <a href="https://www.linkedin.com/in/timriot">Tim Riot</a>
+            <p>(contributor)</p>
+          </td>
         </tr>
       </tbody>
     </table>
-  </div>
 
-  <a name="sponsors"></a>
-  <footer>
-    <h2>Sponsors</h2>
-    <h3>❤ rTail? Sponsor this project to keep it actively maintained and free.</h3>
+    <p>
+      rTail is an open source project.<br>
+      If you have any idea, suggestion, or feature request, join us on Github!
+    </p>
+
+    <a class="btn alt-dark" href="https://github.com/kilianc/rtail">github.com/kilianc/rtail</a>
+  </section>
+
+  <section class="sponsors" id="sponsors">
+    <h3 class="dark">Sponsors</h3>
+    <h4 class="dark">
+      ❤ rTail? Sponsor this project to keep <br>
+      it actively maintained and free.
+    </h4>
 
     <div class="sponsors-list">
-      <img src="images/sponsors/img-lukibear@2x.png" alt="lukibear, LLC">
-      <a href="mailto:info@rtail.org">Sponsor this project</a>
-      <a href="mailto:info@rtail.org">Sponsor this project</a>
-      <a href="mailto:info@rtail.org">Sponsor this project</a>
+      <a href="https://lukibear.com"></a>
+      <a href="mailto:info@rtail.org"></a>
+      <a href="mailto:info@rtail.org"></a>
+      <a href="mailto:info@rtail.org"></a>
+      <a href="mailto:info@rtail.org"></a>
     </div>
 
-    <div class="bottom">
-      <a href="mailto:info@lukibear.com">Professional or ad-hoc support is also available upon request.</a>
-    </div>
+    <a class="btn main" href="mailto:info@rtail.org">Sponsor this project!</a>
+  </section>
+
+  <footer>
+    <a class="alt" href="mailto:info@lukibear.com">Professional or ad-hoc support is also available upon request.</a>
   </footer>
 
   <!-- build:js(app) bundle.min.js -->
   <script src="../node_modules/zeroclipboard/dist/ZeroClipboard.js"></script>
   <script src="../node_modules/jquery/dist/jquery.js"></script>
-  <script src="app.js"></script>
+  <script src="scripts/type-fx.js"></script>
+  <script src="scripts/app.js"></script>
   <!-- endbuild -->
 </body>
 </html>

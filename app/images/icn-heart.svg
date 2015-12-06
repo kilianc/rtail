@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="57px" height="51px" viewBox="0 0 57 51" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns">
+    <!-- Generator: Sketch 3.4.3 (16044) - http://www.bohemiancoding.com/sketch -->
+    <title>icn-heart</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="onepage" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" sketch:type="MSPage">
+        <g id="assets" sketch:type="MSArtboardGroup" transform="translate(-1472.000000, -5103.000000)" fill="#45A7B9">
+            <g id="icn/icn-heart" sketch:type="MSLayerGroup" transform="translate(1472.000000, 5103.000000)">
+                <path d="M28.5,51 C28.248,51 27.999,50.937 27.771,50.811 C27.489,50.655 20.793,46.908 13.995,40.77 C9.972,37.14 6.762,33.426 4.446,29.73 C1.4939997,25.017 0,20.313 0,15.75 C0,7.065 7.065,0 15.75,0 C18.69,0 21.813,1.101 24.543,3.102 C26.139,4.272 27.498,5.682 28.5,7.179 C29.502,5.682 30.861,4.272 32.457,3.102 C35.187,1.101 38.31,0 41.25,0 C49.935,0 57,7.065 57,15.75 C57,20.313 55.503,25.017 52.554,29.73 C50.241,33.426 47.028,37.14 43.008,40.77 C36.21,46.908 29.514,50.655 29.232,50.811 C29.004,50.937 28.755,51 28.503,51 L28.5,51 Z M15.75,3 C8.721,3 3,8.721 3,15.75 C3,24.87 10.05,33.156 15.963,38.505 C21.243,43.281 26.595,46.629 28.5,47.766 C30.405,46.629 35.757,43.281 41.037,38.505 C46.95,33.159 54,24.87 54,15.75 C54,8.721 48.279,3 41.25,3 C36.141,3 31.179,7.203 29.922,10.974 C29.718,11.586 29.145,12 28.5,12 C27.855,12 27.282,11.586 27.078,10.974 C25.821,7.203 20.859,3 15.75,3 L15.75,3 Z" id="icn-heart" sketch:type="MSShapeGroup"></path>
+            </g>
+        </g>
+    </g>
+</svg>

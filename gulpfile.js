@@ -7,6 +7,7 @@ var express = require('express')
 var version = require('./package.json').version
 var spawn = require('child_process').spawn
 var get = require('request').defaults({ json: true }).get
+var neat = require('node-neat').includePaths
 
 /**
  * rTail package URL
@@ -43,28 +44,22 @@ gulp.task('clean:npm', function (done) {
  */
 
 gulp.task('sass', function () {
-  return gulp.src('app/scss/*', { base: 'app/scss' })
+  return gulp.src([
+    'app/scss/*.scss',
+    '!app/scss/_*.scss'
+  ], { base: 'app/scss' })
     .pipe(plugins.sourcemaps.init())
-    .pipe(plugins.sass())
+    .pipe(plugins.sass({ includePaths: ['styles'].concat(neat) }))
     .on('error', plugins.sass.logError)
     .pipe(plugins.postcss([ autoprefixer({ browsers: ['last 2 version'] }) ]))
     .pipe(plugins.sourcemaps.write())
     .pipe(gulp.dest('app/css'))
 })
 
+
 /**
  * Compile templates
  */
-
-gulp.task('app.ejs', function () {
-  return gulp.src('app/app.ejs')
-    .pipe(plugins.ejs({}, { ext: '.js' }))
-      .on('error', function (err) {
-        plugins.util.log('ejs error', err.message)
-        plugins.util.beep()
-      })
-    .pipe(gulp.dest('app'))
-})
 
 gulp.task('index.ejs', function (done) {
   get(REPO_URL, function (err, res, body){
@@ -124,7 +119,7 @@ gulp.task('app', ['build:app'], function (done) {
  */
 
 gulp.task('build:app', function (done) {
-  run('clean:sass', ['sass', 'app.ejs', 'index.ejs', 'copy:zc:app'], done)
+  run('clean:sass', ['sass', 'index.ejs', 'copy:zc:app'], done)
 })
 
 /**
@@ -157,11 +152,7 @@ gulp.task('copy:zc:dist', function () {
  */
 
 gulp.task('html', function () {
-  var assets = plugins.useref.assets()
-
   return gulp.src('app/index.html')
-    .pipe(assets)
-    .pipe(assets.restore())
     .pipe(plugins.useref())
     .pipe(gulp.dest('dist'))
 })

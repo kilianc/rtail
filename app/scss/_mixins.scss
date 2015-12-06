@@ -1,0 +1,12 @@
+// **
+// imports
+// **
+
+@mixin retina-background($width, $height, $image) {
+  width: $width;
+  height: $height;
+  background-image: url($image);
+  background-size: $width $height;
+  background-repeat: no-repeat;
+  background-position: 50%;
+}
