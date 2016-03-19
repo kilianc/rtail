@@ -9,6 +9,7 @@
 
 'use strict'
 
+const fs = require('fs')
 const dgram = require('dgram')
 const split = require('split')
 const chrono = require('chrono-node')
@@ -77,6 +78,9 @@ let argv = yargs
   .version(pkg.version, 'version')
   .alias('version', 'v')
   .strict()
+  .config('config-file', 'Configuration file path', function (configFile) {
+    return JSON.parse(fs.readFileSync(configFile, 'utf-8')).client
+  })
   .argv
 
 /*!

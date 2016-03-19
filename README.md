@@ -75,17 +75,19 @@ For fun and debugging:
       --mute, -m     Don't pipe stdin with stdout                          [boolean]
       --tty          Keeps ansi colors                     [boolean] [default: true]
       --parse-date   Looks for dates to use as timestamp   [boolean] [default: true]
+      --config-file  Pass a configuration file                              [string]
       --help         Show help                                             [boolean]
       --version, -v  Show version number                                   [boolean]
 
     Examples:
-      server | rtail > server.log         localhost + file
-      server | rtail --id api.domain.com  Name the log stream
-      server | rtail --host example.com   Sends to example.com
-      server | rtail --port 43567         Uses custom port
-      server | rtail --mute               No stdout
-      server | rtail --no-tty             Strips ansi colors
-      server | rtail --no-date-parse      Disable date parsing/stripping
+      server | rtail > server.log           localhost + file
+      server | rtail --id api.domain.com    Name the log stream
+      server | rtail --host example.com     Sends to example.com
+      server | rtail --port 43567           Uses custom port
+      server | rtail --mute                 No stdout
+      server | rtail --no-tty               Strips ansi colors
+      server | rtail --no-date-parse        Disable date parsing/stripping
+      server | rtail --config-file ~/.rtail Read configuration from file
 
 
 ## `rtail-server(1)`
@@ -125,6 +127,7 @@ Open your browser and start tailing logs!
     --web-host, --wh  The listening HTTP hostname           [default: "127.0.0.1"]
     --web-port, --wp  The listening HTTP port                      [default: 8888]
     --web-version     Define web app version to serve                     [string]
+    --config-file     Pass a configuration file                           [string]
     --help, -h        Show help                                          [boolean]
     --version, -v     Show version number                                [boolean]
 
@@ -134,6 +137,7 @@ Open your browser and start tailing logs!
     rtail-server --web-version stable    Always uses latest stable webapp
     rtail-server --web-version unstable  Always uses latest develop webapp
     rtail-server --web-version 0.1.3     Use webapp v0.1.3
+    rtail-server --config-file ~/.rtail  Read configuration from file
 
 ## UDP Broadcasting
 
@@ -142,6 +146,38 @@ To scale and broadcast on multiple servers, instruct the `rtail` client to strea
 ## Authentication layer
 
 For the time being, the webapp doesn't have an authentication layer; it assumes that you will run it behind a VPN or reverse proxy, with a simple `Authorization` header check.
+
+# Config file
+Both rtail server and client supports configuration file.
+
+The schema is :
+```json
+{
+  "server": {
+    "udp-host": "127.0.0.1",
+    "udp-port": "9999",
+    "web-host": "127.0.0.1",
+    "web-port": "8888",
+    "web-version": ""
+  },
+  "client": {
+    "host": "127.0.0.1",
+    "port": "9999",
+    "id": "127.0.0.1",
+    "mute": "",
+    "tty": true,
+    "parse-date": true
+  }
+}
+```
+
+CLI arguments will always override the configuration file.
+
+##Example
+Create a file `.rtail` to your home directory with the above contents and make
+any changes you want.
+
+    $ rtail-server --config-file ~/.rtail
 
 # How to contribute
 
