@@ -9,6 +9,7 @@
 
 'use strict'
 
+const fs = require('fs')
 const dgram = require('dgram')
 const app = require('express')()
 const serve = require('express').static

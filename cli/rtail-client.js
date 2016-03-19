@@ -9,6 +9,7 @@
 
 'use strict'
 
+const fs = require('fs')
 const dgram = require('dgram')
 const split = require('split')
 const chrono = require('chrono-node')
