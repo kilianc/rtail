@@ -67,6 +67,9 @@ let argv = yargs
   .version(pkg.version, 'version')
   .alias('version', 'v')
   .strict()
+  .config('--config-file', 'Configuration file path', function (configFile) {
+    return JSON.parse(fs.readFileSync(configFile, 'utf-8')).server
+  })
   .argv
 
 /*!
