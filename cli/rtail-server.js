@@ -108,7 +108,9 @@ socket.on('message', function (data, remote) {
 io.on('connection', function (socket) {
   socket.emit('streams', Object.keys(streams))
   socket.on('select stream', function (stream) {
-    socket.leave(socket.rooms[0])
+    Object.keys(socket.rooms).forEach(function(key) {
+      socket.leave(socket.rooms[key])
+    })
     if (!stream) return
     socket.join(stream)
     socket.emit('backlog', streams[stream])
