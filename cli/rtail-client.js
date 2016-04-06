@@ -39,7 +39,7 @@ let argv = yargs
   .example('server | rtail --port 43567', 'Uses custom port')
   .example('server | rtail --mute', 'No stdout')
   .example('server | rtail --no-tty', 'Strips ansi colors')
-  .example('server | rtail --no-date-parse', 'Disable date parsing/stripping')
+  .example('server | rtail --no-parse-date', 'Disable date parsing/stripping')
   .option('host', {
     alias: 'h',
     type: 'string',
