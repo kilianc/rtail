@@ -4,19 +4,6 @@
 
     .rtail-logo {
       background-color: $main-color;
-      background-image: url('../images/common/logo-rtail.svg');
-    }
-
-    .btn-info {
-      background-image: url('../images/#{$theme}/btn-info.svg');
-    }
-
-    .btn-github {
-      background-image: url('../images/#{$theme}/btn-github.svg');
-    }
-
-    .btn-settings {
-      background-image: url('../images/#{$theme}/btn-settings.svg');
     }
   }
 
@@ -25,7 +12,6 @@
 
     .search-box {
       background-color: $stream-search-bg-color;
-      background-image: url('../images/#{$theme}/icn-search.svg');
 
       input {
         color: #787E80;
@@ -37,8 +23,16 @@
         color: $stream-list-title-color;
       }
 
+      .category-title {
+        color: $stream-list-category-color;
+      }
+
       a {
         color: $stream-list-color;
+
+        &.category-title {
+          color: $stream-list-color;
+        }
 
         &:hover {
           background: $stream-list-bg-hover-color;
@@ -65,16 +59,10 @@
       color: #fff;
 
       .stream-title-favorite {
-        background-image: url('../images/common/btn-fav-off.svg');
 
-        &.on {
-          background-image: url('../images/common/btn-fav-on.svg');
-        }
       }
 
       .filter-box {
-        background-image: url('../images/common/icn-filter.svg');
-
         input::-webkit-input-placeholder {
           color: white;
         }
@@ -102,12 +90,10 @@
       background-size: 4px 7px;
       background-position: 50%;
       border: 1px solid $stream-view-timestamp-border-color;
-      background-image: url('../images/#{$theme}/icn-close-date.svg');
     }
 
     .btn-resume {
       background-color: $main-color;
-      background-image: url('../images/common/icn-resume.svg');
       color: white;
     }
   }
@@ -126,14 +112,6 @@
       .rtail-logo,
       .lukibear-logo {
         background-color: $popover-alt-bg-color;
-      }
-
-      .rtail-logo {
-        background-image: url('../images/#{$theme}/logo-rtail-info.svg');
-      }
-
-      .lukibear-logo {
-        background-image: url('../images/#{$theme}/logo-lukibear.svg');
       }
     }
 
@@ -160,36 +138,6 @@
 
     &:before {
       border-bottom-color: $popover-bg-color !important;
-    }
-
-    div.btn-group .btn {
-      &.btn-font-smaller {
-        background-image: url(../images/#{$theme}/icn-font-decrease.svg);
-      }
-
-      &.btn-font-reset {
-        background-image: url(../images/#{$theme}/icn-font-reset.svg);
-      }
-
-      &.btn-font-bigger {
-        background-image: url(../images/#{$theme}/icn-font-increase.svg);
-      }
-
-      &.btn-sorting-asc {
-        background-image: url(../images/#{$theme}/icn-sort-asc.svg);
-      }
-
-      &.btn-sorting-desc {
-        background-image: url(../images/#{$theme}/icn-sort-desc.svg);
-      }
-
-      &.btn-theme-dark {
-        background-image: url(../images/#{$theme}/icn-theme-dark.svg);
-      }
-
-      &.btn-theme-light {
-        background-image: url(../images/#{$theme}/icn-theme-light.svg);
-      }
     }
   }
 }

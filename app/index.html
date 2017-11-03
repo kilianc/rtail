@@ -5,12 +5,9 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <title ng-if="!ctrl.loaded">rTail : loading ...</title>
   <title ng-if="ctrl.loaded">rTail : {{ctrl.activeStream}}</title>
-  <!-- build:css(app) css/bundle.min.css -->
-  <link href="css/main.css" rel="stylesheet" type="text/css">
-  <link href="css/dark-theme.css" rel="stylesheet" type="text/css">
-  <link href="css/light-theme.css" rel="stylesheet" type="text/css">
-  <!-- endbuild -->
+
   <link href='//fonts.googleapis.com/css?family=Source+Code+Pro|Roboto+Mono|Inconsolata|Anonymous+Pro|Ubuntu+Mono|Droid+Sans+Mono|Nunito:300' rel='stylesheet' type='text/css'>
+  <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/default.min.css">
   <!-- favicon -->
   <link rel="icon" href="images/common/favicon-16x16.png" sizes="16x16">
   <link rel="icon" href="images/common/favicon-32x32.png" sizes="32x32">
@@ -20,14 +17,6 @@
 
   <header>
     <div class="rtail-logo"></div>
-
-    <button
-      class="btn btn-info"
-      popup-show="popover-info"
-      popup-placement="bottom"
-    ></button>
-
-    <a class="btn btn-github" href="https://github.com/kilianc/rtail" target="_blank"></a>
 
     <button
       class="btn btn-settings"
@@ -46,7 +35,7 @@
         <div class="stream-section">
           <h4>Favorites</h4>
           <a
-            ng-repeat="(stream, active) in ctrl.favorites | orderBy:''"
+            ng-repeat="(stream, active) in ctrl.favorites"
             ng-class="{ selected: ctrl.isSelected(stream) }"
             ui-sref="streams({ stream: stream })"
           >
@@ -57,15 +46,35 @@
 
         <div class="stream-section">
           <h4>Streams</h4>
-          <a
-            ng-repeat="stream in ctrl.streams | filter:ctrl.streamsListFilter | orderBy:''"
-            ng-class="{ selected: ctrl.isSelected(stream) }"
-            ng-hide="ctrl.favorites[stream]"
-            ui-sref="streams({ stream: stream })"
+          <div
+            ng-repeat="(name, stream) in ctrl.streamHash"
           >
-            <span>{{::stream}}</span>
-            <i ng-show="stream.unread"></i>
-          </a>
+            <a
+              class="category-title"
+              ng-if="!stream.childs"
+              ng-class="{ selected: ctrl.isSelected(stream.name) }"
+              ng-hide="ctrl.favorites[stream]"
+              ui-sref="streams({ stream: stream.name })"
+            >
+              <span>{{::stream.title}}</span>
+              <i ng-show="stream.unread"></i>
+            </a>
+            <p
+              class="category"
+              ng-if="stream.childs && (stream.childs | filter:ctrl.streamsListFilter).length"
+            >
+              <span class="category-title">{{::stream.title}}</span>
+              <a
+                ng-repeat="child in stream.childs | filter:ctrl.streamsListFilter"
+                ng-class="{ selected: ctrl.isSelected(child.name) }"
+                ng-hide="ctrl.favorites[child.name]"
+                ui-sref="streams({ stream: child.name })"
+              >
+                <span>{{::child.title}}</span>
+                <i ng-show="child.unread"></i>
+              </a>
+            </p>
+          </div>
         </div>
       </div>
 
@@ -164,20 +173,7 @@
     </div>
   </script>
 
-  <!-- build:js(app) bundle.min.js -->
-  <script src="../node_modules/socket.io/node_modules/socket.io-client/socket.io.js"></script>
-  <script src="../node_modules/jquery/dist/jquery.js"></script>
-  <script src="../node_modules/moment/moment.js"></script>
-  <script src="../node_modules/localforage/dist/localforage.js"></script>
-  <script src="../node_modules/ansi_up/ansi_up.js"></script>
-  <script src="../node_modules/highlight.js/build/highlight.pack.js"></script>
-  <script src="../node_modules/angular/angular.js"></script>
-  <script src="../node_modules/angular-animate/angular-animate.js"></script>
-  <script src="../node_modules/angular-moment/angular-moment.js"></script>
-  <script src="../node_modules/angular-localforage/dist/angular-localForage.js"></script>
-  <script src="../node_modules/angular-rt-popup/dist/angular-rt-popup.js"></script>
-  <script src="../node_modules/angular-ui-router/release/angular-ui-router.js"></script>
-  <script src="app.js"></script>
-  <!-- endbuild -->
+  <script src="bundle.js"></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
 </body>
 </html>

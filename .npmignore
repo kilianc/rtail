@@ -1,4 +1,4 @@
-!dist
 app
-gulpfile.js
-wercker.yml
+config
+node_modules
+scripts

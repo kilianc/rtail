@@ -84,7 +84,7 @@ header {
     opacity: .4;
     width: 19px;
 
-    &.btn-info {
+    &.btn-settings {
       margin-left: auto;
     }
   }
@@ -135,6 +135,7 @@ header {
 
     .stream-section {
       flex: 1;
+      padding-left: 10px;
 
       h4 {
         align-items: center;
@@ -143,7 +144,14 @@ header {
         font-weight: normal;
         height: 32px;
         margin-top: $spacing;
-        padding-left: $spacing;
+      }
+
+      .category {
+        padding-left: 10px;
+      }
+
+      .category-title {
+        font-weight: bold;
       }
 
       a {
@@ -151,11 +159,11 @@ header {
         cursor: pointer;
         display: flex;
         height: 32px;
-        padding-left: 40px;
+        padding-left: 10px;
 
         &.selected {
           border-left: 2px solid;
-          padding-left: 38px;
+          padding-left: 8px;
         }
 
         span {
