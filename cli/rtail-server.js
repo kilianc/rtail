@@ -47,7 +47,7 @@ const argv = yargs // eslint-disable-line prefer-destructuring
   })
   .help('help')
   .alias('help', 'h')
-  .version(pkg.version, 'version')
+  .version('version', pkg.version)
   .alias('version', 'v')
   .strict()
   .argv;

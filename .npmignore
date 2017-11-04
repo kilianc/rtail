@@ -1,4 +1,9 @@
+!dist
 app
-config
-node_modules
 scripts
+test
+
+.eslintrc
+.eslintignore
+.scss-lint.yml
+webpack.config.js
