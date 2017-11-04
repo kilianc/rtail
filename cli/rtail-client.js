@@ -62,7 +62,6 @@ const argv = yargs // eslint-disable-line prefer-destructuring
     describe: 'Looks for dates to use as timestamp',
   })
   .help('help')
-  .alias('help', 'h')
   .version('version', pkg.version)
   .alias('version', 'v')
   .strict()
