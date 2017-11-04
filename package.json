@@ -1,7 +1,7 @@
 {
   "name": "rtail",
-  "version": "0.2.1",
-  "description": "Terminal output to the browser in seconds, using UNIX pipes.",
+  "version": "1.0.1",
+  "description": "Terminal output to the browser in seconds, using UNIX pipes",
   "keywords": [
     "tail",
     "log",
@@ -16,7 +16,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git@github.com:kilianc/rtail.git"
+    "url": "git@github.com:witem/rtail.git"
   },
   "dependencies": {
     "chrono-node": "^1.0.6",
@@ -38,34 +38,36 @@
     "angular-localforage": "^1.2.2",
     "angular-moment": "^0.10.1",
     "angular-rt-popup": "^1.0.5",
-    "angular-ui-router": "^0.2.15",
+    "angular-ui-router": "^0.3.2",
     "ansi_up": "^1.2.1",
-    "autoprefixer-core": "^5.1.11",
     "chai": "^3.0.0",
+    "clean-webpack-plugin": "^0.1.17",
     "css-loader": "^0.28.7",
     "del": "^1.1.1",
     "eslint": "^4.10.0",
     "eslint-config-airbnb-base": "^12.1.0",
     "eslint-plugin-import": "^2.8.0",
-    "highlight.js": "github:isagalaev/highlight.js",
+    "highlight.js": "^9.12.0",
     "html-webpack-plugin": "^2.30.1",
     "istanbul": "^0.3.17",
-    "istanbul-harmony": "^0.3.16",
     "jquery": "^2.1.4",
     "localforage": "^1.2.2",
     "mocha": "^2.2.5",
     "moment": "^2.10.3",
-    "node-sass": "^4.5.3",
+    "node-sass": "^4.6.0",
     "run-sequence": "^1.1.0",
     "sass-loader": "^6.0.6",
     "style-loader": "^0.19.0",
+    "uglifyjs-webpack-plugin": "^1.0.1",
     "webpack": "^3.8.1"
   },
   "scripts": {
-    "app": "DEBUG=rtail:*,api:* gulp app",
+    "start": "DEBUG=rtail:*,api:* ./cli/rtail-server.js",
+    "build": "./node_modules/.bin/webpack",
+    "build:watch": "./node_modules/.bin/webpack --watch",
     "test": "NODE_ENV=test node test/runner.js",
     "test:watch": "NODE_ENV=test nodemon test/runner.js"
   },
-  "author": "Kilian Ciuffolo <me@nailik.org>",
+  "author": "Artem Kuzmenko <witem.artem@gmail.com>",
   "license": "MIT"
 }

@@ -40,6 +40,12 @@ const argv = yargs // eslint-disable-line prefer-destructuring
     default: () => moniker.choose(),
     describe: 'The log stream id',
   })
+  .option('group', {
+    alias: 'g',
+    type: 'string',
+    default: null,
+    describe: 'The log stream group name',
+  })
   .option('mute', {
     alias: 'm',
     type: 'boolean',
@@ -81,6 +87,7 @@ let isClosed = false;
 let isSending = 0;
 const socket = dgram.createSocket('udp4');
 const baseMessage = { id: argv.id };
+if (argv.group) baseMessage.group = argv.group;
 
 socket.bind(() => {
   socket.setBroadcast(true);
@@ -91,13 +98,13 @@ socket.bind(() => {
  */
 process.stdin
   .pipe(split(null, null, { trailing: false }))
-  .on('data', (defaultLine) => {
-    let line = defaultLine;
+  .on('data', (line) => {
+    const message = Object.assign({}, baseMessage, { content: line });
     let timestamp = null;
 
     try {
       // try to JSON parse
-      line = JSON5.parse(line);
+      message.content = JSON5.parse(line);
     } catch (err) {
       // look for timestamps if not an object
       timestamp = argv.parseDate ? chrono.parse(line)[0] : null;
@@ -106,18 +113,15 @@ process.stdin
     if (timestamp) {
       // escape for regexp and remove from line
       timestamp.text = timestamp.text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-      line = line.replace(new RegExp(` *[^ ]?${timestamp.text}[^ ]? *`), '');
+      message.content = message.content.replace(new RegExp(` *[^ ]?${timestamp.text}[^ ]? *`), '');
       // use timestamp as line timestamp
-      baseMessage.timestamp = Date.parse(timestamp.start.date());
+      message.timestamp = Date.parse(timestamp.start.date());
     } else {
-      baseMessage.timestamp = Date.now();
+      message.timestamp = Date.now();
     }
 
-    // update default message
-    baseMessage.content = line;
-
     // prepare binary message
-    const buffer = Buffer.from(JSON.stringify(baseMessage));
+    const buffer = Buffer.from(JSON.stringify(message));
 
     // set semaphore
     isSending++;

@@ -58,6 +58,13 @@ const argv = yargs // eslint-disable-line prefer-destructuring
 const streams = {};
 const socket = dgram.createSocket('udp4');
 
+const genStreamList = () => Object.keys(streams)
+  .map((streamId) => {
+    const stream = streams[streamId];
+
+    return { id: streamId, name: stream.name, group: stream.group };
+  });
+
 socket.on('message', (rawData, remote) => {
   let data = rawData;
   // try to decode JSON
@@ -68,47 +75,59 @@ socket.on('message', (rawData, remote) => {
     return;
   }
 
-  if (!streams[data.id]) {
-    streams[data.id] = [];
-    io.sockets.emit('streams', Object.keys(streams));
+  const streamId = data.group ? `${data.group}/${data.id}` : `${data.id}`;
+  if (!streams[streamId]) {
+    streams[streamId] = {
+      name: data.id,
+      group: data.group,
+      backlog: [],
+    };
+    io.sockets.emit('streams', genStreamList());
   }
 
+  const currentStream = streams[streamId];
   const message = {
-    timestamp: data.timestamp,
-    streamid: data.id,
     host: remote.address,
     port: remote.port,
-    content: data.content,
+    name: data.id,
+    group: data.group || null,
     type: typeof data.content,
+    content: data.content,
+    streamId,
+    timestamp: data.timestamp,
   };
 
-  if (streams[data.id].length >= argv.backlogLimit) {
-    streams[data.id].shift();
+  if (currentStream.backlog.length >= argv.backlogLimit) {
+    currentStream.backlog.shift();
   }
 
-  streams[data.id].push(message);
+  currentStream.backlog.push(message);
 
   debug(JSON.stringify(message));
-  io.sockets.to(data.id).emit('line', message);
+  io.sockets.to(streamId).emit('line', message);
 });
 
 /*!
  * socket.io
  */
 io.on('connection', (clientSocket) => {
-  clientSocket.emit('streams', Object.keys(streams));
+  clientSocket.emit('streams', genStreamList());
+
   clientSocket.on('streamUnsubscribe', (stream) => {
     if (!stream) return;
     clientSocket.leave(stream);
   });
+
   clientSocket.on('streamSubscribe', (stream) => {
     if (!stream) return;
     clientSocket.join(stream);
-    clientSocket.emit('backlog', streams[stream]);
+    if (streams[stream]) clientSocket.emit('backlog', streams[stream].backlog);
   });
 });
 
-app.use(serve(path.resolve(__dirname, '../dist')));
+app.use(serve(path.resolve(__dirname, '../dist'), {
+  extensions: ['html', 'js', 'css'],
+}));
 
 /*!
  * listen!

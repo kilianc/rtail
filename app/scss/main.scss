@@ -47,6 +47,10 @@ input {
 // styles
 // **
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   align-items: stretch;
   display: flex;
@@ -64,14 +68,17 @@ header {
   align-items: center;
   display: flex;
   flex-direction: row;
+  align-items: stretch;
   height: 58px;
 
   .rtail-logo {
-    background-position: 50% 50%;
-    background-repeat: no-repeat;
-    background-size: 53px 13px;
-    height: 100px;
+    height: auto;
     width: 94px;
+    text-align: center;
+
+    i.fa {
+      margin-top: 5px;
+    }
   }
 
   .btn {
@@ -83,6 +90,7 @@ header {
     margin-right: $spacing;
     opacity: .4;
     width: 19px;
+    align-self: center;
 
     &.btn-settings {
       margin-left: auto;
@@ -119,12 +127,16 @@ header {
     display: flex;
     height: 57px;
 
+    i.fa {
+      text-align: center;
+      flex: 1;
+      align-self: center;
+    }
+
     input {
       flex: 1;
       font-size: 14px;
       height: 57px;
-      margin-left: 56px;
-      margin-right: $spacing;
     }
   }
 
@@ -199,15 +211,11 @@ header {
     .stream-title {
       align-items: center;
       display: flex;
+      cursor: pointer;
     }
 
     .stream-title-favorite {
-      background-repeat: no-repeat;
-      background-size: 15px 15px;
-      display: inline-block;
-      height: 15px;
-      margin: 0 $spacing;
-      width: 15px;
+      margin: 0 15px;
     }
 
     .filter-box {
@@ -221,11 +229,15 @@ header {
       margin-right: $spacing;
       opacity: .7;
       width: 210px;
+
+      i.fa {
+        align-self: center;
+      }
     }
 
     input {
       flex: 1;
-      margin-left: 24px;
+      margin-left: 10px;
     }
   }
 

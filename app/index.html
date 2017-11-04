@@ -16,18 +16,23 @@
 <body class="{{ctrl.theme}} font-family-{{ctrl.fontFamily}} font-size-{{ctrl.fontSize}}">
 
   <header>
-    <div class="rtail-logo"></div>
+    <div class="rtail-logo">
+      <i class="fa fa-3x fa-user-md" aria-hidden="true"></i>
+    </div>
 
-    <button
-      class="btn btn-settings"
-      popup-show="popover-settings"
-      popup-placement="bottom"
-    ></button>
+      <button
+        class="btn btn-settings"
+        popup-show="popover-settings"
+        popup-placement="bottom"
+      >
+        <i class="fa fa-lg fa-cog" aria-hidden="true"></i>
+      </button>
   </header>
 
   <div class="split-pane">
     <div class="sidebar" ng-style="{ width: ctrl.sidebarWidth }" resizable>
       <div class="search-box">
+        <i class="fa fa-search" aria-hidden="true"></i>
         <input type="text" placeholder="Search streams" ng-model="ctrl.streamsListFilter">
       </div>
 
@@ -53,7 +58,7 @@
               class="category-title"
               ng-if="!stream.childs"
               ng-class="{ selected: ctrl.isSelected(stream.name) }"
-              ng-hide="ctrl.favorites[stream]"
+              ng-hide="ctrl.favorites[stream.name]"
               ui-sref="streams({ stream: stream.name })"
             >
               <span>{{::stream.title}}</span>
@@ -85,10 +90,11 @@
     <div class="stream-view">
       <div class="stream-header">
         <div class="stream-title" ng-click="ctrl.toggleFavorite(ctrl.activeStream)" ng-show="ctrl.activeStream">
-          <i class="stream-title-favorite" ng-class="{ on: ctrl.favorites[ctrl.activeStream] }"></i>
+          <i class="stream-title-favorite fa" ng-class="ctrl.favorites[ctrl.activeStream] ? 'fa-star' : 'fa-star-o'" aria-hidden="true"></i>
           {{ctrl.activeStream}}
         </div>
         <div class="filter-box">
+          <i class="fa fa-lg fa-filter" aria-hidden="true"></i>
           <input type="text" ng-model="ctrl.activeStreamRegExp" ng-trim="false" placeholder="filter stream (regexp allowed)">
         </div>
       </div>
@@ -126,27 +132,19 @@
     </div>
   </div>
 
-  <script type="text/ng-template" id="popover-info">
-    <div class="popover-content popover-info">
-      <div class="rtail-logo"></div>
-      <div class="version">Version {{ctrl.version}}</div>
-      <a class="btn btn-issue" href="https://github.com/kilianc/rtail/issues" target="_blank">
-        Report issue
-      </a>
-      <a class="btn btn-fork" href="https://github.com/kilianc/rtail/fork" target="_blank">
-        Fork it
-      </a>
-      <div class="lukibear-logo"></div>
-    </div>
-  </script>
-
   <script type="text/ng-template" id="popover-settings">
     <div class="popover-content popover-settings">
       <h4>Font size</h4>
       <div class="btn-group">
-        <button class="btn btn-font-smaller" ng-class="{ selected: ctrl.fontSize < 4 }" ng-click="ctrl.decFontSize()"></button>
-        <button class="btn btn-font-reset" ng-class="{ selected: 4 === ctrl.fontSize }" ng-click="ctrl.resetFontSize()"></button>
-        <button class="btn btn-font-bigger" ng-class="{ selected: ctrl.fontSize > 4 }"  ng-click="ctrl.incFontSize()"></button>
+        <button class="btn btn-font-smaller" ng-class="{ selected: ctrl.fontSize < 4 }" ng-click="ctrl.decFontSize()">
+          <i class="fa fa-lg fa-minus-square" aria-hidden="true"></i>
+        </button>
+        <button class="btn btn-font-reset" ng-class="{ selected: 4 === ctrl.fontSize }" ng-click="ctrl.resetFontSize()">
+          <i class="fa fa-lg fa-font" aria-hidden="true"></i>
+        </button>
+        <button class="btn btn-font-bigger" ng-class="{ selected: ctrl.fontSize > 4 }"  ng-click="ctrl.incFontSize()">
+          <i class="fa fa-lg fa-plus-square" aria-hidden="true"></i>
+        </button>
       </div>
 
       <h4>Font family</h4>
@@ -161,19 +159,28 @@
 
       <h4>Sorting</h4>
       <div class="btn-group">
-        <button class="btn btn-sorting-asc" ng-class="{ selected: ctrl.streamDirection }" ng-click="ctrl.setStreamDirection(true)"></button>
-        <button class="btn btn-sorting-desc" ng-class="{ selected: !ctrl.streamDirection }" ng-click="ctrl.setStreamDirection(false)"></button>
+        <button class="btn btn-sorting-asc" ng-class="{ selected: ctrl.streamDirection }" ng-click="ctrl.setStreamDirection(true)">
+          <i class="fa fa-lg fa-sort-alpha-asc" aria-hidden="true"></i>
+        </button>
+        <button class="btn btn-sorting-desc" ng-class="{ selected: !ctrl.streamDirection }" ng-click="ctrl.setStreamDirection(false)">
+          <i class="fa fa-lg fa-sort-alpha-desc" aria-hidden="true"></i>
+        </button>
       </div>
 
       <h4>Theme</h4>
       <div class="btn-group">
-        <button class="btn btn-theme-dark" ng-class="{ selected: 'dark' === ctrl.theme }" ng-click="ctrl.setTheme('dark')"></button>
-        <button class="btn btn-theme-light" ng-class="{ selected: 'light' === ctrl.theme }" ng-click="ctrl.setTheme('light')"></button>
+        <button class="btn btn-theme-dark" ng-class="{ selected: 'dark' === ctrl.theme }" ng-click="ctrl.setTheme('dark')">
+          <i class="fa fa-lg fa-moon-o" aria-hidden="true"></i>
+        </button>
+        <button class="btn btn-theme-light" ng-class="{ selected: 'light' === ctrl.theme }" ng-click="ctrl.setTheme('light')">
+          <i class="fa fa-lg fa-sun-o" aria-hidden="true"></i>
+        </button>
       </div>
     </div>
   </script>
 
   <script src="bundle.js"></script>
   <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+  <script src="https://use.fontawesome.com/02f7df69a7.js"></script>
 </body>
 </html>

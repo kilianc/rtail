@@ -6,14 +6,20 @@ require('./scss/dark-theme.scss');
 require('./scss/light-theme.scss');
 
 const $ = require('jquery');
+
+window.$ = $;
+window.jQuery = $;
+
+require('angular-moment');
+require('angular-ui-router');
+require('angular-rt-popup');
 const io = require('socket.io-client');
 const ansiUp = require('ansi_up');
 const angular = require('angular');
 const ngAnimate = require('angular-animate');
 const localForage = require('angular-localforage');
-require('angular-moment');
-require('angular-ui-router');
-// require('angular-rt-popup');
+
+const pkg = require('../package');
 
 const BUFFER_SIZE = 100;
 
@@ -24,7 +30,7 @@ angular
   .module('app', [
     ngAnimate,
     localForage,
-    // 'rt.popup',
+    'rt.popup',
     'angularMoment',
     'ui.router',
   ])
@@ -67,7 +73,7 @@ angular
     const ctrl = this;
 
     ctrl.paused = false;
-    ctrl.version = '0.2.1';
+    ctrl.version = pkg.version;
     ctrl.lines = [];
 
     /*!
@@ -89,53 +95,48 @@ angular
     };
 
     const formatLine = (line) => {
-      if (!line.content) {
-        // handle empty line
-        line.html = $sce.trustAsHtml('');
-      } else if (line.type === 'object') {
+      let content = line.content || '';
+
+      if (line.type === 'object') {
         // for object just format JSON
-        line.html = hljs.highlight('json', JSON.stringify(line.content, null, '  ')).value;
-        line.html = $sce.trustAsHtml(`<pre>${line.html}</pre>`);
-      } else {
+        content = hljs.highlight('json', JSON.stringify(content, null, '  ')).value;
+        content = `<pre>${content}</pre>`;
+      } else if (content) {
         // for log lines use ansi format
-        line.html = escapeHtml(line.content);
-        line.html = ansiUp.ansi_to_html(line.html, { use_classes: true });
-        line.html = $sce.trustAsHtml(line.html);
+        content = escapeHtml(content);
+        content = ansiUp.ansi_to_html(content, { use_classes: true });
       }
+
+      line.html = $sce.trustAsHtml(content);
 
       return line;
     };
 
-    const formatStreams = streamList => streamList.reduce((result, streamName) => {
-      const splitRegex = /(.+)!\*!(.+)/;
-      const match = streamName.match(splitRegex);
-      if (!match) {
-        result[streamName] = {
-          name: streamName,
-          title: streamName,
+    const formatStreams = streamList => streamList.reduce((result, stream) => {
+      if (!stream.group) {
+        result[stream.id] = {
+          name: stream.id,
+          title: stream.name,
         };
         return result;
       }
 
-      const category = match[1];
-      const title = match[2];
-      if (!result[category]) {
-        result[category] = {
-          title: category,
+      if (!result[stream.group]) {
+        result[stream.group] = {
+          title: stream.group,
           childs: [],
         };
       }
 
-      result[category].childs.push({
-        name: streamName,
-        title,
+      result[stream.group].childs.push({
+        name: stream.id,
+        title: stream.name,
       });
 
       return result;
     }, {});
 
     ctrl.socket.on('streams', (streams) => {
-      ctrl.streams = streams;
       ctrl.streamHash = formatStreams(streams);
       $scope.$apply();
     });

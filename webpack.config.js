@@ -1,11 +1,15 @@
 const path = require('path');
+const CleanWebpackPlugin = require('clean-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const UglifyJSPlugin = require('uglifyjs-webpack-plugin');
 
-module.exports = {
+const distPath = path.resolve(__dirname, './dist');
+
+const config = {
   entry: './app/app.js',
   output: {
     filename: 'bundle.js',
-    path: path.resolve(__dirname, '../dist'),
+    path: distPath,
   },
   module: {
     rules: [{
@@ -18,8 +22,19 @@ module.exports = {
     }],
   },
   plugins: [
+    new CleanWebpackPlugin([distPath]),
     new HtmlWebpackPlugin({
       template: 'app/index.html',
     }),
   ],
 };
+
+if (process.env.NODE_ENV === 'production') {
+  config.plugins.push(new UglifyJSPlugin({
+    uglifyOptions: {
+      mangle: false,
+    },
+  }));
+}
+
+module.exports = config;
