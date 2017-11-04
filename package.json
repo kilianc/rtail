@@ -67,6 +67,8 @@
     "start": "DEBUG=rtail:*,api:* ./cli/rtail-server.js",
     "build": "./node_modules/.bin/webpack",
     "build:watch": "./node_modules/.bin/webpack --watch",
+    "lint": "./node_modules/.bin/eslint .",
+    "prepublish": "npm run lint && NODE_ENV=production npm run build",
     "test": "NODE_ENV=test node test/runner.js",
     "test:watch": "NODE_ENV=test nodemon test/runner.js"
   }
