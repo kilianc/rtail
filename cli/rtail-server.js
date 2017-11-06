@@ -23,7 +23,7 @@ const argv = yargs // eslint-disable-line prefer-destructuring
   .example('rtail-server --udp-port 8080', 'Use custom UDP port')
   .option('udp-host', {
     alias: 'uh',
-    default: '127.0.0.1',
+    default: '0.0.0.0',
     describe: 'The listening UDP hostname',
   })
   .option('udp-port', {
@@ -33,7 +33,7 @@ const argv = yargs // eslint-disable-line prefer-destructuring
   })
   .option('web-host', {
     alias: 'wh',
-    default: '127.0.0.1',
+    default: '0.0.0.0',
     describe: 'The listening HTTP hostname',
   })
   .option('web-port', {
@@ -42,6 +42,7 @@ const argv = yargs // eslint-disable-line prefer-destructuring
     describe: 'The listening HTTP port',
   })
   .option('backlog-limit', {
+    alias: 'l',
     default: 500,
     describe: 'Define backlog limit for each log stream',
   })
