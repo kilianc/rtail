@@ -263,16 +263,15 @@ header {
       }
 
       .stream-line-content {
-        white-space: pre;
+        line-height: 1.2em;
+        white-space: normal;
       }
 
       .stream-line-timestamp,
       .stream-line-content {
         align-items: center;
         display: flex;
-        padding-bottom: 5px;
         padding-left: $spacing;
-        padding-top: 5px;
       }
     }
   }
