@@ -14,7 +14,7 @@ require('angular-moment');
 require('angular-ui-router');
 require('angular-rt-popup');
 const io = require('socket.io-client');
-const ansiUp = require('ansi_up');
+const AnsiUp = require('ansi_up');
 const angular = require('angular');
 const ngAnimate = require('angular-animate');
 const localForage = require('angular-localforage');
@@ -22,7 +22,7 @@ const localForage = require('angular-localforage');
 const pkg = require('../package');
 
 const BUFFER_SIZE = 100;
-
+const ansiUp = new AnsiUp.default(); // eslint-disable-line new-cap
 /*!
  * main js controller for webapp
  */
