@@ -246,7 +246,7 @@ header {
     font-size: 12px;
     height: 0;
     overflow-y: auto;
-    padding: 2px 0;
+    padding: 2px 5px 2px 0;
 
     .stream-line {
       display: flex;
@@ -259,19 +259,20 @@ header {
       .stream-line-timestamp {
         border-right: 1px solid;
         flex-shrink: 0;
-        padding-right: $spacing;
+        padding-right: $spacing / 2;
       }
 
       .stream-line-content {
         line-height: 1.2em;
         white-space: normal;
+        word-break: break-word;
       }
 
       .stream-line-timestamp,
       .stream-line-content {
         align-items: center;
         display: flex;
-        padding-left: $spacing;
+        padding-left: $spacing / 2;
       }
     }
   }
