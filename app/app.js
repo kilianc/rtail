@@ -23,6 +23,9 @@ const pkg = require('../package');
 
 const BUFFER_SIZE = 100;
 const ansiUp = new AnsiUp.default(); // eslint-disable-line new-cap
+ansiUp.use_classes = true;
+ansiUp.escape_for_html = false;
+
 /*!
  * main js controller for webapp
  */
@@ -104,7 +107,7 @@ angular
       } else if (content) {
         // for log lines use ansi format
         content = escapeHtml(content);
-        content = ansiUp.ansi_to_html(content, { use_classes: true });
+        content = ansiUp.ansi_to_html(content);
       }
 
       line.html = $sce.trustAsHtml(content);
