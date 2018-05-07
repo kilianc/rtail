@@ -1,65 +1,43 @@
-/*!
- * util.js
- * Created by Kilian Ciuffolo on Jul 7, 2015
- * (c) 2015
- */
+const { spawn } = require('child_process');
+const dgram = require('dgram');
 
-'use strict'
-
-const spawn = require('child_process').spawn
-const dgram = require('dgram')
-
-/**
- *
- */
-module.exports.spawnClient = function spawnClient(opts) {
-  opts = opts || {}
-
+module.exports.spawnClient = (opts = {}) => {
   if (!opts.socket) {
-    opts.socket = dgram.createSocket('udp4')
-    opts.socket.bind(9999)
+    opts.socket = dgram.createSocket('udp4');
+    opts.socket.bind(9999);
   }
 
-  let client = spawn('cli/rtail-client.js', opts.args)
-  let messages = []
+  const client = spawn('cli/rtail-client.js', opts.args);
+  const messages = [];
 
-  client.stderr.pipe(process.stderr)
+  client.stderr.pipe(process.stderr);
 
-  opts.socket.on('message', function (data) {
-    messages.push(JSON.parse(data))
-  })
+  opts.socket.on('message', (data) => {
+    messages.push(JSON.parse(data));
+  });
 
-  client.on('exit', function (code) {
-    let err = code ? new Error('rtail exited with code: ' + code) : null
-    opts.test && opts.test(messages)
-    opts.socket.close()
-    opts.done && opts.done(err)
-  })
+  client.on('exit', (code) => {
+    const err = code ? new Error(`rtail exited with code: ${code}`) : null;
+    if (opts.test) opts.test(messages);
 
-  return client
-}
+    opts.socket.close();
+    if (opts.done) opts.done(err);
+  });
 
-/**
- *
- */
-module.exports.spawnServer = function spawnServer(opts) {
-  opts = opts || {}
+  return client;
+};
 
-  let server = spawn('cli/rtail-server.js', opts.args)
-  server.stderr.pipe(process.stderr)
-  server.stdout.pipe(process.stdout)
+module.exports.spawnServer = (opts = {}) => {
+  const server = spawn('cli/rtail-server.js', opts.args);
+  server.stderr.pipe(process.stderr);
+  server.stdout.pipe(process.stdout);
 
-  server.on('exit', function (code) {
-    let err = code ? new Error('rtail exited with code: ' + code) : null
-    opts.done && opts.done(err)
-  })
+  server.on('exit', (code) => {
+    const err = code ? new Error(`rtail exited with code: ${code}`) : null;
+    if (opts.done) opts.done(err);
+  });
 
-  return server
-}
+  return server;
+};
 
-/**
- *
- */
-module.exports.s = function s(obj) {
-  return JSON.stringify(obj, null, '  ')
-}
+module.exports.s = obj => JSON.stringify(obj, null, '  ');

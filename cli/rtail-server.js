@@ -137,5 +137,7 @@ io.attach(server, { serveClient: false });
 socket.bind(argv.udpPort, argv.udpHost);
 server.listen(argv.webPort, argv.webHost);
 
-console.log('UDP server listening: %s:%s', argv.udpHost, argv.udpPort); // eslint-disable-line no-console
-console.log('HTTP server listening: http://%s:%s', argv.webHost, argv.webPort); // eslint-disable-line no-console
+if (process.env.NODE_ENV !== 'test') {
+  console.log('UDP server listening: %s:%s', argv.udpHost, argv.udpPort); // eslint-disable-line no-console
+  console.log('HTTP server listening: http://%s:%s', argv.webHost, argv.webPort); // eslint-disable-line no-console
+}

@@ -33,6 +33,7 @@ if (process.env.NODE_ENV === 'production') {
   config.plugins.push(new UglifyJSPlugin({
     uglifyOptions: {
       mangle: false,
+      output: { comments: false },
     },
   }));
 }
