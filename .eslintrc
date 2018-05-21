@@ -29,6 +29,10 @@ rules:
             args: 'none'
     func-names: 'off'
     import/no-dynamic-require: 'off'
+    import/no-extraneous-dependencies:
+        - 'off'
+        -
+            devDependencies: false
     max-len:
         - 'error'
         - 125

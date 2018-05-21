@@ -1,41 +1,74 @@
+const webpack = require('webpack');
 const path = require('path');
-const CleanWebpackPlugin = require('clean-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const UglifyJSPlugin = require('uglifyjs-webpack-plugin');
+const ExtractTextPlugin = require('extract-text-webpack-plugin'); // separate css
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 
-const distPath = path.resolve(__dirname, './dist');
+const webpackConfig = {}; // init object
+const isProduction = process.env.NODE_ENV === 'production'; // production environment
 
-const config = {
-  entry: './app/app.js',
-  output: {
-    filename: 'bundle.js',
-    path: distPath,
-  },
-  module: {
-    rules: [{
-      test: /\.scss$/,
-      use: [
-        { loader: 'style-loader' },
-        { loader: 'css-loader' },
-        { loader: 'sass-loader' },
-      ],
-    }],
-  },
-  plugins: [
-    new CleanWebpackPlugin([distPath]),
-    new HtmlWebpackPlugin({
-      template: 'app/index.html',
-    }),
+// input
+webpackConfig.entry = {
+  app: './src/app.js', // main
+};
+
+// output
+webpackConfig.output = {
+  path: path.resolve(__dirname, 'dist'),
+  publicPath: '/',
+  filename: isProduction ? '[name].[hash].js' : '[name].js',
+};
+
+// loader
+webpackConfig.module = {
+  rules: [
+    {
+      test: /\.css$/,
+      use: ExtractTextPlugin.extract({
+        fallback: 'style-loader',
+        use: 'css-loader',
+      }),
+    },
+    {
+      test: /\.vue$/,
+      loader: 'vue-loader',
+    },
+    {
+      test: /\.js$/,
+      loader: 'babel-loader',
+      exclude: /node_modules/,
+    },
+    {
+      test: /\.(eot(|\?v=.*)|woff(|\?v=.*)|woff2(|\?v=.*)|ttf(|\?v=.*)|svg(|\?v=.*))$/,
+      loader: 'file-loader',
+      options: { name: 'fonts/[name].[ext]' },
+    },
+    {
+      test: /\.(png|jpg|gif)$/,
+      loader: 'file-loader',
+    },
   ],
 };
 
-if (process.env.NODE_ENV === 'production') {
-  config.plugins.push(new UglifyJSPlugin({
-    uglifyOptions: {
-      mangle: false,
-      output: { comments: false },
-    },
-  }));
+webpackConfig.plugins = [
+  new HtmlWebpackPlugin({ template: './src/index.html' }),
+  new ExtractTextPlugin({
+    filename: isProduction ? 'app.[hash].css' : 'app.css',
+  }),
+  new webpack.DefinePlugin({
+    'process.env': { NODE_ENV: '"production"' },
+  }),
+  new CopyWebpackPlugin([
+    { context: 'src/images', from: '*', to: path.join(__dirname, 'dist', 'images') },
+  ]),
+];
+
+if (!isProduction) {
+  webpackConfig.devServer = {
+    contentBase: path.resolve(__dirname, 'dist'),
+    compress: true,
+    historyApiFallback: true,
+  };
 }
 
-module.exports = config;
+module.exports = webpackConfig;

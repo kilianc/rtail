@@ -139,6 +139,12 @@ angular
       return result;
     }, {});
 
+    const addLines = (lines) => {
+      ctrl.lines = lines.map(formatLine);
+      $scope.$apply();
+      updateScroll();
+    };
+
     ctrl.socket.on('streams', (streams) => {
       ctrl.streamHash = formatStreams(streams);
       $scope.$apply();
@@ -146,9 +152,7 @@ angular
 
     ctrl.socket.on('backlog', (lines) => {
       if (!lines) return;
-      ctrl.lines = lines.map(formatLine);
-      $scope.$apply();
-      updateScroll();
+      addLines(lines);
     });
 
     ctrl.socket.on('line', (line) => {
@@ -156,9 +160,7 @@ angular
         ctrl.lines.shift();
       }
 
-      ctrl.lines.push(formatLine(line));
-      $scope.$apply();
-      updateScroll();
+      addLines([line]);
     });
 
     ctrl.selectStream = function selectStream(stream) {
