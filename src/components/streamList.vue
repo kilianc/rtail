@@ -1,78 +1,109 @@
 <template>
-  <div class="streamList">
-    <md-toolbar class="md-transparent" md-elevation="0">
-      Navigation
-    </md-toolbar>
-    <md-field md-clearable>
-      <label>Search streams</label>
-      <md-input v-model="streamsFilter"></md-input>
-    </md-field>
-    <h4>Favorites</h4>
-    <h4>Streams</h4>
+  <div class="stream-list">
     <md-list>
-      <md-list-item v-for="stream in searchFilter(streams)" :key="stream.name" v-if="!stream.childs" :to="`/streams/${stream.name}`">
-        <span class="md-list-item-text">{{stream.title}}</span>
-        <md-button class="md-icon-button md-list-action">
-          <md-icon class="md-primary">star</md-icon>
+      <md-list-item
+        v-for="(stream, streamId) in searchFilter(streams)"
+        v-if="!stream.childs"
+        :key="stream.name"
+        :to="`/streams/${stream.name}`">
+        <span class="md-list-item-text">{{ stream.title }}</span>
+        <md-button
+          v-if="!activeStreamIs(streamId)"
+          class="md-icon-button md-list-action"
+          @click="activeStreamAdd($event, streamId)">
+          <md-icon class="md-primary">add</md-icon>
+        </md-button>
+        <md-button
+          class="md-icon-button md-list-action"
+          @click="toggleFavorite($event, streamId)">
+          <md-icon class="md-primary">{{ stream.isFavorite ? 'star' : 'star_border' }}</md-icon>
         </md-button>
       </md-list-item>
-      <md-list-item v-for="stream in streams" :key="stream.title" v-if="searchFilter(stream.childs || []).length" md-expand>
-        <span class="md-list-item-text">{{stream.title}}</span>
-        <md-list slot="md-expand">
-          <md-list-item v-for="childStream in searchFilter(stream.childs)" :key="childStream.name" to="/streams/stream.name" class="md-inset">
-            <span class="md-list-item-text">{{childStream.title}}</span>
-            <md-button class="md-icon-button md-list-action">
-              <md-icon class="md-primary">star</md-icon>
+      <md-list-item
+        v-for="stream in streams"
+        v-if="Object.keys(searchFilter(stream.childs || {})).length"
+        :key="stream.title"
+        md-expand>
+        <span class="md-list-item-text">{{ stream.title }}</span>
+        <md-list
+          slot="md-expand"
+          class="stream-list__childs-list">
+          <md-list-item
+            v-for="(childStream, childStreamId) in searchFilter(stream.childs)"
+            :key="childStream.name"
+            :to="`/streams/${childStream.name}`"
+            class="md-inset">
+            <span class="md-list-item-text">{{ childStream.title }}</span>
+            <md-button
+              v-if="!activeStreamIs(childStreamId)"
+              class="md-icon-button md-list-action"
+              @click="activeStreamAdd($event, childStreamId)">
+              <md-icon class="md-primary">add</md-icon>
+            </md-button>
+            <md-button
+              class="md-icon-button md-list-action"
+              @click="toggleFavorite($event, childStreamId, stream.title)">
+              <md-icon class="md-primary">{{ childStream.isFavorite ? 'star' : 'star_border' }}</md-icon>
             </md-button>
           </md-list-item>
         </md-list>
       </md-list-item>
     </md-list>
-    <div class="nsr-card-loading">
-      <nsr-loading :hide-loading="isloadingComplete" :is-end-text="endText">
-      </nsr-loading>
-    </div>
   </div>
 </template>
 
 <script>
-import { mapState } from 'vuex';
+import { mapState, mapGetters } from 'vuex';
 
 export default {
-  data: () => ({
-    streamsFilter: '',
-  }),
-  components: {
-    'nsr-loading': require('../components/loading.vue'),
+  props: {
+    streams: {
+      type: Object,
+      required: true,
+    },
+    streamsFilter: {
+      type: String,
+      required: true,
+    },
   },
-  mounted: function() {
+  computed: {
+    ...mapGetters(['activeStreamIs']),
+    ...mapState({
+      isloadingComplete: state => state.isStreamsLoaded,
+    }),
   },
   methods: {
-    searchFilter: function (streams) {
+    searchFilter(streams = {}) {
+      const streamsFilter = (this.streamsFilter || '').toLowerCase();
       if (Array.isArray(streams)) {
-        return streams.filter(stream => stream.name.toLowerCase().includes(this.streamsFilter.toLowerCase()));
+        return streams.filter(stream => stream.name.toLowerCase().includes(streamsFilter));
       }
 
       return Object.keys(streams).reduce((result, streamId) => {
         const stream = streams[streamId];
-        console.log(streamId, stream);
-        if (stream.name && stream.name.toLowerCase().includes(this.streamsFilter.toLowerCase())) {
+        if (stream.name && stream.name.toLowerCase().includes(streamsFilter)) {
           result[streamId] = stream;
         }
 
         return result;
       }, {});
     },
+
+    toggleFavorite(event, streamId, group = null) {
+      if (event) event.preventDefault();
+      this.$store.commit('toggleFavorite', { streamId, group });
+    },
+
+    activeStreamAdd(event, streamId) {
+      if (event) event.preventDefault();
+      this.$store.commit('activeStreamAdd', { streamId });
+    },
   },
-  computed: mapState({
-    streams: state => state.streams,
-    isloadingComplete: state => state.isStreamsLoaded,
-  })
-}
+};
 </script>
 
 <style>
-.streamList {
-  padding: 0 5px;
+.stream-list .stream-list__childs-list .md-list-item-content {
+  padding-left: 25px;
 }
 </style>

@@ -1,8 +1,8 @@
 <template>
   <div class="nsr-loading-center">
-    <i class="fa fa-spinner fa-spin"
-    :class="{'nsr-loading-hiden': hideLoading}">
-    </i>
+    <i
+      :class="{'nsr-loading-hiden': hideLoading}"
+      class="fa fa-spinner fa-spin"/>
   </div>
 </template>
 
@@ -14,9 +14,9 @@ export default {
     },
     isEndText: {
       // default: ''
-    }
+    },
   },
-}
+};
 </script>
 
 <style>

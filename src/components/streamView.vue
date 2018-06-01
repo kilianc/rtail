@@ -1,6 +1,9 @@
 <template>
-  <div>
-    <streamContent v-for="stream in activeStreams" :key="stream.id" :streamId="stream.id"></streamContent>
+  <div class="stream-view">
+    <streamContent
+      v-for="streamId in activeStreams"
+      :key="streamId"
+      :stream-id="streamId"/>
   </div>
 </template>
 
@@ -10,17 +13,24 @@ import { mapState } from 'vuex';
 import streamContent from '../components/streamContent.vue';
 
 export default {
-  data: () => ({}),
   components: {
     streamContent,
-    'nsr-loading': require('../components/loading.vue'),
   },
   computed: mapState({
     activeStreams: state => state.activeStreams,
     isloadingComplete: state => state.isStreamsLoaded,
-  })
-}
+  }),
+};
 </script>
 
 <style>
+.stream-view {
+  display: grid;
+  height: 100%;
+  grid-auto-rows: 1fr;
+  background: #282828;
+}
+.stream-view > div {
+  overflow: hidden;
+}
 </style>

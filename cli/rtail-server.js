@@ -76,9 +76,10 @@ socket.on('message', (rawData, remote) => {
     return;
   }
 
-  const streamId = data.group ? `${data.group}/${data.id}` : `${data.id}`;
+  const streamId = data.group ? `${data.group}__${data.id}` : `${data.id}`;
   if (!streams[streamId]) {
     streams[streamId] = {
+      id: streamId,
       name: data.id,
       group: data.group,
       backlog: [],
@@ -90,11 +91,8 @@ socket.on('message', (rawData, remote) => {
   const message = {
     host: remote.address,
     port: remote.port,
-    name: data.id,
-    group: data.group || null,
     type: typeof data.content,
     content: data.content,
-    streamId,
     timestamp: data.timestamp,
   };
 
@@ -105,7 +103,7 @@ socket.on('message', (rawData, remote) => {
   currentStream.backlog.push(message);
 
   debug(JSON.stringify(message));
-  io.sockets.to(streamId).emit('line', message);
+  io.sockets.to(streamId).emit('line', Object.assign({}, message, { id: streamId }));
 });
 
 /*!
@@ -114,15 +112,24 @@ socket.on('message', (rawData, remote) => {
 io.on('connection', (clientSocket) => {
   clientSocket.emit('streams', genStreamList());
 
-  clientSocket.on('streamUnsubscribe', (stream) => {
-    if (!stream) return;
-    clientSocket.leave(stream);
+  clientSocket.on('streamUnsubscribe', (streamId) => {
+    if (!streamId) return;
+    clientSocket.leave(streamId);
   });
 
-  clientSocket.on('streamSubscribe', (stream) => {
-    if (!stream) return;
-    clientSocket.join(stream);
-    if (streams[stream]) clientSocket.emit('backlog', streams[stream].backlog);
+  clientSocket.on('streamSubscribe', (streamId) => {
+    if (!streamId) return;
+    clientSocket.join(streamId);
+    const stream = streams[streamId];
+    if (stream) {
+      clientSocket.emit('backlog', {
+        id: stream.id,
+        name: stream.name,
+        group: stream.group,
+        backlog: stream.backlog,
+        backlogLimit: argv.backlogLimit,
+      });
+    }
   });
 });
 
