@@ -1,6 +1,9 @@
 <template>
-  <div class="stream-content">
-    <md-toolbar class="md-dense">
+  <div
+    :style="`font-size: ${fontSize}px;`"
+    class="stream-content">
+    <md-toolbar
+      class="md-dense">
       <span class="md-caption">{{ streamId }}</span>
       <div class="md-toolbar-section-end stream-content__header-buttons">
         <md-button
@@ -77,6 +80,7 @@ export default {
         return this.$store.getters.backlogDESC(this.$props.streamId);
       },
       isloadingComplete: state => state.isStreamsLoaded,
+      fontSize: state => state.settings.fontSize,
     }),
   },
   mounted() {

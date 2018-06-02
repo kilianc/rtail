@@ -4,14 +4,16 @@
       <label>Search streams</label>
       <md-input v-model="streamsFilter"/>
     </md-field>
-    <h4>Favorites</h4>
-    <stream-list
-      :streams="streamsFavorites"
-      :streams-filter="streamsFilter"/>
-    <h4>Streams</h4>
-    <stream-list
-      :streams="streamsNotFavorites"
-      :streams-filter="streamsFilter"/>
+    <md-content class="stream-sidebar__content md-scrollbar">
+      <h4>Favorites</h4>
+      <stream-list
+        :streams="streamsFavorites"
+        :streams-filter="streamsFilter"/>
+      <h4>Streams</h4>
+      <stream-list
+        :streams="streamsNotFavorites"
+        :streams-filter="streamsFilter"/>
+    </md-content>
   </div>
 </template>
 
@@ -38,5 +40,11 @@ export default {
 <style>
 .stream-sidebar {
   padding: 0 5px;
+  height: 100%;
+  overflow: hidden;
+}
+.stream-sidebar__content {
+  overflow: scroll;
+  height: calc(100% - 76px);
 }
 </style>

@@ -1,6 +1,7 @@
 import Vue from 'vue';
 import Vuex from 'vuex';
-import { orderBy } from 'lodash';
+import orderBy from 'lodash/orderBy';
+import createPersistedState from 'vuex-persistedstate';
 
 import { formatLine } from '../tools/common';
 
@@ -11,10 +12,16 @@ const MAX_ACTIVE_STREAMS = 5;
 const defaultState = {
   isConnected: false,
   isStreamsLoaded: false,
-  backlogByStream: {},
-  streams: {},
-  activeStreams: ['tired-nest'],
   routeParams: {},
+  streams: {},
+  activeStreams: [],
+  favoriteStreams: [],
+  backlogByStream: {},
+  settings: {
+    sorting: 'desc',
+    theme: 'dark',
+    fontSize: 14,
+  },
 };
 
 const filterFavoriteStreams = function filterFavoriteStreams(streams, isFavorite = false) {
@@ -39,13 +46,14 @@ const getters = {
       Vue.set(state.backlogByStream, streamId, { backlog: [] });
     }
 
-    return orderBy(state.backlogByStream[streamId].backlog, 'timestamp', ['desc']);
+    return orderBy(state.backlogByStream[streamId].backlog, 'timestamp', [state.settings.sorting]);
   },
   streamsFavorites: state => filterFavoriteStreams(state.streams, true),
   streamsNotFavorites: state => filterFavoriteStreams(state.streams, false),
   activeStreamIs: state => streamId => state.activeStreams.includes(streamId),
   activeStreamIsLast: state => streamId => state.activeStreams.indexOf(streamId) === (state.activeStreams.length - 1),
   activeStreamIsFirst: state => streamId => state.activeStreams.indexOf(streamId) === 0,
+  settingIsActive: state => (key, value) => (state.settings[key] == null ? false : state.settings[key] === value),
 };
 
 const mutations = {
@@ -64,7 +72,7 @@ const mutations = {
         result[stream.id] = {
           name: stream.id,
           title: stream.name,
-          isFavorite: false,
+          isFavorite: state.favoriteStreams.includes(stream.id),
         };
         return result;
       }
@@ -79,7 +87,7 @@ const mutations = {
       result[stream.group].childs[stream.id] = {
         name: stream.id,
         title: stream.name,
-        isFavorite: false,
+        isFavorite: state.favoriteStreams.includes(stream.id),
       };
 
       return result;
@@ -118,15 +126,26 @@ const mutations = {
     }
 
     streams[streamId].isFavorite = !streams[streamId].isFavorite;
+    if (!streams[streamId].isFavorite) {
+      const idx = state.favoriteStreams.indexOf(streamId);
+      state.favoriteStreams.splice(idx, 1);
+    } else {
+      state.favoriteStreams.splice(Infinity, 0, streamId);
+    }
   },
 
-  activeStreamAdd(state, { streamId, rewriteStreamId }) {
+  activeStreamAdd(state, { streamId, rewriteStreamId, replaceLastStream }) {
     if (state.activeStreams.includes(streamId) || state.activeStreams.length >= MAX_ACTIVE_STREAMS) {
       return;
     }
 
-    if (rewriteStreamId && state.activeStreams.includes(rewriteStreamId)) {
-      const idx = state.activeStreams.indexOf(rewriteStreamId);
+    let rewriteStream = rewriteStreamId;
+    if (replaceLastStream && state.activeStreams.length) {
+      rewriteStream = state.activeStreams[state.activeStreams.length - 1];
+    }
+
+    if (rewriteStream && state.activeStreams.includes(rewriteStream)) {
+      const idx = state.activeStreams.indexOf(rewriteStream);
       state.activeStreams.splice(idx, 1, streamId);
     } else {
       state.activeStreams.splice(Infinity, 0, streamId);
@@ -151,15 +170,35 @@ const mutations = {
     state.activeStreams.splice(idx, 1);
     state.activeStreams.splice(Math.max(idx - direction, 0), 0, streamId);
   },
+
+  activeStreamsReplace(state, { streamList }) {
+    if (!streamList || !streamList.length) return;
+
+    state.activeStreams.splice(0, state.activeStreams.length, ...streamList);
+  },
+
+  updateSettings(state, newParams) {
+    if (!newParams) return;
+
+    Object.keys(newParams).forEach((key) => {
+      if (state.settings[key] == null) return;
+
+      Vue.set(state.settings, key, newParams[key]);
+    });
+  },
 };
 
 const actions = {};
+const persistedOptions = {
+  paths: ['activeStreams', 'favoriteStreams', 'settings'],
+};
 
 const store = new Vuex.Store({
   state: defaultState,
   getters,
   mutations,
   actions,
+  plugins: [createPersistedState(persistedOptions)],
 });
 
 export default store;

@@ -1,36 +1,32 @@
 <template>
   <div class="route-streams">
-    <md-toolbar
-      class="md-accent"
-      md-elevation="1">
-      <h3
-        class="md-title"
-        style="flex: 1">Title</h3>
-      <md-button class="md-primary">Settings</md-button>
-    </md-toolbar>
-
-    <md-app md-mode="fixed">
+    <Header />
+    <md-app
+      md-mode="fixed"
+      class="route-streams__app">
       <md-app-drawer
         class="route-streams__sidebar"
         md-permanent="full">
-        <stream-sidebar/>
+        <Stream-sidebar/>
       </md-app-drawer>
 
       <md-app-content class="route-streams__content">
-        <streamView/>
+        <StreamView/>
       </md-app-content>
     </md-app>
   </div>
 </template>
 
 <script>
-import streamSidebar from '../components/streamSidebar.vue';
-import streamView from '../components/streamView.vue';
+import Header from '../components/header.vue';
+import StreamView from '../components/streamView.vue';
+import StreamSidebar from '../components/streamSidebar.vue';
 
 export default {
   components: {
-    streamSidebar,
-    streamView,
+    Header,
+    StreamView,
+    StreamSidebar,
   },
 };
 </script>
@@ -39,11 +35,12 @@ export default {
 .route-streams {
   height: 100vh;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: 48px 1fr;
 }
 .route-streams__content {
   padding: 0;
+  border: none;
 }
 .route-streams__sidebar {
   width: 250px;

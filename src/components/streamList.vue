@@ -5,7 +5,7 @@
         v-for="(stream, streamId) in searchFilter(streams)"
         v-if="!stream.childs"
         :key="stream.name"
-        :to="`/streams/${stream.name}`">
+        @click="changeLastStream(streamId)">
         <span class="md-list-item-text">{{ stream.title }}</span>
         <md-button
           v-if="!activeStreamIs(streamId)"
@@ -31,8 +31,8 @@
           <md-list-item
             v-for="(childStream, childStreamId) in searchFilter(stream.childs)"
             :key="childStream.name"
-            :to="`/streams/${childStream.name}`"
-            class="md-inset">
+            class="md-inset"
+            @click="changeLastStream(childStreamId)">
             <span class="md-list-item-text">{{ childStream.title }}</span>
             <md-button
               v-if="!activeStreamIs(childStreamId)"
@@ -97,6 +97,10 @@ export default {
     activeStreamAdd(event, streamId) {
       if (event) event.preventDefault();
       this.$store.commit('activeStreamAdd', { streamId });
+    },
+
+    changeLastStream(streamId) {
+      this.$store.commit('activeStreamAdd', { streamId, replaceLastStream: true });
     },
   },
 };
