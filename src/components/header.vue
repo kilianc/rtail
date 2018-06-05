@@ -5,7 +5,20 @@
       md-elevation="1">
       <h3
         class="md-title"
-        style="flex: 1">r-Tail</h3>
+        style="flex: 1">
+        <md-icon class="md-primary md-size-2x">accessible_forward</md-icon>
+        r-Tail
+      </h3>
+      <md-button
+        class="md-icon-button md-primary"
+        @click="copyUrl()">
+        <md-icon class="md-primary">share</md-icon>
+        <md-tooltip md-direction="bottom">Share link</md-tooltip>
+        <input
+          id="shareLink"
+          :value="shareUrl"
+          type="hidden">
+      </md-button>
       <md-button
         class="md-icon-button md-primary"
         @click="showSettings = true">
@@ -82,6 +95,14 @@
         </md-button>
       </md-dialog-actions>
     </md-dialog>
+
+    <md-snackbar
+      :md-active.sync="snackbarShow"
+      md-position="left"
+      md-duration="5000"
+      md-persistent>
+      <span>{{ snackbarText }}</span>
+    </md-snackbar>
   </div>
 </template>
 
@@ -94,12 +115,16 @@ export default {
     defaultFontSize: 14,
     minFontSize: 6,
     maxFontSize: 32,
+    snackbarShow: false,
+    snackbarText: 'Oops. Sorry',
   }),
 
   computed: {
     ...mapGetters(['settingIsActive']),
     ...mapState({
       fontSize: state => state.settings.fontSize,
+      activeStreams: state => state.activeStreams,
+      shareUrl: state => `${window.location.origin}/#/streams/${JSON.stringify(state.activeStreams)}`,
     }),
   },
 
@@ -116,11 +141,31 @@ export default {
 
       this.$store.commit('updateSettings', { fontSize });
     },
+
     changeSorting(type) {
       this.$store.commit('updateSettings', { sorting: type });
     },
+
     changeTheme(type) {
       this.$store.commit('updateSettings', { theme: type });
+    },
+
+    copyUrl() {
+      const testingCodeToCopy = document.querySelector('#shareLink');
+      testingCodeToCopy.setAttribute('type', 'text');
+      testingCodeToCopy.select();
+
+      try {
+        const successful = document.execCommand('copy');
+        const msg = successful ? 'successful' : 'unsuccessful';
+        this.snackbarText = `Testing code was copied ${msg}`;
+      } catch (err) {
+        this.snackbarText = 'Oops, unable to copy';
+      }
+
+      this.snackbarShow = true;
+      testingCodeToCopy.setAttribute('type', 'hidden');
+      window.getSelection().removeAllRanges();
     },
   },
 };

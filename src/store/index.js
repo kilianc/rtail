@@ -65,6 +65,10 @@ const mutations = {
     state.isConnected = false;
   },
 
+  SOCKET_RECONNECT(state) {
+    state.activeStreams.forEach(streamId => window.app.$socket.emit('streamSubscribe', streamId));
+  },
+
   SOCKET_STREAMS(state, message) {
     state.isStreamsLoaded = true;
     state.streams = message[0].reduce((result, stream) => {

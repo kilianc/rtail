@@ -4,8 +4,19 @@
     class="stream-content">
     <md-toolbar
       class="md-dense">
+      <md-button
+        class="md-icon-button"
+        @click="showTimestamp = !showTimestamp">
+        <md-icon>{{ showTimestamp ? 'timer_off' : 'timer' }}</md-icon>
+      </md-button>
       <span class="md-caption">{{ streamId }}</span>
       <div class="md-toolbar-section-end stream-content__header-buttons">
+        <md-field
+          class="stream-content__filter"
+          md-clearable>
+          <label>Stream filter</label>
+          <md-input v-model="streamLineFilter"/>
+        </md-field>
         <md-button
           v-if="!activeStreamIsLast(streamId)"
           class="md-icon-button"
@@ -27,20 +38,29 @@
       </div>
     </md-toolbar>
     <md-content class="backlog md-scrollbar">
-      <div>
+      <md-empty-state
+        v-if="!orderedBacklog.length"
+        :md-label="`Nothing for: ${streamId}`"
+        class="md-accent"
+        md-icon="remove_circle_outline"
+        md-description="Select other stream or check your r-tail client" />
+      <div
+        v-if="orderedBacklog.length"
+        class="backlog__wrapper">
         <div
-          v-for="line in orderedBacklog"
+          v-for="line in backlogFilter(orderedBacklog)"
           :key="line.uid"
           class="backlog__line-container hljs">
           <div
+            v-if="showTimestamp"
             class="backlog__line-timestamp">
             {{ line.timestamp | dateFormat }}
           </div>
           <div
-            v-highlight
+            v-highlightjs="line.html"
             v-if="line.isJSON"
             class="backlog__line-content backlog__line-content-highlight">
-            <pre><code class="json">{{ line.html }}</code></pre>
+            <pre><code class="json"/></pre>
           </div>
           <div
             v-if="!line.isJSON"
@@ -69,7 +89,10 @@ export default {
       required: true,
     },
   },
-  data: () => ({}),
+  data: () => ({
+    showTimestamp: true,
+    streamLineFilter: '',
+  }),
   computed: {
     ...mapGetters([
       'activeStreamIsLast',
@@ -101,6 +124,10 @@ export default {
     streamClose(streamId) {
       this.$store.commit('activeStreamClose', { streamId });
     },
+    backlogFilter(backlog = []) {
+      const regExp = new RegExp(this.streamLineFilter);
+      return backlog.filter(line => regExp.test(line.content));
+    },
   },
 };
 </script>
@@ -108,6 +135,7 @@ export default {
 <style>
 .backlog {
   max-height: calc(100% - 48px);
+  height: 100%;
   overflow: auto;
 }
 .backlog__line-container.hljs {
@@ -133,5 +161,8 @@ export default {
 }
 .backlog__line-content {
   padding-left: 5px;
+}
+.stream-content__filter {
+  max-width: 200px;
 }
 </style>

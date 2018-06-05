@@ -1,12 +1,12 @@
 import 'vue-material/dist/vue-material.min.css';
 import 'vue-material/dist/theme/default.css';
-import 'vue-hljs/dist/vue-hljs.min.css';
+import 'highlight.js/styles/default.css';
 
 import Vue from 'vue';
 import VueSocketio from 'vue-socket.io';
 import VueProgressBar from 'vue-progressbar';
 import VueMaterial from 'vue-material';
-import VueHljs from 'vue-hljs';
+import VueHighlightJS from 'vue-highlightjs';
 
 import App from './app.vue';
 import router from './router';
@@ -26,7 +26,7 @@ const options = {
 };
 Vue.use(VueProgressBar, options);
 Vue.use(VueMaterial);
-Vue.use(VueHljs);
+Vue.use(VueHighlightJS);
 Vue.use(VueSocketio, 'http://localhost:8888', store);
 
 window.app = new Vue({
