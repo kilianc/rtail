@@ -31,7 +31,7 @@ There are many log aggregation tools out there, but few of them are realtime. **
 `rtail` is meant to be a replacement of [logio](https://github.com/NarrativeScience/Log.io/commits/master), which isn't actively maintained anymore, doesn't support node v0.12., and uses *TCP. (TCP requires strict client / server handshaking, is resource-hungry, and very difficult to scale.)*
 
 **The `rtail` approach is very simple:**
-* pipe something into `rtail` using [UNIX I/O redirection](http://www.westwind.com/reference/os-x/commandline/pipes.html) [[2]](http://www.codecoffee.com/tipsforlinux/articles2/042.html)
+* pipe something into `rtail` using [UNIX I/O redirection](https://bytebitebit.com/pipes/) [[2]](http://www.codecoffee.com/tipsforlinux/articles2/042.html)
 * broadcast every line using UDP
 * `rtail-server`, **if listening**, will dispatch the stream into your browser, using [socket.io](http://socket.io/).
 
