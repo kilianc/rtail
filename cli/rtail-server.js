@@ -108,7 +108,14 @@ socket.on('message', function (data, remote) {
 io.on('connection', function (socket) {
   socket.emit('streams', Object.keys(streams))
   socket.on('select stream', function (stream) {
-    socket.leave(socket.rooms[0])
+    // `socket.rooms` is a hash keyed by room name, not an array, so the old
+    // `socket.rooms[0]` was always undefined and the socket never left the
+    // stream it was previously watching — which is why lines from several
+    // streams ended up interleaved in one view.
+    Object.keys(socket.rooms).forEach(function (room) {
+      socket.leave(room)
+    })
+
     if (!stream) return
     socket.join(stream)
     socket.emit('backlog', streams[stream])

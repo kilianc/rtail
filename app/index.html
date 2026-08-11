@@ -2,21 +2,22 @@
 <html ng-app="app" ng-controller="MainController as ctrl">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
   <title ng-if="!ctrl.loaded">rTail : loading ...</title>
   <title ng-if="ctrl.loaded">rTail : {{ctrl.activeStream}}</title>
   <!-- build:css(app) css/bundle.min.css -->
   <link href="css/main.css" rel="stylesheet" type="text/css">
-  <link href="css/dark-theme.css" rel="stylesheet" type="text/css">
-  <link href="css/light-theme.css" rel="stylesheet" type="text/css">
   <!-- endbuild -->
-  <link href='//fonts.googleapis.com/css?family=Source+Code+Pro|Roboto+Mono|Inconsolata|Anonymous+Pro|Ubuntu+Mono|Droid+Sans+Mono|Nunito:300' rel='stylesheet' type='text/css'>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro|Roboto+Mono|Inconsolata|Anonymous+Pro|Ubuntu+Mono|Droid+Sans+Mono&display=swap" rel="stylesheet" type="text/css">
   <!-- favicon -->
   <link rel="icon" href="images/common/favicon-16x16.png" sizes="16x16">
   <link rel="icon" href="images/common/favicon-32x32.png" sizes="32x32">
   <link rel="icon" href="images/common/favicon-96x96.png" sizes="96x96">
 </head>
-<body class="{{ctrl.theme}} font-family-{{ctrl.fontFamily}} font-size-{{ctrl.fontSize}}">
+<body class="{{ctrl.theme || 'dark'}} font-family-{{ctrl.fontFamily || 1}} font-size-{{ctrl.fontSize || 4}}">
 
   <header>
     <div class="rtail-logo"></div>

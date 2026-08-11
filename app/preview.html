@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<!--
+  Static styling harness.
+
+  A copy of index.html with the Angular bindings replaced by representative
+  sample data, so the stylesheets can be worked on without booting the server,
+  a socket connection, or the JS toolchain:
+
+    docker build -t rtail-tools tools/
+    docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work rtail-tools \
+      sass app/scss/main.scss app/css/main.css
+    python3 -m http.server 8899 --directory app
+
+  Then open http://localhost:8899/preview.html. Swap the `dark` class on <body>
+  for `light` to check the other theme. Keep the markup in sync with index.html.
+-->
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>rTail preview</title>
+  <link href="css/main.css" rel="stylesheet" type="text/css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro|Roboto+Mono|Inconsolata|Anonymous+Pro|Ubuntu+Mono|Droid+Sans+Mono&display=swap" rel="stylesheet" type="text/css">
+</head>
+<body class="dark font-family-1 font-size-4">
+
+  <header>
+    <div class="rtail-logo"></div>
+    <button class="btn btn-info"></button>
+    <a class="btn btn-github" href="#"></a>
+    <button class="btn btn-settings"></button>
+  </header>
+
+  <div class="split-pane">
+    <div class="sidebar">
+      <div class="search-box">
+        <input type="text" placeholder="Search streams">
+      </div>
+
+      <div class="stream-sections">
+        <div class="stream-section">
+          <h4>Favorites</h4>
+          <a class="selected"><span>api-gateway</span><i></i></a>
+          <a><span>worker-billing</span></a>
+        </div>
+
+        <div class="stream-section">
+          <h4>Streams</h4>
+          <a><span>nginx-access</span><i></i></a>
+          <a><span>postgres-primary</span></a>
+          <a><span>redis-cache</span></a>
+          <a><span>deploy-pipeline</span></a>
+          <a><span>a-very-long-stream-name-that-truncates</span></a>
+        </div>
+      </div>
+
+      <div class="resize-handler"></div>
+      <div class="fade"></div>
+    </div>
+
+    <div class="stream-view">
+      <div class="stream-header">
+        <div class="stream-title">
+          <i class="stream-title-favorite on"></i>
+          api-gateway
+        </div>
+        <div class="filter-box">
+          <input type="text" placeholder="filter stream (regexp allowed)">
+        </div>
+      </div>
+
+      <div class="stream-lines">
+        <div class="stream-line"><div class="stream-line-timestamp">08/10/26 14:22:01</div><div class="stream-line-content"><span><span class="ansi-bright-black-fg">api:logs </span><span class="ansi-green-fg">200</span> GET /1/config</span></div></div>
+        <div class="stream-line"><div class="stream-line-timestamp">08/10/26 14:22:02</div><div class="stream-line-content"><span><span class="ansi-bright-black-fg">api:logs </span><span class="ansi-green-fg">200</span> GET /1/geocode?address=ny</span></div></div>
+        <div class="stream-line"><div class="stream-line-timestamp">08/10/26 14:22:02</div><div class="stream-line-content"><span><span class="ansi-bright-black-fg">api:logs </span><span class="ansi-yellow-fg">301</span> GET /1/users/556605ede9fa35333befa9e6/profile</span></div></div>
+        <div class="stream-line"><div class="stream-line-timestamp">08/10/26 14:22:03</div><div class="stream-line-content"><span><span class="ansi-bright-black-fg">api:logs </span><span class="ansi-red-fg">500</span> POST /1/signin <span class="ansi-bright-red-fg">connection reset by peer</span></span></div></div>
+        <div class="stream-line"><div class="stream-line-timestamp">08/10/26 14:22:04</div><div class="stream-line-content"><span><span class="ansi-blue-fg">INFO </span>cache warmed in <span class="ansi-bright-cyan-fg">142ms</span></span></div></div>
+        <div class="stream-line"><div class="stream-line-timestamp">08/10/26 14:22:05</div><div class="stream-line-content"><span><span class="ansi-magenta-fg">DEBUG</span> pool=<span class="ansi-bright-yellow-fg">8</span>/<span class="ansi-bright-yellow-fg">32</span> idle=<span class="ansi-bright-green-fg">24</span></span></div></div>
+        <div class="stream-line"><div class="stream-line-timestamp">08/10/26 14:22:06</div><div class="stream-line-content"><pre><span class="hljs-punctuation">{</span>
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"checkout.completed"</span>,
+  <span class="hljs-attr">"count"</span>: <span class="hljs-number">4213</span>,
+  <span class="hljs-attr">"ok"</span>: <span class="hljs-literal">true</span>,
+  <span class="hljs-attr">"region"</span>: <span class="hljs-string">"eu-west-1"</span>
+<span class="hljs-punctuation">}</span></pre></div></div>
+        <div class="stream-line"><div class="stream-line-timestamp">08/10/26 14:22:07</div><div class="stream-line-content"><span><span class="ansi-bright-black-fg">api:logs </span><span class="ansi-green-fg">200</span> PUT /1/me/review_status/seen</span></div></div>
+        <div class="stream-line"><div class="stream-line-timestamp">08/10/26 14:22:08</div><div class="stream-line-content"><span><span class="ansi-bright-black-fg">api:logs </span><span class="ansi-red-fg">400</span> PUT /1/me/gcm_tokens/3G7ggYFcGXIHkIgaGLW16s4sobrkAPA91bGM8t9MJwfDbFA</span></div></div>
+        <div class="stream-line"><div class="stream-line-timestamp">08/10/26 14:22:09</div><div class="stream-line-content"><span><span class="ansi-green-fg">200</span> GET /1/alive</span></div></div>
+        <div class="stream-line"><div class="stream-line-timestamp">08/10/26 14:22:10</div><div class="stream-line-content"><span>deploy <span class="ansi-bright-green-fg">✔</span> build succeeded in <span class="ansi-bright-cyan-fg">1m 04s</span></span>
+          <button class="btn-toggle-timestamp" style="left: 140px"></button>
+        </div></div>
+      </div>
+
+      <button class="btn-resume">Resume</button>
+    </div>
+  </div>
+
+  <!-- popovers, rendered inline so both panels can be inspected at once -->
+  <div class="popover" style="top:56px; left:calc(100% - 300px);">
+    <div class="popover-content popover-info">
+      <div class="rtail-logo"></div>
+      <div class="version">Version 0.2.1</div>
+      <a class="btn btn-issue" href="#">Report issue</a>
+      <a class="btn btn-fork" href="#">Fork it</a>
+      <div class="lukibear-logo"></div>
+    </div>
+  </div>
+
+  <div class="popover" style="top:56px; left:calc(100% - 250px);">
+    <div class="popover-content popover-settings">
+      <h4>Font size</h4>
+      <div class="btn-group">
+        <button class="btn btn-font-smaller"></button>
+        <button class="btn btn-font-reset selected"></button>
+        <button class="btn btn-font-bigger"></button>
+      </div>
+
+      <h4>Font family</h4>
+      <div class="btn-group six-grid">
+        <button class="btn btn-font-1 font-family-1 selected">Ag</button>
+        <button class="btn btn-font-2 font-family-2">Ag</button>
+        <button class="btn btn-font-3 font-family-3">Ag</button>
+        <button class="btn btn-font-4 font-family-4">Ag</button>
+        <button class="btn btn-font-5 font-family-5">Ag</button>
+        <button class="btn btn-font-6 font-family-6">Ag</button>
+      </div>
+
+      <h4>Sorting</h4>
+      <div class="btn-group">
+        <button class="btn btn-sorting-asc selected"></button>
+        <button class="btn btn-sorting-desc"></button>
+      </div>
+
+      <h4>Theme</h4>
+      <div class="btn-group">
+        <button class="btn btn-theme-dark selected"></button>
+        <button class="btn btn-theme-light"></button>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,153 @@
+// **
+// design tokens
+//
+// Everything themeable is a CSS custom property. Dark is the default and
+// lives on :root, so the app paints correctly on first frame — before
+// localForage has resolved the persisted theme and Angular has stamped the
+// `dark` / `light` class onto <body>. `.light` is a pure override layer.
+// **
+
+:root {
+  color-scheme: dark;
+
+  // ** geometry **
+  --space: 20px;
+  --space-sm: 12px;
+  --space-xs: 8px;
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-pill: 999px;
+
+  --header-height: 56px;
+  --row-height: 34px;
+
+  // ** surfaces **
+  --bg-app: #0b0e13;
+  --bg-header: #0d1117;
+  --bg-sidebar: #0d1117;
+  --bg-stream: #0b0e13;
+  --surface-raised: #161c25;
+  --surface-input: #171e28;
+  --surface-hover: rgba(255, 255, 255, 0.04);
+  --surface-active: rgba(255, 255, 255, 0.08);
+
+  // ** borders **
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.11);
+  --border-strong: rgba(255, 255, 255, 0.18);
+
+  // ** text **
+  --text-primary: #e6edf3;
+  --text-secondary: #9fb0c0;
+  --text-muted: #6b7c8c;
+  --text-faint: #4d5a68;
+
+  // ** brand accent (rTail coral) **
+  --accent: #ff7a5c;
+  --accent-hover: #ff9077;
+  --accent-contrast: #1a0f0b;
+  --accent-soft: rgba(255, 122, 92, 0.13);
+  --accent-ring: rgba(255, 122, 92, 0.40);
+
+  // ** secondary accent (rTail teal) — selection, live indicators **
+  --accent-2: #47c7dd;
+  --accent-2-soft: rgba(71, 199, 221, 0.13);
+
+  // ** effects **
+  --shadow-raised: 0 16px 48px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --shadow-float: 0 6px 20px rgba(0, 0, 0, 0.45);
+
+  // ** ansi palette — tuned for contrast on a near-black canvas **
+  --ansi-black: #4a5766;
+  --ansi-black-bright: #6f8093;
+  --ansi-red: #ff6b6b;
+  --ansi-red-bright: #ff9494;
+  --ansi-green: #4ade80;
+  --ansi-green-bright: #86efac;
+  --ansi-yellow: #fbbf24;
+  --ansi-yellow-bright: #fcd34d;
+  --ansi-blue: #60a5fa;
+  --ansi-blue-bright: #93c5fd;
+  --ansi-magenta: #c084fc;
+  --ansi-magenta-bright: #d8b4fe;
+  --ansi-cyan: #22d3ee;
+  --ansi-cyan-bright: #67e8f9;
+  --ansi-white: #cbd5e1;
+  --ansi-white-bright: #f8fafc;
+}
+
+.light {
+  color-scheme: light;
+
+  --bg-app: #ffffff;
+  --bg-header: #ffffff;
+  --bg-sidebar: #f7f8fa;
+  --bg-stream: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-input: #eef0f4;
+  --surface-hover: rgba(15, 23, 42, 0.04);
+  --surface-active: rgba(15, 23, 42, 0.07);
+
+  --border-subtle: rgba(15, 23, 42, 0.07);
+  --border: rgba(15, 23, 42, 0.12);
+  --border-strong: rgba(15, 23, 42, 0.20);
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
+
+  --accent: #e2593a;
+  --accent-hover: #cf4a2c;
+  --accent-contrast: #ffffff;
+  --accent-soft: rgba(226, 89, 58, 0.10);
+  --accent-ring: rgba(226, 89, 58, 0.35);
+
+  --accent-2: #0e93a8;
+  --accent-2-soft: rgba(14, 147, 168, 0.11);
+
+  --shadow-raised: 0 16px 48px rgba(15, 23, 42, 0.13), 0 2px 6px rgba(15, 23, 42, 0.08);
+  --shadow-float: 0 6px 20px rgba(15, 23, 42, 0.14);
+
+  --ansi-black: #1e293b;
+  --ansi-black-bright: #475569;
+  --ansi-red: #dc2626;
+  --ansi-red-bright: #ef4444;
+  --ansi-green: #15803d;
+  --ansi-green-bright: #16a34a;
+  --ansi-yellow: #b45309;
+  --ansi-yellow-bright: #ca8a04;
+  --ansi-blue: #2563eb;
+  --ansi-blue-bright: #3b82f6;
+  --ansi-magenta: #9333ea;
+  --ansi-magenta-bright: #a855f7;
+  --ansi-cyan: #0e7490;
+  --ansi-cyan-bright: #0891b2;
+  --ansi-white: #64748b;
+  --ansi-white-bright: #475569;
+}
+
+// **
+// icon helper
+//
+// The SVG assets are solid, evenodd-filled shapes, so they mask cleanly.
+// Masking them with `currentColor` means one icon set serves both themes
+// and icons inherit hover/selected colour for free — replacing the old
+// duplicated images/light + images/dark background-image pairs.
+// **
+
+@mixin icon($name, $size: 100%) {
+  background-color: currentColor;
+  -webkit-mask: url('../images/dark/#{$name}.svg') no-repeat 50% 50%;
+  mask: url('../images/dark/#{$name}.svg') no-repeat 50% 50%;
+  -webkit-mask-size: $size;
+  mask-size: $size;
+}
+
+@mixin icon-common($name, $size: 100%) {
+  background-color: currentColor;
+  -webkit-mask: url('../images/common/#{$name}.svg') no-repeat 50% 50%;
+  mask: url('../images/common/#{$name}.svg') no-repeat 50% 50%;
+  -webkit-mask-size: $size;
+  mask-size: $size;
+}

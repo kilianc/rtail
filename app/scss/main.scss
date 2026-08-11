@@ -1,22 +1,23 @@
 // **
-// variables
+// rTail webapp styles
+//
+// Single compiled bundle. Theming is done with CSS custom properties
+// (see _tokens.scss) rather than compiling one stylesheet per theme, so
+// switching themes is a class swap on <body> with no extra network cost.
 // **
 
-$spacing: 20px;
-$border-radius: 5px;
-$font-family: 'Nunito';
-
-// **
-// imports
-// **
-
-@import 'fonts';
+@use 'tokens' as *;
+@use 'fonts';
+@use 'ansi';
+@use 'highlightjs';
 
 // **
 // reset
 // **
 
-* {
+*,
+*::before,
+*::after {
   background: none;
   border: 0;
   box-sizing: border-box;
@@ -24,10 +25,6 @@ $font-family: 'Nunito';
   margin: 0;
   padding: 0;
   text-decoration: none;
-
-  &:focus {
-    outline: none;
-  }
 }
 
 ol,
@@ -43,52 +40,138 @@ input {
   font: inherit !important;
 }
 
+// Keyboard users get a ring; mouse users don't. The old reset killed the
+// focus outline outright, which made the app unusable without a mouse.
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+
 // **
-// styles
+// scrollbars
+// **
+
+* {
+  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: var(--radius-pill);
+
+  &:hover {
+    background: var(--text-faint);
+    background-clip: padding-box;
+  }
+}
+
+// **
+// shell
 // **
 
 body {
   align-items: stretch;
+  background: var(--bg-app);
+  color: var(--text-primary);
   display: flex;
   flex-direction: column;
-  font-family: $font-family;
-  font-size: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   height: 100vh;
+  overflow: hidden;
 
   &.resizing {
+    cursor: col-resize;
     user-select: none;
   }
 }
 
+// **
+// header
+// **
+
 header {
   align-items: center;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: row;
-  height: 58px;
+  flex-shrink: 0;
+  gap: var(--space-xs);
+  height: var(--header-height);
+  padding: 0 var(--space);
 
   .rtail-logo {
-    background-position: 50% 50%;
-    background-repeat: no-repeat;
-    background-size: 53px 13px;
-    height: 100px;
-    width: 94px;
+    @include icon-common('logo-rtail', 62px 15px);
+    color: var(--accent);
+    flex-shrink: 0;
+    height: 20px;
+    width: 62px;
   }
 
   .btn {
-    background-position: 50% 50%;
-    background-repeat: no-repeat;
-    background-size: 100%;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
     cursor: pointer;
-    height: 19px;
-    margin-right: $spacing;
-    opacity: .4;
-    width: 19px;
+    flex-shrink: 0;
+    height: 30px;
+    position: relative;
+    transition: color .15s ease, background-color .15s ease;
+    width: 30px;
+
+    &::after {
+      content: '';
+      height: 17px;
+      left: 50%;
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 17px;
+    }
+
+    &:hover {
+      background: var(--surface-hover);
+      color: var(--text-primary);
+    }
 
     &.btn-info {
       margin-left: auto;
+
+      &::after { @include icon('btn-info'); }
     }
+
+    &.btn-github::after { @include icon('btn-github'); }
+    &.btn-settings::after { @include icon('btn-settings'); }
   }
 }
+
+// **
+// layout
+// **
 
 .split-pane {
   display: flex;
@@ -97,35 +180,85 @@ header {
   min-height: 0;
 }
 
+// **
+// sidebar
+// **
+
 .sidebar {
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  font-size: 16px;
+  flex-shrink: 0;
   position: relative;
-  width: 230px;
+  width: 240px;
 
   .resize-handler {
     cursor: col-resize;
     height: 100%;
     position: absolute;
-    right: -5px;
+    right: -3px;
     top: 0;
-    width: 10px;
+    width: 7px;
+    z-index: 2;
+
+    &::after {
+      background: transparent;
+      content: '';
+      height: 100%;
+      left: 3px;
+      position: absolute;
+      top: 0;
+      transition: background-color .15s ease;
+      width: 1px;
+    }
+
+    &:hover::after {
+      background: var(--accent);
+    }
   }
 
   .search-box {
-    background-position: $spacing 50%;
-    background-repeat: no-repeat;
-    background-size: 16px 16px;
+    align-items: center;
     display: flex;
-    height: 57px;
+    flex-shrink: 0;
+    padding: var(--space-sm);
+    position: relative;
+
+    &::before {
+      @include icon('icn-search');
+      color: var(--text-faint);
+      content: '';
+      height: 14px;
+      left: 24px;
+      pointer-events: none;
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 14px;
+      z-index: 1;
+    }
 
     input {
+      background: var(--surface-input);
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
       flex: 1;
-      font-size: 14px;
-      height: 57px;
-      margin-left: 56px;
-      margin-right: $spacing;
+      font-size: 13px !important;
+      height: 32px;
+      min-width: 0;
+      padding: 0 10px 0 30px;
+      transition: border-color .15s ease, background-color .15s ease;
+
+      &::placeholder {
+        color: var(--text-faint);
+      }
+
+      &:focus {
+        background: var(--bg-app);
+        border-color: var(--accent-ring);
+      }
     }
   }
 
@@ -133,180 +266,341 @@ header {
     flex: 1;
     height: 0;
     overflow-y: auto;
+    padding: 0 var(--space-xs) var(--space) var(--space-xs);
 
     .stream-section {
-      flex: 1;
-
       h4 {
         align-items: center;
+        color: var(--text-faint);
         display: flex;
-        font-size: 16px;
-        font-weight: normal;
-        height: 32px;
-        margin-top: $spacing;
-        padding-left: $spacing;
+        font-size: 11px;
+        font-weight: 600;
+        height: 28px;
+        letter-spacing: .07em;
+        margin-top: var(--space-sm);
+        padding-left: var(--space-xs);
+        text-transform: uppercase;
+      }
+
+      // Hide a section header when it has no streams under it, so an empty
+      // "Favorites" list doesn't leave a dangling label.
+      &:not(:has(a)) h4 {
+        display: none;
       }
 
       a {
         align-items: center;
+        border-radius: var(--radius-sm);
+        color: var(--text-secondary);
         cursor: pointer;
         display: flex;
-        height: 32px;
-        padding-left: 40px;
+        gap: var(--space-xs);
+        height: var(--row-height);
+        padding: 0 10px;
+        position: relative;
+        transition: background-color .12s ease, color .12s ease;
+
+        &:hover {
+          background: var(--surface-hover);
+          color: var(--text-primary);
+        }
 
         &.selected {
-          border-left: 2px solid;
-          padding-left: 38px;
+          background: var(--accent-soft);
+          color: var(--accent);
+          font-weight: 500;
+
+          &::before {
+            background: var(--accent);
+            border-radius: 0 2px 2px 0;
+            content: '';
+            height: 16px;
+            left: 0;
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+          }
         }
 
         span {
+          font-size: 13px;
+          overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
-          overflow: hidden;
         }
 
         i {
+          background-color: var(--accent-2);
           border-radius: 50%;
-          height: 8px;
+          flex-shrink: 0;
+          height: 7px;
           margin-left: auto;
-          margin-right: $spacing;
-          width: 8px;
+          width: 7px;
         }
       }
     }
   }
+
+  // Bottom scroll fade, so the list dissolves into the sidebar instead of
+  // being cut off mid-row.
+  .fade {
+    background: linear-gradient(to top, var(--bg-sidebar), transparent);
+    bottom: 0;
+    height: 32px;
+    left: 0;
+    pointer-events: none;
+    position: absolute;
+    right: 1px;
+  }
 }
 
+// **
+// stream view
+// **
+
 .stream-view {
-  position: relative;
+  background: var(--bg-stream);
   display: flex;
   flex: 1;
   flex-direction: column;
   min-width: 0;
+  position: relative;
 
   .stream-header {
     align-items: center;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border-subtle);
     display: flex;
-    font-size: 16px;
-    height: 57px;
+    flex-shrink: 0;
+    gap: var(--space-sm);
+    height: var(--header-height);
+    padding: 0 var(--space);
 
     .stream-title {
       align-items: center;
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      cursor: pointer;
       display: flex;
+      font-size: 14px;
+      font-weight: 600;
+      gap: var(--space-xs);
+      min-width: 0;
+      overflow: hidden;
+      padding: 6px 10px 6px 8px;
+      text-overflow: ellipsis;
+      transition: background-color .15s ease;
+      white-space: nowrap;
+
+      &:hover {
+        background: var(--surface-hover);
+      }
     }
 
     .stream-title-favorite {
-      background-repeat: no-repeat;
-      background-size: 15px 15px;
+      @include icon-common('btn-fav-off', 15px 15px);
+      color: var(--text-faint);
       display: inline-block;
+      flex-shrink: 0;
       height: 15px;
-      margin: 0 $spacing;
+      transition: color .15s ease;
       width: 15px;
+
+      &.on {
+        @include icon-common('btn-fav-on', 15px 15px);
+        color: var(--accent);
+      }
     }
 
     .filter-box {
-      background-position: 0 50%;
-      background-repeat: no-repeat;
-      background-size: 14px 14px;
+      align-items: center;
       display: flex;
-      font-size: 14px;
-      height: 30px;
       margin-left: auto;
-      margin-right: $spacing;
-      opacity: .7;
-      width: 210px;
-    }
+      position: relative;
+      width: 260px;
 
-    input {
-      flex: 1;
-      margin-left: 24px;
+      &::before {
+        @include icon-common('icn-filter');
+        color: var(--text-faint);
+        content: '';
+        height: 13px;
+        left: 11px;
+        pointer-events: none;
+        position: absolute;
+        width: 13px;
+        z-index: 1;
+      }
+
+      input {
+        background: var(--surface-input);
+        border: 1px solid transparent;
+        border-radius: var(--radius-sm);
+        color: var(--text-primary);
+        flex: 1;
+        font-size: 13px !important;
+        height: 32px;
+        min-width: 0;
+        padding: 0 10px 0 30px;
+        transition: border-color .15s ease, background-color .15s ease;
+
+        &::placeholder {
+          color: var(--text-faint);
+        }
+
+        &:focus {
+          background: var(--bg-app);
+          border-color: var(--accent-ring);
+        }
+      }
     }
   }
 
   .stream-lines {
     flex: 1;
-    font-size: 12px;
+    font-size: 13px;
     height: 0;
     overflow: auto;
-    padding: 2px 0;
+    padding: var(--space-xs) 0 var(--space) 0;
 
     .stream-line {
       display: flex;
-      line-height: .5em;
+      line-height: 1.55;
+
+      &:hover {
+        background: var(--surface-hover);
+      }
 
       pre {
-        line-height: 1.2;
+        line-height: 1.55;
+        margin: 0;
       }
 
       .stream-line-timestamp {
-        border-right: 1px solid;
+        border-right: 1px solid var(--border-subtle);
+        color: var(--text-faint);
         flex-shrink: 0;
-        padding-right: $spacing;
+        font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: .85em;
+        font-variant-numeric: tabular-nums;
+        padding-right: var(--space-sm);
+        user-select: none;
       }
 
       .stream-line-content {
+        color: var(--text-primary);
+        min-width: 0;
         white-space: pre;
       }
 
       .stream-line-timestamp,
       .stream-line-content {
-        align-items: center;
+        align-items: baseline;
         display: flex;
-        padding-bottom: 5px;
-        padding-left: $spacing;
-        padding-top: 5px;
+        padding-bottom: 3px;
+        padding-left: var(--space-sm);
+        padding-top: 3px;
       }
     }
   }
 
   .btn-toggle-timestamp {
-    position: absolute;
+    align-items: center;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
     bottom: 15px;
-    width: 20px;
-    height: 20px;
-    border-radius: $border-radius;
+    color: var(--text-muted);
     cursor: pointer;
+    display: flex;
+    height: 22px;
+    justify-content: center;
+    position: absolute;
     transform: translateX(-50%);
+    transition: color .15s ease, border-color .15s ease;
+    width: 22px;
+    z-index: 1;
 
-    &.closed {
-      transform: translateX(-50%) rotate(180deg);
+    &::after {
+      @include icon('icn-close-date', 4px 7px);
+      content: '';
+      height: 7px;
+      width: 4px;
+    }
+
+    &:hover {
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+
+    &.closed::after {
+      transform: rotate(180deg);
     }
   }
 
   .btn-resume {
-    background-position: 10px 50%;
-    background-repeat: no-repeat;
-    background-size: 8px 10px;
-    border-radius: $border-radius;
-    bottom: $spacing;
+    align-items: center;
+    background: var(--accent);
+    border-radius: var(--radius-pill);
+    bottom: var(--space);
+    box-shadow: var(--shadow-float);
+    color: var(--accent-contrast);
     cursor: pointer;
-    font-size: 14px;
-    height: 30px;
-    padding-left: 25px;
+    display: flex;
+    font-size: 13px;
+    font-weight: 600;
+    gap: var(--space-xs);
+    height: 34px;
+    padding: 0 16px;
     position: absolute;
-    right: $spacing;
-    text-align: left;
-    width: 85px;
+    right: var(--space);
+    transition: background-color .15s ease, transform .15s ease;
+    z-index: 2;
+
+    &::before {
+      @include icon-common('icn-resume', 8px 10px);
+      content: '';
+      height: 10px;
+      width: 8px;
+    }
+
+    &:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
   }
 }
 
+// **
+// popovers
+// **
+
 .popover {
   position: absolute;
+  z-index: 10;
 
   .popover-content {
-    border-radius: 5px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-raised);
+    color: var(--text-secondary);
     display: flex;
     flex-direction: column;
     font-size: 12px;
-    margin-top: $spacing * 2;
+    margin-top: 14px;
     overflow: visible !important;
     position: relative;
-    width: 156px;
+    width: 190px;
 
-    &:before {
-      border-bottom: $spacing / 2 solid transparent;
-      border-left: $spacing / 2 solid transparent;
-      border-right: $spacing / 2 solid transparent;
+    &::before {
+      border-bottom: 7px solid var(--surface-raised);
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
       content: '';
       height: 0;
       left: 50%;
@@ -317,125 +611,137 @@ header {
     }
 
     .btn {
-      border-radius: $border-radius;
-      border-style: solid;
-      border-width: 1px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: background-color .12s ease, color .12s ease, border-color .12s ease;
+
+      &:hover {
+        background: var(--surface-hover);
+        color: var(--text-primary);
+      }
+
+      &.selected {
+        background: var(--accent-soft);
+        border-color: var(--accent-ring);
+        color: var(--accent);
+      }
+
+      &:active {
+        background: var(--surface-active);
+      }
     }
   }
 
   .popover-info {
     align-items: center;
-    height: 265px;
+    padding: var(--space) var(--space-sm) var(--space-sm);
 
     .rtail-logo {
-      background-position: 50% 50%;
-      background-repeat: no-repeat;
-      background-size: 53px 13px;
-      border-radius: $border-radius $border-radius 0 0;
-      height: 48px;
-      width: 100%;
+      @include icon-common('logo-rtail', contain);
+      color: var(--accent);
+      height: 18px;
+      width: 72px;
     }
 
     .version {
-      margin: 15px 0;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+      margin: 10px 0 var(--space-sm);
     }
 
     .btn {
       align-items: center;
       display: flex;
-      height: 30px;
+      height: 32px;
       justify-content: center;
-      margin-bottom: 5px;
-      width: 87px;
+      margin-bottom: var(--space-xs);
+      width: 100%;
     }
 
+    // Designer credit.
     .lukibear-logo {
-      background-position: 50% 50%;
-      background-repeat: no-repeat;
-      background-size: 30%;
-      border-radius: 0 0 $border-radius $border-radius;
-      flex: 1;
-      margin-top: 10px;
-      width: 100%;
+      @include icon('logo-lukibear', contain);
+      color: var(--text-faint);
+      height: 22px;
+      margin-top: var(--space-xs);
+      opacity: .7;
+      width: 60px;
     }
   }
 
   .popover-settings {
-    left: -60px;
-    padding: 15px;
+    padding: var(--space-sm);
 
-    &:before {
-      transform: translate(48px, -100%);
+    // The settings button sits at the right edge of the header, so the panel
+    // is nudged left to stay on screen and the arrow is pinned back over the
+    // button. These offsets preserve the original anchor geometry.
+    left: -60px;
+
+    &::before {
+      left: 129px;
+      transform: translateY(-100%);
     }
 
     h4 {
-      font-weight: normal;
+      color: var(--text-faint);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .07em;
+      margin-bottom: var(--space-xs);
+      text-transform: uppercase;
+
+      + .btn-group {
+        margin-top: 0;
+      }
     }
 
     .btn-group {
-      display: flex;
-      flex-direction: row;
-      flex-wrap: wrap;
-      margin: 10px 0;
+      display: grid;
+      gap: 4px;
+      grid-template-columns: repeat(3, 1fr);
+      margin: 0 0 var(--space-sm) 0;
 
       &:last-of-type {
         margin-bottom: 0;
       }
 
-      .btn {
-        background-position: 50% 50%;
-        background-repeat: no-repeat;
-        background-size: auto 50%;
-        display: block;
-        font-size: 16px;
-        height: 30px;
-        width: 42px;
-
-        &:nth-child(1) {
-          border-radius: $border-radius 0 0 $border-radius;
-          border-right: 0;
-        }
-
-        + .btn {
-          border-radius: 0;
-        }
-
-        &:nth-child(3) {
-          border-left: 0;
-          border-radius: 0 $border-radius 0 0;
-        }
-
-        &:nth-child(4) {
-          border-radius: 0 0 0 $border-radius;
-          border-right: 0;
-          border-top: 0;
-        }
-
-        &:last-child {
-          border-radius: 0 $border-radius $border-radius 0;
-        }
-
-        &:nth-child(5) {
-          border-top: 0;
-        }
-
-        &:nth-child(6) {
-          border-left: 0;
-          border-radius: 0 0 $border-radius;
-          border-top: 0;
-        }
+      &.six-grid {
+        grid-template-columns: repeat(3, 1fr);
       }
 
-      &.six-grid {
-        .btn:nth-child(1) {
-          border-radius: $border-radius 0 0;
-          border-right: 0;
+      .btn {
+        align-items: center;
+        display: flex;
+        font-size: 14px;
+        height: 32px;
+        justify-content: center;
+        position: relative;
+        width: 100%;
+
+        &::after {
+          content: '';
+          height: 14px;
+          position: absolute;
+          width: 14px;
         }
 
-        .btn:nth-child(n + 4) {
-          border-top: 0;
-        }
+        &.btn-font-smaller::after { @include icon('icn-font-decrease'); }
+        &.btn-font-reset::after   { @include icon('icn-font-reset'); }
+        &.btn-font-bigger::after  { @include icon('icn-font-increase'); }
+        &.btn-sorting-asc::after  { @include icon('icn-sort-asc'); }
+        &.btn-sorting-desc::after { @include icon('icn-sort-desc'); }
+        &.btn-theme-dark::after   { @include icon('icn-theme-dark'); }
+        &.btn-theme-light::after  { @include icon('icn-theme-light'); }
+      }
+
+      // The font-family swatches show real glyphs, not icons.
+      &.six-grid .btn::after {
+        content: none;
       }
     }
   }
 }
+

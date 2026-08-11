@@ -2,7 +2,7 @@ var gulp = require('gulp')
 var run = require('run-sequence')
 var plugins = require('gulp-load-plugins')()
 var del = require('del')
-var autoprefixer = require('autoprefixer-core')
+var autoprefixer = require('autoprefixer')
 var version = require('./package.json').version
 var spawn = require('child_process').spawn
 
@@ -35,14 +35,19 @@ gulp.task('clean:npm', function (done) {
  */
 
 gulp.task('sass', function () {
-  return gulp.src('app/scss/*', { base: 'app/scss' })
+  // gulp-sass >= 5 takes the compiler explicitly; dart-sass replaces the
+  // abandoned node-sass/libsass and is the only implementation that supports
+  // the `@use` module system the stylesheets are written against.
+  var sass = plugins.sass(require('sass'))
+
+  return gulp.src('app/scss/*.scss', { base: 'app/scss' })
     .pipe(plugins.sourcemaps.init())
-    .pipe(plugins.sass())
-    .on('error', function (err) {
+    .pipe(sass().on('error', function (err) {
       plugins.util.log('sass error', err.message)
       plugins.util.beep()
-    })
-    .pipe(plugins.postcss([ autoprefixer({ browsers: ['last 2 version'] }) ]))
+    }))
+    // Targets come from the "browserslist" field in package.json.
+    .pipe(plugins.postcss([ autoprefixer() ]))
     .pipe(plugins.sourcemaps.write())
     .pipe(gulp.dest('app/css'))
 })

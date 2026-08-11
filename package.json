@@ -41,7 +41,7 @@
     "angular-rt-popup": "^1.0.5",
     "angular-ui-router": "^0.2.15",
     "ansi_up": "^1.2.1",
-    "autoprefixer-core": "^5.1.11",
+    "autoprefixer": "^10.4.20",
     "chai": "^3.0.0",
     "del": "^1.1.1",
     "gulp": "^3.9.0",
@@ -52,7 +52,7 @@
     "gulp-minify-html": "^1.0.2",
     "gulp-ng-annotate": "^1.0.0",
     "gulp-postcss": "^5.1.6",
-    "gulp-sass": "^2.0.1",
+    "gulp-sass": "^5.1.0",
     "gulp-sourcemaps": "^1.5.2",
     "gulp-uglify": "^1.2.0",
     "gulp-useref": "^1.1.2",
@@ -64,8 +64,8 @@
     "localforage": "^1.2.2",
     "mocha": "^2.2.5",
     "moment": "^2.10.3",
-    "node-sass": "^3.1.1",
-    "run-sequence": "^1.1.0"
+    "run-sequence": "^1.1.0",
+    "sass": "^1.83.0"
   },
   "scripts": {
     "app": "DEBUG=rtail:*,api:* gulp app",
@@ -73,5 +73,10 @@
     "test:watch": "NODE_ENV=test nodemon --harmony test/runner.js"
   },
   "author": "Kilian Ciuffolo <me@nailik.org>",
-  "license": "MIT"
+  "license": "MIT",
+  "browserslist": [
+    "last 2 versions",
+    "not dead",
+    "not op_mini all"
+  ]
 }
