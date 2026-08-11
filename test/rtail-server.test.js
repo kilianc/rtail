@@ -159,4 +159,19 @@ describe('rtail-server webapp', () => {
 
     assert.equal(res.headers.get('cache-control'), 'no-store')
   })
+
+  // The app lives under /app in development, but a bare / is what people type.
+  it('redirects the root to the app', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/`, { redirect: 'manual' })
+
+    assert.equal(res.status, 302)
+    assert.equal(res.headers.get('location'), '/app/')
+  })
+
+  it('lands on the app when the root redirect is followed', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/`)
+
+    assert.equal(res.status, 200)
+    assert.match(await res.text(), /id="root"/)
+  })
 })

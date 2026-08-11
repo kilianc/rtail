@@ -84,6 +84,10 @@ const isDev = 'development' === argv.webVersion
 if (!argv.webVersion) {
   app.use(express.static(new URL('../dist', import.meta.url).pathname))
 } else if (isDev) {
+  // In development the app is served from /app, but a bare / is what everyone
+  // actually types — so send them there instead of a 404.
+  app.get('/', (_req, res) => res.redirect(302, '/app/'))
+
   // No caching in development: the watcher rewrites bundle.js and main.css in
   // place, and a cached stylesheet silently hides the change you just made.
   app.use('/app', express.static(new URL('../app', import.meta.url).pathname, {
