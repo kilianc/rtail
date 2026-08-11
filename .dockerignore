@@ -1,0 +1,11 @@
+.git
+.github
+.claude
+node_modules
+dist
+app/css
+app/bundle.js
+app/bundle.js.map
+*.log
+Makefile
+README.md
