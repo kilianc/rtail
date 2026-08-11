@@ -87,22 +87,42 @@ export function StreamView({
     <div class="stream-view">
       <div class="stream-header">
         {activeStream && (
-          <button class="stream-title" onClick={onToggleFavorite}>
-            <i class={`stream-title-favorite ${isFavorite ? 'on' : ''}`} />
-            {activeStream}
-          </button>
+          <>
+            <button
+              class="stream-title"
+              title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              onClick={onToggleFavorite}
+            >
+              <i class={`stream-title-favorite ${isFavorite ? 'on' : ''}`} />
+              {activeStream}
+            </button>
+
+            <span class={`stream-status ${paused ? 'paused' : ''}`}>
+              <i />
+              {paused ? 'Paused' : 'Live'}
+            </span>
+          </>
         )}
 
-        <div class="filter-box">
-          <input
-            type="text"
-            placeholder="filter stream (regexp allowed)"
-            aria-label="Filter stream"
-            value={pattern}
-            onInput={(event) => setPattern(event.currentTarget.value)}
-          />
-        </div>
+        {activeStream && (
+          <div class="filter-box">
+            <input
+              type="text"
+              placeholder="filter stream (regexp allowed)"
+              aria-label="Filter stream"
+              value={pattern}
+              onInput={(event) => setPattern(event.currentTarget.value)}
+            />
+          </div>
+        )}
       </div>
+
+      {!activeStream && (
+        <div class="stream-empty">
+          <div class="stream-empty-mark" />
+          <p>Select a stream to start tailing</p>
+        </div>
+      )}
 
       <div class="stream-lines" ref={scrollerRef}>
         {visible.map((line, index) => (

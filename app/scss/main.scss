@@ -1,9 +1,9 @@
 // **
 // rTail webapp styles
 //
-// Single compiled bundle. Theming is done with CSS custom properties
-// (see _tokens.scss) rather than compiling one stylesheet per theme, so
-// switching themes is a class swap on <body> with no extra network cost.
+// Minimal, monochrome, hairline-bordered. Flat surfaces separated by 1px
+// borders rather than shadows; one accent (see _tokens.scss) reserved for
+// interactive meaning. The log viewport is the only place colour appears.
 // **
 
 @use 'tokens' as *;
@@ -44,24 +44,48 @@ textarea {
   font: inherit;
 }
 
-// Keyboard users get a ring; mouse users don't. The old reset killed the
-// focus outline outright, which made the app unusable without a mouse.
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: .4;
+}
+
+// Keyboard users get a ring; mouse users don't.
 :focus {
   outline: none;
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent-ring);
-  outline-offset: 2px;
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
 }
 
 ::selection {
-  background: var(--accent-soft);
-  color: var(--text-primary);
+  background: var(--primary-subtle);
+  color: var(--foreground);
+}
+
+@keyframes pulse {
+  0% { opacity: .7; transform: scale(1); }
+  70% { opacity: 0; transform: scale(2.6); }
+  100% { opacity: 0; transform: scale(2.6); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
 }
 
 // **
-// scrollbars
+// scrollbars — thin and monochrome
 // **
 
 * {
@@ -80,12 +104,12 @@ textarea {
 
 ::-webkit-scrollbar-thumb {
   background: var(--border-strong);
-  border: 3px solid transparent;
   background-clip: padding-box;
+  border: 3px solid transparent;
   border-radius: var(--radius-pill);
 
   &:hover {
-    background: var(--text-faint);
+    background: var(--muted-foreground);
     background-clip: padding-box;
   }
 }
@@ -95,14 +119,15 @@ textarea {
 // **
 
 body {
-  background: var(--bg-app);
-  color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto,
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
     'Helvetica Neue', Arial, sans-serif;
-  font-size: 14px;
+  font-size: 13px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   height: 100vh;
+  letter-spacing: -0.006em;
   overflow: hidden;
 
   &.resizing {
@@ -122,61 +147,100 @@ body {
 }
 
 // **
+// shared: ghost icon button
+// **
+
+@mixin ghost-button($size: 28px) {
+  align-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--muted-foreground);
+  display: inline-flex;
+  flex-shrink: 0;
+  height: $size;
+  justify-content: center;
+  position: relative;
+  transition: background-color .12s ease, color .12s ease;
+  width: $size;
+
+  &:hover {
+    background: var(--subtle);
+    color: var(--foreground);
+  }
+
+  &:active {
+    background: var(--subtle-strong);
+  }
+}
+
+// **
+// shared: input
+// **
+
+@mixin field {
+  background: var(--muted);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--foreground);
+  font-size: 12.5px;
+  height: 30px;
+  min-width: 0;
+  transition: border-color .12s ease, background-color .12s ease;
+
+  &::placeholder {
+    color: var(--muted-foreground);
+  }
+
+  &:hover {
+    border-color: var(--border);
+  }
+
+  &:focus {
+    background: var(--background);
+    border-color: var(--border-strong);
+  }
+}
+
+// **
 // header
 // **
 
 header {
   align-items: center;
-  background: var(--bg-header);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border);
   display: flex;
   flex-direction: row;
   flex-shrink: 0;
-  gap: var(--space-xs);
+  gap: 2px;
   height: var(--header-height);
-  padding: 0 var(--space);
+  padding: 0 var(--gutter-sm) 0 var(--gutter);
 
   .rtail-logo {
-    @include icon-common('logo-rtail', 62px 15px);
-    color: var(--accent);
+    @include icon-common('logo-rtail', 54px 13px);
+    color: var(--foreground);
     flex-shrink: 0;
-    height: 20px;
-    width: 62px;
+    height: 16px;
+    margin-right: auto;
+    width: 54px;
   }
 
   .btn {
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
-    cursor: pointer;
-    flex-shrink: 0;
-    height: 30px;
-    position: relative;
-    transition: color .15s ease, background-color .15s ease;
-    width: 30px;
+    @include ghost-button;
 
     &::after {
       content: '';
-      height: 17px;
-      left: 50%;
+      height: 15px;
       position: absolute;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      width: 17px;
+      width: 15px;
     }
 
-    &:hover {
-      background: var(--surface-hover);
-      color: var(--text-primary);
-    }
-
-    &.btn-info {
-      margin-left: auto;
-
-      &::after { @include icon('btn-info'); }
-    }
-
+    &.btn-info::after { @include icon('btn-info'); }
     &.btn-github::after { @include icon('btn-github'); }
     &.btn-settings::after { @include icon('btn-settings'); }
+
+    &[aria-expanded='true'] {
+      background: var(--subtle-strong);
+      color: var(--foreground);
+    }
   }
 }
 
@@ -196,8 +260,7 @@ header {
 // **
 
 .sidebar {
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -220,12 +283,12 @@ header {
       left: 3px;
       position: absolute;
       top: 0;
-      transition: background-color .15s ease;
+      transition: background-color .12s ease;
       width: 1px;
     }
 
     &:hover::after {
-      background: var(--accent);
+      background: var(--border-strong);
     }
   }
 
@@ -233,43 +296,25 @@ header {
     align-items: center;
     display: flex;
     flex-shrink: 0;
-    padding: var(--space-sm);
+    padding: var(--gutter-sm) var(--gutter-sm) var(--gutter-xs);
     position: relative;
 
     &::before {
       @include icon('icn-search');
-      color: var(--text-faint);
+      color: var(--muted-foreground);
       content: '';
-      height: 14px;
-      left: 24px;
+      height: 13px;
+      left: 20px;
       pointer-events: none;
       position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 14px;
+      width: 13px;
       z-index: 1;
     }
 
     input {
-      background: var(--surface-input);
-      border: 1px solid transparent;
-      border-radius: var(--radius-sm);
-      color: var(--text-primary);
+      @include field;
       flex: 1;
-      font-size: 13px !important;
-      height: 32px;
-      min-width: 0;
-      padding: 0 10px 0 30px;
-      transition: border-color .15s ease, background-color .15s ease;
-
-      &::placeholder {
-        color: var(--text-faint);
-      }
-
-      &:focus {
-        background: var(--bg-app);
-        border-color: var(--accent-ring);
-      }
+      padding: 0 var(--gutter-sm) 0 28px;
     }
   }
 
@@ -277,82 +322,82 @@ header {
     flex: 1;
     height: 0;
     overflow-y: auto;
-    padding: 0 var(--space-xs) var(--space) var(--space-xs);
+    padding: 0 var(--gutter-xs) var(--gutter) var(--gutter-xs);
 
     .stream-section {
       h4 {
         align-items: center;
-        color: var(--text-faint);
+        color: var(--muted-foreground);
         display: flex;
-        font-size: 11px;
-        font-weight: 600;
-        height: 28px;
-        letter-spacing: .07em;
-        margin-top: var(--space-sm);
-        padding-left: var(--space-xs);
+        font-size: 10.5px;
+        font-weight: 500;
+        height: 26px;
+        letter-spacing: .06em;
+        margin-top: var(--gutter-sm);
+        padding-left: var(--gutter-sm);
         text-transform: uppercase;
       }
 
       a {
         align-items: center;
         border-radius: var(--radius-sm);
-        color: var(--text-secondary);
-        cursor: pointer;
+        color: var(--muted-foreground);
         display: flex;
-        gap: var(--space-xs);
+        gap: var(--gutter-xs);
         height: var(--row-height);
-        padding: 0 10px;
+        padding: 0 var(--gutter-sm);
         position: relative;
         transition: background-color .12s ease, color .12s ease;
 
         &:hover {
-          background: var(--surface-hover);
-          color: var(--text-primary);
+          background: var(--subtle);
+          color: var(--foreground);
         }
 
+        // Active row stays monochrome — the accent is a single marker bar, the
+        // only colour in the entire sidebar.
         &.selected {
-          background: var(--accent-soft);
-          color: var(--accent);
+          background: var(--subtle-strong);
+          color: var(--foreground);
           font-weight: 500;
 
           &::before {
-            background: var(--accent);
-            border-radius: 0 2px 2px 0;
+            background: var(--primary);
+            border-radius: var(--radius-pill);
+            box-shadow: 0 0 8px var(--primary);
             content: '';
             height: 16px;
             left: 0;
             position: absolute;
             top: 50%;
             transform: translateY(-50%);
-            width: 3px;
+            width: 2.5px;
           }
         }
 
         span {
-          font-size: 13px;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
         }
 
         i {
-          background-color: var(--accent-2);
+          background: var(--primary);
           border-radius: 50%;
           flex-shrink: 0;
-          height: 7px;
+          height: 5px;
           margin-left: auto;
-          width: 7px;
+          width: 5px;
         }
       }
     }
   }
 
-  // Bottom scroll fade, so the list dissolves into the sidebar instead of
-  // being cut off mid-row.
+  // Bottom scroll fade, so the list dissolves rather than being cut off.
   .fade {
-    background: linear-gradient(to top, var(--bg-sidebar), transparent);
+    background: linear-gradient(to top, var(--background), transparent);
     bottom: 0;
-    height: 32px;
+    height: 28px;
     left: 0;
     pointer-events: none;
     position: absolute;
@@ -365,7 +410,6 @@ header {
 // **
 
 .stream-view {
-  background: var(--bg-stream);
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -374,47 +418,88 @@ header {
 
   .stream-header {
     align-items: center;
-    background: var(--bg-header);
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border);
     display: flex;
     flex-shrink: 0;
-    gap: var(--space-sm);
+    gap: var(--gutter-sm);
     height: var(--header-height);
-    padding: 0 var(--space);
+    padding: 0 var(--gutter);
 
     .stream-title {
       align-items: center;
       border-radius: var(--radius-sm);
-      color: var(--text-primary);
-      cursor: pointer;
+      color: var(--foreground);
       display: flex;
-      font-size: 14px;
-      font-weight: 600;
-      gap: var(--space-xs);
+      font-size: 13px;
+      font-weight: 500;
+      gap: var(--gutter-xs);
+      letter-spacing: -0.01em;
+      margin-left: -6px;
       min-width: 0;
       overflow: hidden;
-      padding: 6px 10px 6px 8px;
+      padding: 5px 8px;
       text-overflow: ellipsis;
-      transition: background-color .15s ease;
+      transition: background-color .12s ease;
       white-space: nowrap;
 
       &:hover {
-        background: var(--surface-hover);
+        background: var(--subtle);
       }
     }
 
     .stream-title-favorite {
-      @include icon-common('btn-fav-off', 15px 15px);
-      color: var(--text-faint);
+      @include icon-common('btn-fav-off', 13px 13px);
+      color: var(--muted-foreground);
       display: inline-block;
       flex-shrink: 0;
-      height: 15px;
-      transition: color .15s ease;
-      width: 15px;
+      height: 13px;
+      transition: color .12s ease;
+      width: 13px;
 
       &.on {
-        @include icon-common('btn-fav-on', 15px 15px);
-        color: var(--accent);
+        @include icon-common('btn-fav-on', 13px 13px);
+        color: var(--primary);
+      }
+    }
+
+    // Live / paused indicator — the accent doing real work.
+    .stream-status {
+      align-items: center;
+      color: var(--muted-foreground);
+      display: inline-flex;
+      flex-shrink: 0;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      gap: var(--gutter-xs);
+      letter-spacing: .02em;
+
+      i {
+        background: var(--primary);
+        border-radius: 50%;
+        height: 6px;
+        position: relative;
+        width: 6px;
+
+        // A soft halo that breathes, so "live" is legible at a glance.
+        &::after {
+          animation: pulse 2s ease-out infinite;
+          background: var(--primary);
+          border-radius: 50%;
+          content: '';
+          inset: 0;
+          position: absolute;
+        }
+      }
+
+      &.paused {
+        i {
+          background: var(--muted-foreground);
+
+          &::after {
+            animation: none;
+            content: none;
+          }
+        }
       }
     }
 
@@ -427,74 +512,58 @@ header {
 
       &::before {
         @include icon-common('icn-filter');
-        color: var(--text-faint);
+        color: var(--muted-foreground);
         content: '';
-        height: 13px;
-        left: 11px;
+        height: 12px;
+        left: 10px;
         pointer-events: none;
         position: absolute;
-        width: 13px;
+        width: 12px;
         z-index: 1;
       }
 
       input {
-        background: var(--surface-input);
-        border: 1px solid transparent;
-        border-radius: var(--radius-sm);
-        color: var(--text-primary);
+        @include field;
         flex: 1;
-        font-size: 13px !important;
-        height: 32px;
-        min-width: 0;
-        padding: 0 10px 0 30px;
-        transition: border-color .15s ease, background-color .15s ease;
-
-        &::placeholder {
-          color: var(--text-faint);
-        }
-
-        &:focus {
-          background: var(--bg-app);
-          border-color: var(--accent-ring);
-        }
+        padding: 0 var(--gutter-sm) 0 28px;
       }
     }
   }
 
   .stream-lines {
     flex: 1;
-    font-size: 13px;
+    font-size: 12.5px;
     height: 0;
     overflow: auto;
-    padding: var(--space-xs) 0 var(--space) 0;
+    padding: var(--gutter-xs) 0 var(--gutter);
 
     .stream-line {
       align-items: baseline;
       display: flex;
-      line-height: 1.55;
+      line-height: 1.6;
 
       &:hover {
-        background: var(--surface-hover);
+        background: var(--subtle);
       }
 
       pre {
-        line-height: 1.55;
+        line-height: 1.6;
         margin: 0;
       }
 
       .stream-line-timestamp {
-        border-right: 1px solid var(--border-subtle);
-        color: var(--text-faint);
+        border-right: 1px solid var(--border);
+        color: var(--muted-foreground);
         flex-shrink: 0;
         font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: .85em;
+        font-size: .82em;
         font-variant-numeric: tabular-nums;
-        padding-right: var(--space-sm);
+        opacity: .8;
+        padding-right: var(--gutter);
         user-select: none;
       }
 
       .stream-line-content {
-        color: var(--text-primary);
         min-width: 0;
         white-space: pre;
       }
@@ -505,28 +574,50 @@ header {
       // spaces between coloured segments.
       .stream-line-timestamp,
       .stream-line-content {
-        padding-bottom: 3px;
-        padding-left: var(--space-sm);
-        padding-top: 3px;
+        padding-bottom: 2px;
+        padding-left: var(--gutter);
+        padding-top: 2px;
       }
+    }
+  }
+
+  // Empty state — shown until a stream is picked.
+  .stream-empty {
+    align-items: center;
+    color: var(--muted-foreground);
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--gutter);
+    justify-content: center;
+    user-select: none;
+
+    .stream-empty-mark {
+      @include icon-common('logo-rtail', contain);
+      color: var(--border-strong);
+      height: 22px;
+      width: 84px;
+    }
+
+    p {
+      font-size: 12.5px;
     }
   }
 
   .btn-toggle-timestamp {
     align-items: center;
-    background: var(--surface-raised);
+    background: var(--background);
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    bottom: 15px;
-    color: var(--text-muted);
-    cursor: pointer;
+    border-radius: var(--radius-xs);
+    bottom: 14px;
+    color: var(--muted-foreground);
     display: flex;
-    height: 22px;
+    height: 20px;
     justify-content: center;
     position: absolute;
     transform: translateX(-50%);
-    transition: color .15s ease, border-color .15s ease;
-    width: 22px;
+    transition: color .12s ease, border-color .12s ease;
+    width: 20px;
     z-index: 1;
 
     &::after {
@@ -538,7 +629,7 @@ header {
 
     &:hover {
       border-color: var(--border-strong);
-      color: var(--text-primary);
+      color: var(--foreground);
     }
 
     &.closed::after {
@@ -548,37 +639,31 @@ header {
 
   .btn-resume {
     align-items: center;
-    background: var(--accent);
-    border-radius: var(--radius-pill);
-    bottom: var(--space);
+    background: var(--primary);
+    border-radius: var(--radius-sm);
+    bottom: var(--gutter);
     box-shadow: var(--shadow-float);
-    color: var(--accent-contrast);
-    cursor: pointer;
+    color: var(--primary-foreground);
     display: flex;
-    font-size: 13px;
-    font-weight: 600;
-    gap: var(--space-xs);
-    height: 34px;
-    padding: 0 16px;
+    font-size: 12.5px;
+    font-weight: 500;
+    gap: var(--gutter-xs);
+    height: 30px;
+    padding: 0 12px;
     position: absolute;
-    right: var(--space);
-    transition: background-color .15s ease, transform .15s ease;
+    right: var(--gutter);
+    transition: background-color .12s ease;
     z-index: 2;
 
     &::before {
-      @include icon-common('icn-resume', 8px 10px);
+      @include icon-common('icn-resume', 7px 9px);
       content: '';
-      height: 10px;
-      width: 8px;
+      height: 9px;
+      width: 7px;
     }
 
     &:hover {
-      background: var(--accent-hover);
-      transform: translateY(-1px);
-    }
-
-    &:active {
-      transform: translateY(0);
+      background: var(--primary-hover);
     }
   }
 }
@@ -594,138 +679,128 @@ header {
   z-index: 10;
 
   .popover-content {
-    background: var(--surface-raised);
+    background: var(--popover);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    box-shadow: var(--shadow-raised);
-    color: var(--text-secondary);
+    box-shadow: var(--shadow-popover);
+    color: var(--popover-foreground);
     display: flex;
     flex-direction: column;
-    font-size: 12px;
-    margin-top: 14px;
+    font-size: 12.5px;
+    margin-top: 6px;
     overflow: visible !important;
     position: relative;
-    width: 190px;
-
-    &::before {
-      border-bottom: 7px solid var(--surface-raised);
-      border-left: 7px solid transparent;
-      border-right: 7px solid transparent;
-      content: '';
-      height: 0;
-      left: var(--arrow-x, 50%);
-      position: absolute;
-      top: 0;
-      transform: translate(-50%, -100%);
-      width: 0;
-    }
-
-    .btn {
-      background: transparent;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      color: var(--text-secondary);
-      cursor: pointer;
-      transition: background-color .12s ease, color .12s ease, border-color .12s ease;
-
-      &:hover {
-        background: var(--surface-hover);
-        color: var(--text-primary);
-      }
-
-      &.selected {
-        background: var(--accent-soft);
-        border-color: var(--accent-ring);
-        color: var(--accent);
-      }
-
-      &:active {
-        background: var(--surface-active);
-      }
-    }
+    width: 200px;
   }
 
   .popover-info {
     align-items: center;
-    padding: var(--space) var(--space-sm) var(--space-sm);
+    padding: var(--gutter);
 
     .rtail-logo {
       @include icon-common('logo-rtail', contain);
-      color: var(--accent);
-      height: 18px;
-      width: 72px;
+      color: var(--foreground);
+      height: 16px;
+      width: 62px;
     }
 
     .version {
-      color: var(--text-muted);
+      color: var(--muted-foreground);
       font-variant-numeric: tabular-nums;
-      margin: 10px 0 var(--space-sm);
+      margin: 8px 0 var(--gutter-sm);
     }
 
     .btn {
       align-items: center;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--foreground);
       display: flex;
-      height: 32px;
+      height: 30px;
       justify-content: center;
-      margin-bottom: var(--space-xs);
+      margin-bottom: var(--gutter-xs);
+      transition: background-color .12s ease, border-color .12s ease;
       width: 100%;
+
+      &:hover {
+        background: var(--subtle);
+        border-color: var(--border-strong);
+      }
     }
 
     // Designer credit.
     .lukibear-logo {
       @include icon('logo-lukibear', contain);
-      color: var(--text-faint);
-      height: 22px;
-      margin-top: var(--space-xs);
-      opacity: .7;
-      width: 60px;
+      color: var(--muted-foreground);
+      height: 20px;
+      margin-top: var(--gutter-xs);
+      opacity: .5;
+      width: 52px;
     }
   }
 
   .popover-settings {
-    padding: var(--space-sm);
+    padding: var(--gutter-sm);
 
     h4 {
-      color: var(--text-faint);
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: .07em;
-      margin-bottom: var(--space-xs);
+      color: var(--muted-foreground);
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: .06em;
+      margin-bottom: var(--gutter-xs);
       text-transform: uppercase;
-
-      + .btn-group {
-        margin-top: 0;
-      }
     }
 
+    // Segmented control: one recessed track, borderless items inside it.
+    // Flex rather than a fixed column count, so a two-item group (sorting,
+    // theme) fills its track instead of leaving a dead third cell.
     .btn-group {
-      display: grid;
-      gap: 4px;
-      grid-template-columns: repeat(3, 1fr);
-      margin: 0 0 var(--space-sm) 0;
+      background: var(--muted);
+      border-radius: var(--radius-sm);
+      display: flex;
+      gap: 2px;
+      margin: 0 0 var(--gutter-sm);
+      padding: 2px;
 
       &:last-of-type {
         margin-bottom: 0;
       }
 
+      // The font-family swatches are a deliberate 3x2 grid.
       &.six-grid {
+        display: grid;
         grid-template-columns: repeat(3, 1fr);
       }
 
       .btn {
         align-items: center;
+        border-radius: var(--radius-xs);
+        color: var(--muted-foreground);
         display: flex;
-        font-size: 14px;
-        height: 32px;
+        flex: 1;
+        font-size: 13px;
+        height: 26px;
         justify-content: center;
+        min-width: 0;
         position: relative;
-        width: 100%;
+        transition: background-color .12s ease, color .12s ease;
 
         &::after {
           content: '';
-          height: 14px;
+          height: 13px;
           position: absolute;
-          width: 14px;
+          width: 13px;
+        }
+
+        &:hover:not(.selected) {
+          color: var(--foreground);
+        }
+
+        // Selected reads as a raised "thumb" on the track, not a colour fill.
+        &.selected {
+          background: var(--popover);
+          box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+          color: var(--foreground);
         }
 
         &.btn-font-smaller::after { @include icon('icn-font-decrease'); }
@@ -744,4 +819,3 @@ header {
     }
   }
 }
-
