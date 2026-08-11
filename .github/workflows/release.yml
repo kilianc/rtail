@@ -1,0 +1,109 @@
+name: Release
+
+# The version in package.json is the release trigger. Bump it in a PR; when that
+# PR lands on main this tags the commit, cuts the GitHub release, and ships the
+# container image.
+on:
+  push:
+    branches: [main]
+    paths: ['package.json']
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+      version: ${{ steps.check.outputs.version }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # HEAD^ for the version diff, and the tags for the already-released
+          # guard — neither comes with the default shallow checkout.
+          fetch-depth: 2
+          fetch-tags: true
+
+      - id: check
+        name: Detect a version bump
+        run: |
+          version=$(jq -r .version package.json)
+          previous=$(git show HEAD^:package.json 2>/dev/null | jq -r .version || echo '')
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          if [ "$version" = "$previous" ]; then
+            echo "Version unchanged at $version — nothing to release."
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "Tag v$version already exists — nothing to release."
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "$previous -> $version"
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+
+          # 0.3.0-rc.1 and friends ship, but never as `latest`.
+          case "$version" in
+            *-*) echo 'prerelease=true' >> "$GITHUB_OUTPUT" ;;
+            *) echo 'prerelease=false' >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  verify:
+    needs: version
+    if: needs.version.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+
+    # Releases are cut straight from main, so re-run the gate here rather than
+    # trusting that CI already passed on this commit.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run dist
+      - run: npm test
+
+  release:
+    needs: [version, verify]
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          flags=''
+          [ "$PRERELEASE" = 'true' ] && flags='--prerelease'
+
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --target "$GITHUB_SHA" \
+            --generate-notes $flags
+
+  docker:
+    needs: [version, release]
+    uses: ./.github/workflows/docker.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      version: ${{ needs.version.outputs.version }}
+      latest: ${{ needs.version.outputs.prerelease == 'false' }}

@@ -165,7 +165,7 @@ the container image is configured.
     rtail-server --web-port 8080         Use custom HTTP port
     rtail-server --udp-port 8080         Use custom UDP port
     rtail-server --web-version stable    Always uses latest stable webapp
-    rtail-server --web-version unstable  Always uses latest develop webapp
+    rtail-server --web-version unstable  Always uses latest unreleased webapp
     rtail-server --web-version 0.1.3     Use webapp v0.1.3
 
 ## UDP Broadcasting
@@ -240,10 +240,11 @@ platform (`history`, `localStorage`, `Intl`) rather than dependencies.
 
 # How to contribute
 
-This project follows the awesome [Vincent Driessen](http://nvie.com/about/) [branching model](http://nvie.com/posts/a-successful-git-branching-model/).
+`main` is the only long-lived branch, and it is always releasable.
 
-* You must add a new feature on its own branch
-* You must contribute to hot-fixing, directly into the master branch (and pull-request to it)
+* Branch off `main`, and open a pull request back into `main`
+* Keep the branch short-lived; there is no `develop` or release branch to merge through
+* CI must be green before a pull request lands
 
 The test suite runs on the built-in [`node:test`](https://nodejs.org/api/test.html)
 runner. Use the tests to check whether your contribution breaks some part of the
@@ -256,6 +257,17 @@ The webapp is TypeScript; please keep it type-clean:
     $ make typecheck
 
 CI runs both, plus the production build, on Node 20 and 22.
+
+## Releasing
+
+The `version` field in `package.json` is the release trigger. Bump it in a pull
+request like any other change; when that pull request lands on `main`, CI
+re-runs the type-check, build, and tests, then tags the commit `vX.Y.Z`, cuts a
+GitHub release with generated notes, and pushes the multi-arch container image
+to `ghcr.io/kilianc/rtail`.
+
+A version with a pre-release suffix (`0.3.0-rc.1`) is marked as a pre-release
+and is never tagged `latest`. Landing anything else on `main` releases nothing.
 
 ## Contributors
 
