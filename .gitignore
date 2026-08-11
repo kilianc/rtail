@@ -1,3 +1,5 @@
-app/css/*
-app/*.js
+node_modules
 dist
+app/css
+app/bundle.js
+app/bundle.js.map

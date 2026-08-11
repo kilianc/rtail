@@ -1,45 +1,36 @@
 // **
-// font variables
+// monospace stacks for the log viewport
+//
+// Index order is persisted in localForage as `fontFamily` (1-based), so
+// entries may be appended but never reordered.
 // **
+
+@use 'sass:list';
+
+$mono-fallback: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
 $font-families: (
-  "Inconsolata"
-  "Roboto Mono"
-  "Source Code Pro"
-  "Ubuntu Mono"
-  "Droid Sans Mono"
-  "Anonymous Pro"
+  'Inconsolata',
+  'Roboto Mono',
+  'Source Code Pro',
+  'Ubuntu Mono',
+  'Droid Sans Mono',
+  'Anonymous Pro'
 );
 
-$font-sizes: (
-  11px
-  12px
-  13px
-  14px
-  15px
-  16px
-  17px
-);
-
-// **
-// font families
-// **
+$font-sizes: (11px, 12px, 13px, 14px, 15px, 16px, 17px);
 
 @each $font-family in $font-families {
-  $i: index($font-families, $font-family);
+  $i: list.index($font-families, $font-family);
 
   .font-family-#{$i} .stream-line,
   .btn-font-#{$i} {
-    font-family: $font-family;
+    font-family: $font-family, $mono-fallback;
   }
 }
 
-// **
-// font sizes
-// **
-
 @each $font-size in $font-sizes {
-  $i: index($font-sizes, $font-size);
+  $i: list.index($font-sizes, $font-size);
 
   .font-size-#{$i} .stream-line {
     font-size: $font-size;

@@ -1,7 +1,6 @@
 # `rtail(1)`
 
-[![Wercker CI](https://img.shields.io/wercker/ci/556547b7be632a8c751c857d.svg?style=flat-square)](https://app.wercker.com/project/bykey/54b073dac5b9156509c26031c78c98d4)
-[![Coveralls](https://img.shields.io/coveralls/kilianc/rtail.svg?style=flat-square)](https://coveralls.io/r/kilianc/rtail)
+[![CI](https://github.com/kilianc/rtail/actions/workflows/ci.yml/badge.svg)](https://github.com/kilianc/rtail/actions/workflows/ci.yml)
 [![NPM version](https://img.shields.io/npm/v/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
 [![NPM downloads](https://img.shields.io/npm/dm/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
 [![GitHub Stars](https://img.shields.io/github/stars/kilianc/rtail.svg?style=flat-square)](https://github.com/kilianc/rtail)
@@ -13,6 +12,8 @@
 `rtail` is a command line utility that grabs every line in `stdin` and broadcasts it over **UDP**. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using `rtail` broadcasting to an `rtail-server` – See multiple streams in the browser, in realtime.
 
 ## Installation
+
+Requires Node.js 20 or newer.
 
     $ npm install -g rtail
 
@@ -143,6 +144,63 @@ To scale and broadcast on multiple servers, instruct the `rtail` client to strea
 
 For the time being, the webapp doesn't have an authentication layer; it assumes that you will run it behind a VPN or reverse proxy, with a simple `Authorization` header check.
 
+# Running it locally
+
+The toolchain lives in a container ([`tools/Dockerfile`](tools/Dockerfile)), so Docker is
+the only thing you need installed — no Node.js, no npm, no global CLIs.
+
+    $ make dev
+
+That builds the assets, starts `rtail-server`, feeds it three live demo
+streams, and serves the webapp. It prints the URL — `make url` prints it
+again. Stylesheets recompile on save; reload the browser to pick them up.
+`Ctrl-C` stops everything.
+
+The first run also builds the toolchain image and installs dependencies, so it
+takes a minute; subsequent runs start immediately.
+
+To leave it running in the background instead:
+
+    $ make up         # start detached, wait for it, print the URL
+    $ make logs       # tail it
+    $ make down       # stop it
+
+Other targets:
+
+    $ make build      # build the webapp into app/
+    $ make dist       # build the minified webapp into dist/
+    $ make test       # run the test suite
+    $ make typecheck  # type-check the webapp
+    $ make shell      # open a shell inside the toolchain container
+    $ make clean      # remove generated assets and dependencies
+
+### Ports
+
+Ports are derived from the worktree path, so several checkouts of this repo can
+run at once without colliding. Each gets its own HTTP port, UDP port, and
+container name, fixed across runs — sharing any of the three fails confusingly,
+since two servers can both bind the same UDP port and the loser simply never
+receives a log line.
+
+`make url` reports the current one. Override with `make dev PORT=9000
+UDP_PORT=9001`.
+
+If you do have a Node.js toolchain on your machine, the same targets are plain
+npm scripts — `npm install && npm run dev`.
+
+### The stack
+
+| | |
+| --- | --- |
+| CLI | ESM, Node ≥ 20, [yargs](https://yargs.js.org), [socket.io](https://socket.io) |
+| Webapp | [Preact](https://preactjs.com) + TypeScript, ~33 KB gzipped |
+| Build | [esbuild](https://esbuild.github.io) + [dart-sass](https://sass-lang.com) |
+| Tests | the built-in `node:test` runner |
+
+The webapp has no framework runtime beyond Preact: routing, preferences,
+popovers, and timestamp formatting are a few dozen lines each over the
+platform (`history`, `localStorage`, `Intl`) rather than dependencies.
+
 # How to contribute
 
 This project follows the awesome [Vincent Driessen](http://nvie.com/about/) [branching model](http://nvie.com/posts/a-successful-git-branching-model/).
@@ -150,11 +208,17 @@ This project follows the awesome [Vincent Driessen](http://nvie.com/about/) [bra
 * You must add a new feature on its own branch
 * You must contribute to hot-fixing, directly into the master branch (and pull-request to it)
 
-This project uses JSCS to enforce a consistent code style. Your contribution must be pass jscs validation.
+The test suite runs on the built-in [`node:test`](https://nodejs.org/api/test.html)
+runner. Use the tests to check whether your contribution breaks some part of the
+library, and be sure to add new tests for each new feature.
 
-The test suite is written on top of [mochajs/mocha](http://mochajs.org/). Use the tests to check if your contribution breaks some part of the library and be sure to add new tests for each new feature.
+    $ make test
 
-    $ npm test
+The webapp is TypeScript; please keep it type-clean:
+
+    $ make typecheck
+
+CI runs both, plus the production build, on Node 20 and 22.
 
 ## Contributors
 
@@ -177,13 +241,10 @@ The test suite is written on top of [mochajs/mocha](http://mochajs.org/). Use th
 ## Sponsors
 ❤ rTail? Consider sponsoring this project to keep it alive and free for the community.
 
-* Lukibear (domain)
 * ? (wildcard TLS cert)
 * ? (.io domain)
 
 [![PayPal donate button](https://img.shields.io/badge/$_paypal-one_time_donation_➝-04cd7e.svg?style=flat-square)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=info%40rtail%2eorg&lc=US&item_name=rtail&item_number=rtail&currency_code=USD&bn=PP%2dDonationsBF%3abtn_donateCC_LG%2egif%3aNonHosted)
-
-<a href="mailto:info@lukibear.com">Professional support or ad-hoc is also available.</a>
 
 ## License
 

@@ -1,37 +1,32 @@
-#!/bin/sh
-":" //# comment; exec /usr/bin/env node --harmony "$0" "$@"
+#!/usr/bin/env node
 
 /*!
- * server.js
+ * rtail-server.js
  * Created by Kilian Ciuffolo on Oct 26, 2014
- * (c) 2014-2015
  */
 
-'use strict'
+import dgram from 'node:dgram'
+import { createServer } from 'node:http'
+import createDebug from 'debug'
+import express from 'express'
+import { Server } from 'socket.io'
+import updateNotifier from 'update-notifier'
+import yargs from 'yargs'
+import { hideBin } from 'yargs/helpers'
+import { pkg } from './lib/pkg.js'
+import { webapp } from './lib/webapp.js'
 
-const dgram = require('dgram')
-const app = require('express')()
-const serve = require('express').static
-const http = require('http').Server(app)
-const io = require('socket.io')()
-const yargs = require('yargs')
-const debug = require('debug')('rtail:server')
-const webapp = require('./lib/webapp')
-const updateNotifier = require('update-notifier')
-const pkg = require('../package')
+const debug = createDebug('rtail:server')
 
 /*!
  * inform the user of updates
  */
-updateNotifier({
-  packageName: pkg.name,
-  packageVersion: pkg.version
-}).notify()
+updateNotifier({ pkg }).notify()
 
 /*!
  * parsing argv
  */
-let argv = yargs
+const argv = yargs(hideBin(process.argv))
   .usage('Usage: rtail-server [OPTIONS]')
   .example('rtail-server --web-port 8080', 'Use custom HTTP port')
   .example('rtail-server --udp-port 8080', 'Use custom UDP port')
@@ -40,21 +35,25 @@ let argv = yargs
   .example('rtail-server --web-version 0.1.3', 'Use webapp v0.1.3')
   .option('udp-host', {
     alias: 'uh',
+    type: 'string',
     default: '127.0.0.1',
     describe: 'The listening UDP hostname'
   })
   .option('udp-port', {
     alias: 'up',
+    type: 'number',
     default: 9999,
     describe: 'The listening UDP port'
   })
   .option('web-host', {
     alias: 'wh',
+    type: 'string',
     default: '127.0.0.1',
     describe: 'The listening HTTP hostname'
   })
   .option('web-port', {
     alias: 'wp',
+    type: 'number',
     default: 8888,
     describe: 'The listening HTTP port'
   })
@@ -64,80 +63,114 @@ let argv = yargs
   })
   .help('help')
   .alias('help', 'h')
-  .version(pkg.version, 'version')
+  .version(pkg.version)
   .alias('version', 'v')
   .strict()
-  .argv
+  .parseSync()
+
+const BACKLOG_SIZE = 100
+
+const app = express()
+const http = createServer(app)
 
 /*!
- * UDP sockets setup
+ * serve the webapp
+ *
+ * In development the bundled app is served straight from disk; otherwise it
+ * comes from the prebuilt dist/, or is proxied from the published S3 build.
  */
-let streams = {}
-let socket = dgram.createSocket('udp4')
+const isDev = 'development' === argv.webVersion
 
-socket.on('message', function (data, remote) {
-  // try to decode JSON
-  try { data = JSON.parse(data) }
-  catch (err) { return debug('invalid data sent') }
-
-  if (!streams[data.id]) {
-    streams[data.id] = []
-    io.sockets.emit('streams', Object.keys(streams))
-  }
-
-  let message = {
-    timestamp: data.timestamp,
-    streamid: data.id,
-    host: remote.address,
-    port: remote.port,
-    content: data.content,
-    type: typeof data.content
-  }
-
-  // limit backlog to 100 lines
-  streams[data.id].length >= 100 && streams[data.id].shift()
-  streams[data.id].push(message)
-
-  debug(JSON.stringify(message))
-  io.sockets.to(data.id).emit('line', message)
-})
-
-/*!
- * socket.io
- */
-io.on('connection', function (socket) {
-  socket.emit('streams', Object.keys(streams))
-  socket.on('select stream', function (stream) {
-    socket.leave(socket.rooms[0])
-    if (!stream) return
-    socket.join(stream)
-    socket.emit('backlog', streams[stream])
-  })
-})
-
-/*!
- * serve static webapp from S3
- */
 if (!argv.webVersion) {
-  app.use(serve(__dirname + '/../dist'))
-} else if ('development' === argv.webVersion) {
-  app.use('/app', serve(__dirname + '/../app'))
-  app.use('/node_modules', serve(__dirname + '/../node_modules'))
-  io.path('/app/socket.io')
+  app.use(express.static(new URL('../dist', import.meta.url).pathname))
+} else if (isDev) {
+  // In development the app is served from /app, but a bare / is what everyone
+  // actually types — so send them there instead of a 404.
+  app.get('/', (_req, res) => res.redirect(302, '/app/'))
+
+  // No caching in development: the watcher rewrites bundle.js and main.css in
+  // place, and a cached stylesheet silently hides the change you just made.
+  app.use('/app', express.static(new URL('../app', import.meta.url).pathname, {
+    etag: false,
+    lastModified: false,
+    setHeaders: (res) => res.setHeader('Cache-Control', 'no-store')
+  }))
 } else {
   app.use(webapp({
-    s3: 'http://rtail.s3-website-us-east-1.amazonaws.com/' + argv.webVersion,
+    origin: 'http://rtail.s3-website-us-east-1.amazonaws.com/' + argv.webVersion,
     ttl: 1000 * 60 * 60 * 6 // 6H
   }))
 
   debug('serving webapp from: http://rtail.s3-website-us-east-1.amazonaws.com/%s', argv.webVersion)
 }
 
+const io = new Server(http, {
+  serveClient: false,
+  path: isDev ? '/app/socket.io' : '/socket.io'
+})
+
+/*!
+ * UDP socket setup
+ */
+const streams = new Map()
+const udp = dgram.createSocket('udp4')
+
+udp.on('message', (data, remote) => {
+  let payload
+
+  try {
+    payload = JSON.parse(data)
+  } catch {
+    return debug('invalid data sent')
+  }
+
+  if (!streams.has(payload.id)) {
+    streams.set(payload.id, [])
+    io.emit('streams', [...streams.keys()])
+  }
+
+  const message = {
+    timestamp: payload.timestamp,
+    streamid: payload.id,
+    host: remote.address,
+    port: remote.port,
+    content: payload.content,
+    type: typeof payload.content
+  }
+
+  const backlog = streams.get(payload.id)
+  if (backlog.length >= BACKLOG_SIZE) backlog.shift()
+  backlog.push(message)
+
+  debug('%j', message)
+  io.to(payload.id).emit('line', message)
+})
+
+/*!
+ * socket.io
+ */
+io.on('connection', (socket) => {
+  socket.emit('streams', [...streams.keys()])
+
+  socket.on('select stream', (stream) => {
+    // Leave whatever stream this socket was watching. Every socket is also a
+    // member of a room named after its own id — that one has to stay, or the
+    // socket stops receiving anything addressed directly to it.
+    for (const room of socket.rooms) {
+      if (room !== socket.id) socket.leave(room)
+    }
+
+    if (!stream) return
+
+    socket.join(stream)
+    socket.emit('backlog', streams.get(stream) ?? [])
+  })
+})
+
 /*!
  * listen!
  */
-io.attach(http, { serveClient: false })
-socket.bind(argv.udpPort, argv.udpHost)
+udp.bind(argv.udpPort, argv.udpHost)
 http.listen(argv.webPort, argv.webHost)
 
 debug('UDP  server listening: %s:%s', argv.udpHost, argv.udpPort)

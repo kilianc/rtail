@@ -1,439 +1,866 @@
 // **
-// variables
+// rTail webapp styles
+//
+// Square corners, one top bar, and every length taken from the token scale in
+// _tokens.scss — no arbitrary pixel values below this line.
+//
+// Layout is CSS grid. The top bar and the pane below it declare the *same*
+// two-track template (`var(--sidebar-w) 1fr`), so the vertical hairline runs
+// unbroken down the window: the alignment is structural rather than two widths
+// that have to be kept equal by hand.
+//
+// Cascade is ordered with @layer, so component rules never need to out-specify
+// the reset and nothing depends on source order.
 // **
 
-$spacing: 20px;
-$border-radius: 5px;
-$font-family: 'Nunito';
+@use 'tokens' as *;
+@use 'fonts';
+@use 'ansi';
+@use 'highlightjs';
 
-// **
-// imports
-// **
-
-@import 'fonts';
+@layer reset, base, layout, components;
 
 // **
 // reset
 // **
 
-* {
-  background: none;
-  border: 0;
-  box-sizing: border-box;
-  color: inherit;
-  margin: 0;
-  padding: 0;
-  text-decoration: none;
+@layer reset {
+  *,
+  *::before,
+  *::after {
+    background: none;
+    border: 0;
+    box-sizing: border-box;
+    color: inherit;
+    margin: 0;
+    padding: 0;
+    text-decoration: none;
+  }
 
-  &:focus {
+  :where(ol, ul) {
+    list-style: none;
+  }
+
+  pre {
+    font-family: inherit;
+  }
+
+  // Form controls do not inherit typography from their ancestors.
+  :where(button, input, select, textarea) {
+    font: inherit;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: .35;
+  }
+
+  // Keyboard users get a ring; mouse users don't. Drawn inside the element so
+  // it never nudges anything off the grid.
+  :focus {
     outline: none;
   }
-}
 
-ol,
-ul {
-  list-style: none;
-}
-
-pre {
-  font-family: inherit !important;
-}
-
-input {
-  font: inherit !important;
-}
-
-// **
-// styles
-// **
-
-body {
-  align-items: stretch;
-  display: flex;
-  flex-direction: column;
-  font-family: $font-family;
-  font-size: 16px;
-  height: 100vh;
-
-  &.resizing {
-    user-select: none;
+  :focus-visible {
+    outline: var(--hairline) solid var(--ring);
+    outline-offset: calc(var(--hairline) * -1);
   }
 }
 
-header {
-  align-items: center;
-  display: flex;
-  flex-direction: row;
-  height: 58px;
+// **
+// base
+// **
 
-  .rtail-logo {
-    background-position: 50% 50%;
-    background-repeat: no-repeat;
-    background-size: 53px 13px;
-    height: 100px;
-    width: 94px;
+@layer base {
+  html {
+    // Reserve the scrollbar track so content never shifts when it appears.
+    scrollbar-gutter: stable;
   }
 
-  .btn {
-    background-position: 50% 50%;
-    background-repeat: no-repeat;
-    background-size: 100%;
-    cursor: pointer;
-    height: 19px;
-    margin-right: $spacing;
-    opacity: .4;
-    width: 19px;
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+      'Helvetica Neue', Arial, sans-serif;
+    font-size: var(--text-md);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    block-size: 100vh;
+    font-variant-ligatures: none;
+    letter-spacing: -0.006em;
+    overflow: hidden;
 
-    &.btn-info {
-      margin-left: auto;
+    &.resizing {
+      cursor: col-resize;
+      user-select: none;
+    }
+  }
+
+  // The shell: one fixed-height bar, then everything else.
+  #root {
+    block-size: 100%;
+    display: grid;
+    grid-template-rows: var(--bar-h) 1fr;
+    min-block-size: 0;
+  }
+
+  ::selection {
+    background: var(--primary-subtle);
+    color: var(--foreground);
+  }
+
+  // ** scrollbars — square, monochrome **
+  * {
+    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-width: thin;
+  }
+
+  ::-webkit-scrollbar {
+    block-size: var(--space-2);
+    inline-size: var(--space-2);
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+
+    &:hover {
+      background: var(--muted-foreground);
+    }
+  }
+
+  @keyframes pulse {
+    from { opacity: .6; }
+    to { opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
     }
   }
 }
 
-.split-pane {
-  display: flex;
-  flex: 1;
-  flex-direction: row;
-  min-height: 0;
+// **
+// layout
+// **
+
+@layer layout {
+  // Both grids below share this template. That is what keeps the brand cell
+  // and the sidebar edge on exactly the same pixel.
+  .topbar,
+  .split-pane {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) 1fr;
+  }
+
+  .topbar {
+    border-block-end: var(--hairline) solid var(--border);
+    min-inline-size: 0;
+  }
+
+  .topbar-brand {
+    align-items: center;
+    border-inline-end: var(--hairline) solid var(--border);
+    display: flex;
+    padding-inline: var(--space-4);
+  }
+
+  .topbar-main {
+    align-items: center;
+    // Queried below, so the bar adapts to its own width rather than the
+    // viewport's — it stays correct at any sidebar width.
+    container-type: inline-size;
+    display: flex;
+    gap: var(--space-3);
+    min-inline-size: 0;
+    padding-inline: var(--space-4) var(--space-2);
+  }
+
+  // One flexible gap, wherever the right-hand group starts. Two `auto` margins
+  // would split the free space between them instead of pushing one group over.
+  .topbar-actions {
+    display: flex;
+  }
+
+  .topbar-main:has(.filter-box) .filter-box,
+  .topbar-main:not(:has(.filter-box)) .topbar-actions {
+    margin-inline-start: auto;
+  }
+
+  .split-pane {
+    min-block-size: 0;
+  }
+
+  .sidebar {
+    border-inline-end: var(--hairline) solid var(--border);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    min-block-size: 0;
+    min-inline-size: 0;
+    position: relative;
+  }
+
+  .stream-view {
+    display: grid;
+    grid-template-rows: 1fr;
+    min-block-size: 0;
+    min-inline-size: 0;
+    position: relative;
+  }
 }
 
-.sidebar {
-  display: flex;
-  flex-direction: column;
-  font-size: 16px;
-  position: relative;
-  width: 230px;
+// **
+// components
+// **
+
+@layer components {
+
+  // ** logo **
+
+  .rtail-logo {
+    @include icon-common('logo-rtail', contain);
+    block-size: var(--space-4);
+    color: var(--foreground);
+    flex-shrink: 0;
+    inline-size: calc(var(--space-6) * 2 + var(--space-2));
+  }
+
+  // ** ghost icon button **
+
+  // Scoped to the action cluster, not the whole bar: `.topbar .btn` also
+  // matched the buttons inside the settings popover and pinned them to the
+  // icon hit size instead of letting them fill their segmented track.
+  .topbar-actions .btn {
+    align-items: center;
+    block-size: var(--hit);
+    color: var(--muted-foreground);
+    display: inline-flex;
+    flex-shrink: 0;
+    inline-size: var(--hit);
+    justify-content: center;
+    position: relative;
+    transition: background-color .12s ease, color .12s ease;
+
+    &::after {
+      block-size: var(--icon);
+      content: '';
+      inline-size: var(--icon);
+      position: absolute;
+    }
+
+    &:hover {
+      background: var(--subtle);
+      color: var(--foreground);
+    }
+
+    &:active {
+      background: var(--subtle-strong);
+    }
+
+    &[aria-expanded='true'] {
+      background: var(--subtle-strong);
+      color: var(--foreground);
+    }
+
+    &.btn-info::after { @include icon('btn-info'); }
+    &.btn-github::after { @include icon('btn-github'); }
+    &.btn-settings::after { @include icon('btn-settings'); }
+  }
+
+  // ** text fields **
+  //
+  // Two contexts, deliberately different. The filter sits among other controls
+  // in the bar, so it is a discrete filled box. The search spans the sidebar
+  // edge to edge, so it is full-bleed and transparent — a filled box inside a
+  // padded, bordered strip was two boxes doing one job.
+
+  :where(.search-box, .filter-box) {
+    align-items: center;
+    display: flex;
+    min-inline-size: 0;
+    position: relative;
+
+    &::before {
+      block-size: var(--icon-sm);
+      color: var(--muted-foreground);
+      content: '';
+      inline-size: var(--icon-sm);
+      pointer-events: none;
+      position: absolute;
+    }
+
+    input {
+      color: var(--foreground);
+      flex: 1;
+      font-size: var(--text-sm);
+      min-inline-size: 0;
+
+      &::placeholder {
+        color: var(--muted-foreground);
+      }
+    }
+  }
+
+  .filter-box {
+    &::before {
+      @include icon-common('icn-filter');
+      inset-inline-start: var(--space-2);
+    }
+
+    input {
+      background: var(--muted);
+      block-size: var(--control-h);
+      // icon inset + icon + gap
+      padding-inline: calc(var(--space-2) * 2 + var(--icon-sm)) var(--space-2);
+      transition: background-color .12s ease, box-shadow .12s ease;
+
+      &:hover {
+        box-shadow: inset 0 0 0 var(--hairline) var(--border);
+      }
+
+      &:focus {
+        background: var(--background);
+        box-shadow: inset 0 0 0 var(--hairline) var(--border-strong);
+      }
+    }
+  }
+
+  // Full-bleed, exactly --bar-h tall so it stays on the 4px grid, with the
+  // icon on the same 16px rail as the section labels and stream rows below.
+  .search-box {
+    block-size: var(--bar-h);
+    border-block-end: var(--hairline) solid var(--border);
+    padding-inline: var(--space-4);
+
+    &::before {
+      @include icon('icn-search');
+      inset-inline-start: var(--space-4);
+    }
+
+    &:focus-within::before {
+      color: var(--foreground);
+    }
+
+    input {
+      block-size: 100%;
+      // Clears the icon on the rail; the trailing space keeps text off the
+      // clear button.
+      padding-inline: calc(var(--icon-sm) + var(--space-2)) var(--space-4);
+    }
+  }
+
+  // Drawn rather than an asset: two 1px rules crossed, so it stays crisp and
+  // inherits colour like every other icon here.
+  .search-clear {
+    block-size: var(--space-4);
+    color: var(--muted-foreground);
+    flex-shrink: 0;
+    inline-size: var(--space-4);
+    position: relative;
+    rotate: 45deg;
+    transition: color .12s ease;
+
+    &::before,
+    &::after {
+      background: currentColor;
+      content: '';
+      inset: 50%;
+      position: absolute;
+      translate: -50% -50%;
+    }
+
+    &::before {
+      block-size: var(--hairline);
+      inline-size: var(--space-2);
+    }
+
+    &::after {
+      block-size: var(--space-2);
+      inline-size: var(--hairline);
+    }
+
+    &:hover {
+      color: var(--foreground);
+    }
+  }
+
+  // Shown when a query matches nothing, so the section header is never left
+  // hanging over an empty list.
+  .stream-sections .no-matches {
+    color: var(--muted-foreground);
+    display: block;
+    font-size: var(--text-sm);
+    min-block-size: var(--row-h);
+    line-height: var(--row-h);
+    padding-inline: var(--space-4);
+  }
+
+  // ** top bar: stream identity **
+
+  .stream-title {
+    align-items: center;
+    block-size: var(--control-h);
+    color: var(--foreground);
+    display: flex;
+    flex-shrink: 0;
+    font-size: var(--text-md);
+    font-weight: 500;
+    gap: var(--space-2);
+    letter-spacing: -0.01em;
+    max-inline-size: calc(var(--space-6) * 10);
+    min-inline-size: 0;
+    padding-inline: var(--space-2);
+    // Cancel the field padding so the star aligns with the sidebar text below.
+    margin-inline-start: calc(var(--space-2) * -1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background-color .12s ease;
+    white-space: nowrap;
+
+    &:hover {
+      background: var(--subtle);
+    }
+  }
+
+  .stream-title-favorite {
+    @include icon-common('btn-fav-off', contain);
+    block-size: var(--icon-sm);
+    color: var(--muted-foreground);
+    flex-shrink: 0;
+    inline-size: var(--icon-sm);
+    transition: color .12s ease;
+
+    &.on {
+      @include icon-common('btn-fav-on', contain);
+      color: var(--primary);
+    }
+  }
+
+  // Live / paused — the accent doing real work.
+  .stream-status {
+    align-items: center;
+    color: var(--muted-foreground);
+    display: flex;
+    flex-shrink: 0;
+    font-size: var(--text-xs);
+    gap: var(--space-2);
+    letter-spacing: .02em;
+    text-transform: uppercase;
+
+    i {
+      background: var(--primary);
+      block-size: var(--space-1);
+      display: block;
+      inline-size: var(--space-1);
+      position: relative;
+
+      // A halo that breathes, so "live" reads at a glance.
+      &::after {
+        animation: pulse 1.8s ease-out infinite;
+        background: var(--primary);
+        content: '';
+        inset: calc(var(--space-1) * -1);
+        position: absolute;
+      }
+    }
+
+    &.paused i {
+      background: var(--muted-foreground);
+
+      &::after {
+        content: none;
+      }
+    }
+  }
+
+  .topbar .filter-box {
+    inline-size: calc(var(--space-6) * 10);
+  }
+
+  // Below this width the filter box is the first thing to go.
+  @container (max-width: 640px) {
+    .topbar .filter-box {
+      display: none;
+    }
+  }
+
+  // ** sidebar **
+
+  .stream-sections {
+    min-block-size: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-block: var(--space-2) var(--space-4);
+
+    .stream-section h4 {
+      align-items: center;
+      color: var(--muted-foreground);
+      display: flex;
+      font-size: var(--text-xs);
+      font-weight: 500;
+      letter-spacing: .06em;
+      min-block-size: var(--row-h);
+      padding-inline: var(--space-4);
+      text-transform: uppercase;
+    }
+
+    .stream-section + .stream-section h4 {
+      margin-block-start: var(--space-2);
+    }
+
+    .stream-section a {
+      align-items: center;
+      color: var(--muted-foreground);
+      display: flex;
+      gap: var(--space-2);
+      min-block-size: var(--row-h);
+      padding-inline: var(--space-4);
+      position: relative;
+      transition: background-color .12s ease, color .12s ease;
+
+      &:hover {
+        background: var(--subtle);
+        color: var(--foreground);
+      }
+
+      // The active row is monochrome; the marker is the only colour here.
+      &.selected {
+        background: var(--subtle-strong);
+        color: var(--foreground);
+        font-weight: 500;
+
+        &::before {
+          background: var(--primary);
+          content: '';
+          inline-size: var(--marker-w);
+          inset-block: 0;
+          inset-inline-start: 0;
+          position: absolute;
+        }
+      }
+
+      span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      // Unread marker.
+      i {
+        background: var(--primary);
+        block-size: var(--space-1);
+        flex-shrink: 0;
+        inline-size: var(--space-1);
+        margin-inline-start: auto;
+      }
+    }
+  }
 
   .resize-handler {
     cursor: col-resize;
-    height: 100%;
+    inline-size: var(--space-2);
+    inset-block: 0;
+    // Straddle the hairline so the grab area is centred on it.
+    inset-inline-end: calc(var(--space-1) * -1);
     position: absolute;
-    right: -5px;
-    top: 0;
-    width: 10px;
-  }
+    z-index: 2;
 
-  .search-box {
-    background-position: $spacing 50%;
-    background-repeat: no-repeat;
-    background-size: 16px 16px;
-    display: flex;
-    height: 57px;
+    &::after {
+      background: transparent;
+      content: '';
+      inline-size: var(--hairline);
+      inset-block: 0;
+      inset-inline-start: var(--space-1);
+      position: absolute;
+      transition: background-color .12s ease;
+    }
 
-    input {
-      flex: 1;
-      font-size: 14px;
-      height: 57px;
-      margin-left: 56px;
-      margin-right: $spacing;
+    &:hover::after {
+      background: var(--border-strong);
     }
   }
 
-  .stream-sections {
-    flex: 1;
-    height: 0;
-    overflow-y: auto;
-
-    .stream-section {
-      flex: 1;
-
-      h4 {
-        align-items: center;
-        display: flex;
-        font-size: 16px;
-        font-weight: normal;
-        height: 32px;
-        margin-top: $spacing;
-        padding-left: $spacing;
-      }
-
-      a {
-        align-items: center;
-        cursor: pointer;
-        display: flex;
-        height: 32px;
-        padding-left: 40px;
-
-        &.selected {
-          border-left: 2px solid;
-          padding-left: 38px;
-        }
-
-        span {
-          text-overflow: ellipsis;
-          white-space: nowrap;
-          overflow: hidden;
-        }
-
-        i {
-          border-radius: 50%;
-          height: 8px;
-          margin-left: auto;
-          margin-right: $spacing;
-          width: 8px;
-        }
-      }
-    }
-  }
-}
-
-.stream-view {
-  position: relative;
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-
-  .stream-header {
-    align-items: center;
-    display: flex;
-    font-size: 16px;
-    height: 57px;
-
-    .stream-title {
-      align-items: center;
-      display: flex;
-    }
-
-    .stream-title-favorite {
-      background-repeat: no-repeat;
-      background-size: 15px 15px;
-      display: inline-block;
-      height: 15px;
-      margin: 0 $spacing;
-      width: 15px;
-    }
-
-    .filter-box {
-      background-position: 0 50%;
-      background-repeat: no-repeat;
-      background-size: 14px 14px;
-      display: flex;
-      font-size: 14px;
-      height: 30px;
-      margin-left: auto;
-      margin-right: $spacing;
-      opacity: .7;
-      width: 210px;
-    }
-
-    input {
-      flex: 1;
-      margin-left: 24px;
-    }
-  }
+  // ** log viewport **
 
   .stream-lines {
-    flex: 1;
-    font-size: 12px;
-    height: 0;
+    // Two tracks; each row opts into them with subgrid, so every timestamp and
+    // every message share one column edge no matter what they contain.
+    display: grid;
+    grid-template-columns: var(--gutter-w) 1fr;
+    align-content: start;
+    font-size: var(--mono-size);
+    min-block-size: 0;
     overflow: auto;
-    padding: 2px 0;
+    overscroll-behavior: contain;
+  }
 
-    .stream-line {
-      display: flex;
-      line-height: .5em;
+  .stream-line {
+    // NB: no content-visibility here. It applies size containment, and a
+    // subgrid under containment silently degrades to a standalone grid — which
+    // put every timestamp on its own line. The buffer is capped at 100 rows,
+    // so there is nothing to gain from skipping off-screen work anyway.
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
 
-      pre {
-        line-height: 1.2;
-      }
+    &:hover {
+      background: var(--subtle);
+    }
 
-      .stream-line-timestamp {
-        border-right: 1px solid;
-        flex-shrink: 0;
-        padding-right: $spacing;
-      }
+    :is(.stream-line-timestamp, .stream-line-content) {
+      // No block padding: a single-line row is exactly --line-h tall, so the
+      // whole log keeps one rhythm.
+      line-height: var(--line-h);
+      min-block-size: var(--line-h);
+      padding-inline: var(--space-4);
+    }
 
-      .stream-line-content {
-        white-space: pre;
-      }
+    .stream-line-timestamp {
+      border-inline-end: var(--hairline) solid var(--border);
+      color: var(--muted-foreground);
+      font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: var(--text-xs);
+      font-variant-numeric: tabular-nums;
+      overflow: hidden;
+      user-select: none;
+      white-space: nowrap;
+    }
 
-      .stream-line-timestamp,
-      .stream-line-content {
-        align-items: center;
-        display: flex;
-        padding-bottom: 5px;
-        padding-left: $spacing;
-        padding-top: 5px;
-      }
+    .stream-line-content {
+      min-inline-size: 0;
+      white-space: pre;
+    }
+
+    pre {
+      line-height: var(--line-h);
+    }
+  }
+
+  // Collapsing the column drops the track to nothing, and the control that
+  // sits on its edge follows automatically.
+  .stream-view.no-timestamps {
+    --gutter-w: 0px;
+
+    .stream-lines {
+      grid-template-columns: 1fr;
     }
   }
 
   .btn-toggle-timestamp {
+    align-items: center;
+    background: var(--background);
+    block-size: var(--space-4);
+    box-shadow: inset 0 0 0 var(--hairline) var(--border);
+    color: var(--muted-foreground);
+    display: flex;
+    inline-size: var(--space-4);
+    inset-block-end: var(--space-4);
+    inset-inline-start: var(--gutter-w);
+    justify-content: center;
     position: absolute;
-    bottom: 15px;
-    width: 20px;
-    height: 20px;
-    border-radius: $border-radius;
-    cursor: pointer;
     transform: translateX(-50%);
+    transition: color .12s ease, box-shadow .12s ease;
+    z-index: 1;
 
-    &.closed {
-      transform: translateX(-50%) rotate(180deg);
+    &::after {
+      @include icon('icn-close-date', contain);
+      block-size: var(--space-2);
+      content: '';
+      inline-size: var(--space-1);
+    }
+
+    &:hover {
+      box-shadow: inset 0 0 0 var(--hairline) var(--border-strong);
+      color: var(--foreground);
+    }
+
+    &.closed::after {
+      rotate: 180deg;
     }
   }
 
   .btn-resume {
-    background-position: 10px 50%;
-    background-repeat: no-repeat;
-    background-size: 8px 10px;
-    border-radius: $border-radius;
-    bottom: $spacing;
-    cursor: pointer;
-    font-size: 14px;
-    height: 30px;
-    padding-left: 25px;
-    position: absolute;
-    right: $spacing;
-    text-align: left;
-    width: 85px;
-  }
-}
-
-.popover {
-  position: absolute;
-
-  .popover-content {
-    border-radius: 5px;
-    display: flex;
-    flex-direction: column;
-    font-size: 12px;
-    margin-top: $spacing * 2;
-    overflow: visible !important;
-    position: relative;
-    width: 156px;
-
-    &:before {
-      border-bottom: $spacing / 2 solid transparent;
-      border-left: $spacing / 2 solid transparent;
-      border-right: $spacing / 2 solid transparent;
-      content: '';
-      height: 0;
-      left: 50%;
-      position: absolute;
-      top: 0;
-      transform: translate(-50%, -100%);
-      width: 0;
-    }
-
-    .btn {
-      border-radius: $border-radius;
-      border-style: solid;
-      border-width: 1px;
-    }
-  }
-
-  .popover-info {
     align-items: center;
-    height: 265px;
+    background: var(--primary);
+    block-size: var(--control-h);
+    color: var(--primary-foreground);
+    display: flex;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    gap: var(--space-2);
+    inset-block-end: var(--space-4);
+    inset-inline-end: var(--space-4);
+    padding-inline: var(--space-3);
+    position: absolute;
+    transition: background-color .12s ease;
+    z-index: 2;
 
-    .rtail-logo {
-      background-position: 50% 50%;
-      background-repeat: no-repeat;
-      background-size: 53px 13px;
-      border-radius: $border-radius $border-radius 0 0;
-      height: 48px;
-      width: 100%;
+    &::before {
+      @include icon-common('icn-resume', contain);
+      block-size: var(--space-2);
+      content: '';
+      inline-size: var(--space-2);
     }
 
-    .version {
-      margin: 15px 0;
-    }
-
-    .btn {
-      align-items: center;
-      display: flex;
-      height: 30px;
-      justify-content: center;
-      margin-bottom: 5px;
-      width: 87px;
-    }
-
-    .lukibear-logo {
-      background-position: 50% 50%;
-      background-repeat: no-repeat;
-      background-size: 30%;
-      border-radius: 0 0 $border-radius $border-radius;
-      flex: 1;
-      margin-top: 10px;
-      width: 100%;
+    &:hover {
+      background: var(--primary-hover);
     }
   }
 
-  .popover-settings {
-    left: -60px;
-    padding: 15px;
+  // ** empty state **
 
-    &:before {
-      transform: translate(48px, -100%);
+  .stream-empty {
+    align-content: center;
+    color: var(--muted-foreground);
+    display: grid;
+    gap: var(--space-4);
+    justify-items: center;
+    user-select: none;
+
+    .stream-empty-mark {
+      @include icon-common('logo-rtail', contain);
+      block-size: var(--space-6);
+      color: var(--border-strong);
+      inline-size: calc(var(--space-6) * 3 + var(--space-2));
     }
 
-    h4 {
-      font-weight: normal;
+    p {
+      font-size: var(--text-sm);
+    }
+  }
+
+  // ** popovers **
+
+  .popover {
+    // Anchored to the trigger's viewport rect by Popover.tsx, which measures
+    // the panel and clamps it on screen.
+    position: fixed;
+    z-index: 10;
+
+    .popover-content {
+      background: var(--popover);
+      box-shadow:
+        inset 0 0 0 var(--hairline) var(--border),
+        0 var(--space-2) var(--space-6) rgb(0 0 0 / .45);
+      color: var(--popover-foreground);
+      display: grid;
+      font-size: var(--text-sm);
+      inline-size: calc(var(--space-6) * 8);
+      margin-block-start: var(--hairline);
     }
 
-    .btn-group {
-      display: flex;
-      flex-direction: row;
-      flex-wrap: wrap;
-      margin: 10px 0;
+    .popover-info {
+      gap: var(--space-2);
+      justify-items: center;
+      padding: var(--space-4);
 
-      &:last-of-type {
-        margin-bottom: 0;
+      .version {
+        color: var(--muted-foreground);
+        font-variant-numeric: tabular-nums;
       }
 
       .btn {
-        background-position: 50% 50%;
-        background-repeat: no-repeat;
-        background-size: auto 50%;
-        display: block;
-        font-size: 16px;
-        height: 30px;
-        width: 42px;
+        align-items: center;
+        block-size: var(--control-h);
+        box-shadow: inset 0 0 0 var(--hairline) var(--border);
+        color: var(--foreground);
+        display: flex;
+        inline-size: 100%;
+        justify-content: center;
+        transition: background-color .12s ease, box-shadow .12s ease;
 
-        &:nth-child(1) {
-          border-radius: $border-radius 0 0 $border-radius;
-          border-right: 0;
+        &:hover {
+          background: var(--subtle);
+          box-shadow: inset 0 0 0 var(--hairline) var(--border-strong);
         }
+      }
+    }
 
-        + .btn {
-          border-radius: 0;
-        }
+    .popover-settings {
+      gap: var(--space-1);
+      padding: var(--space-3);
 
-        &:nth-child(3) {
-          border-left: 0;
-          border-radius: 0 $border-radius 0 0;
-        }
+      h4 {
+        color: var(--muted-foreground);
+        font-size: var(--text-xs);
+        font-weight: 500;
+        letter-spacing: .06em;
+        text-transform: uppercase;
 
-        &:nth-child(4) {
-          border-radius: 0 0 0 $border-radius;
-          border-right: 0;
-          border-top: 0;
-        }
-
-        &:last-child {
-          border-radius: 0 $border-radius $border-radius 0;
-        }
-
-        &:nth-child(5) {
-          border-top: 0;
-        }
-
-        &:nth-child(6) {
-          border-left: 0;
-          border-radius: 0 0 $border-radius;
-          border-top: 0;
+        // Space above each group except the first, without margins on both.
+        &:not(:first-child) {
+          margin-block-start: var(--space-3);
         }
       }
 
-      &.six-grid {
-        .btn:nth-child(1) {
-          border-radius: $border-radius 0 0;
-          border-right: 0;
+      // Segmented control: one recessed track, square cells inside it. Grid
+      // with equal tracks, so two- and three-item groups both fill the rail.
+      .btn-group {
+        background: var(--muted);
+        display: grid;
+        gap: var(--hairline);
+        grid-auto-columns: 1fr;
+        grid-auto-flow: column;
+        padding: var(--hairline);
+
+        &.six-grid {
+          grid-auto-flow: row;
+          grid-template-columns: repeat(3, 1fr);
         }
 
-        .btn:nth-child(n + 4) {
-          border-top: 0;
+        .btn {
+          align-items: center;
+          block-size: var(--row-h);
+          color: var(--muted-foreground);
+          display: flex;
+          font-size: var(--text-md);
+          justify-content: center;
+          min-inline-size: 0;
+          position: relative;
+          transition: background-color .12s ease, color .12s ease;
+
+          &::after {
+            block-size: var(--icon-sm);
+            content: '';
+            inline-size: var(--icon-sm);
+            position: absolute;
+          }
+
+          &:hover:not(.selected) {
+            color: var(--foreground);
+          }
+
+          // Selected reads as a cell lifted out of the rail.
+          &.selected {
+            background: var(--background);
+            box-shadow: inset 0 0 0 var(--hairline) var(--border-strong);
+            color: var(--foreground);
+          }
+
+          &.btn-font-smaller::after { @include icon('icn-font-decrease'); }
+          &.btn-font-reset::after   { @include icon('icn-font-reset'); }
+          &.btn-font-bigger::after  { @include icon('icn-font-increase'); }
+          &.btn-sorting-asc::after  { @include icon('icn-sort-asc'); }
+          &.btn-sorting-desc::after { @include icon('icn-sort-desc'); }
+          &.btn-theme-dark::after   { @include icon('icn-theme-dark'); }
+          &.btn-theme-light::after  { @include icon('icn-theme-light'); }
+        }
+
+        // The font-family swatches show real glyphs, not icons.
+        &.six-grid .btn::after {
+          content: none;
         }
       }
     }

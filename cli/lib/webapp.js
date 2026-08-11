@@ -1,54 +1,69 @@
 /*!
  * webapp.js
  * Created by Kilian Ciuffolo on Nov 11, 2014
- * (c) 2014-2015
+ *
+ * Serves the published webapp build, caching each asset in memory for `ttl`.
  */
 
-'use strict'
+import createDebug from 'debug'
 
-const debug = require('debug')('rtail:webapp')
-const get = require('request').defaults({ encoding: null })
+const debug = createDebug('rtail:webapp')
 
-// serve frontend from s3
-module.exports = function webapp(opts) {
-  let cache = Object.create(null)
-  let cacheTTL = opts.ttl
-  let s3 = opts.s3
+const FORWARDED_HEADERS = ['content-type', 'content-encoding', 'etag', 'last-modified']
+
+/**
+ * @param {{ origin: string, ttl: number }} opts
+ * @returns {import('express').RequestHandler}
+ */
+export function webapp(opts) {
+  let cache = new Map()
 
   /*!
-   * wipes out cache every cacheTTL ms
+   * wipes out cache every ttl ms
    */
-  setInterval(function () {
-    cache = Object.create(null)
+  const timer = setInterval(() => {
+    cache = new Map()
     debug('cleared cache')
-  }, cacheTTL)
+  }, opts.ttl)
 
-  /*!
-   * middleware
-   */
-  return function (req, res) {
-    if (cache[req.path]) {
-      return serveCache(req, res)
+  // Don't hold the process open just for the cache sweep.
+  timer.unref()
+
+  return async function serveWebapp(req, res, next) {
+    const hit = cache.get(req.path)
+
+    if (hit) {
+      debug('serving from cache %s', req.path)
+      res.writeHead(200, hit.headers)
+      return res.end(hit.body)
     }
 
     debug('caching %s', req.path)
 
-    get(s3 + req.path, function (err, s3res, body) {
-      cache[req.path] = {
-        headers: s3res.headers,
-        body: body
+    try {
+      const upstream = await fetch(opts.origin + req.path)
+
+      if (!upstream.ok) {
+        debug('upstream %s for %s', upstream.status, req.path)
+        return res.sendStatus(upstream.status)
       }
 
-      serveCache(req, res)
-    })
-  }
+      const headers = {}
+      for (const name of FORWARDED_HEADERS) {
+        const value = upstream.headers.get(name)
+        if (value) headers[name] = value
+      }
 
-  /*!
-   * serves req from cache
-   */
-  function serveCache(req, res) {
-    debug('serving from cache %s', req.path)
-    res.writeHead(200, cache[req.path].headers)
-    res.end(cache[req.path].body)
+      const body = Buffer.from(await upstream.arrayBuffer())
+      cache.set(req.path, { headers, body })
+
+      res.writeHead(200, headers)
+      res.end(body)
+    } catch (err) {
+      // A failed upstream fetch used to throw inside the callback and take the
+      // whole server down; surface it to express instead.
+      debug('upstream error for %s: %s', req.path, err.message)
+      next(err)
+    }
   }
 }

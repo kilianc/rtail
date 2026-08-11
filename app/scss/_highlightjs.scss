@@ -1,21 +1,29 @@
 // **
-// colors for JSON objects hightlight
+// highlight.js colours for JSON payloads
 // **
 
-.#{$theme} {
-  pre {
-    color: $ansi-blue;
-  }
+.stream-line-content pre {
+  color: var(--text-secondary);
+}
 
-  .hljs-string {
-    color: $ansi-green-bright;
-  }
+.hljs-attr,
+.hljs-attribute {
+  color: var(--ansi-cyan);
+}
 
-  .hljs-number {
-    color: $ansi-red-bright;
-  }
+.hljs-string {
+  color: var(--ansi-green);
+}
 
-  .hljs-attribute {
-    color: $ansi-yellow-bright;
-  }
+.hljs-number {
+  color: var(--ansi-yellow);
+}
+
+.hljs-literal,
+.hljs-keyword {
+  color: var(--ansi-magenta);
+}
+
+.hljs-punctuation {
+  color: var(--text-faint);
 }

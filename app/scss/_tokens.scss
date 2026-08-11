@@ -1,0 +1,162 @@
+// **
+// design system
+//
+// Three rules, enforced everywhere:
+//
+//   1. Zero radius. Every corner is square.
+//   2. Every length is a token. No arbitrary pixel values in main.scss —
+//      spacing comes from the 4px scale, sizes from the fixed set below.
+//   3. Monochrome chrome, one accent. A log viewer already has meaningful
+//      colour (ANSI codes, JSON syntax); the interface gives all of it up so
+//      the content is the only thing coloured.
+//
+// Naming follows the shadcn/ui convention (background/foreground, muted,
+// popover, primary, border, input, ring) so the palette swaps from one block.
+//
+// Dark is the default and lives on :root, so the app paints correctly on the
+// first frame — before the bundle runs and stamps the persisted theme onto
+// <body>. `.light` is a pure override layer.
+// **
+
+:root {
+  color-scheme: dark;
+
+  // ** radius — square, everywhere **
+  --radius: 0;
+
+  // ** spacing — 4px scale, the only permitted gaps and paddings **
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+
+  // ** sizes — all multiples of 4 so every edge lands on the grid **
+  --bar-h: 40px;        // the single top bar
+  --row-h: 28px;        // sidebar rows
+  --control-h: 28px;    // inputs, buttons
+  --hit: 28px;          // icon button hit area
+  --icon: 16px;         // icon glyph
+  --icon-sm: 12px;      // inline icon glyph
+  --line-h: 20px;       // one log row, exactly
+  --gutter-w: 160px;    // timestamp column — fixed, so the rule is dead straight
+  --sidebar-w: 240px;   // default; App keeps this in sync while resizing
+  --marker-w: 2px;      // active-row accent marker
+  --hairline: 1px;
+
+  // ** type scale **
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --mono-size: 12px;
+
+  // ** surfaces — flat; separation comes from hairlines, never shadows **
+  --background: #09090b;
+  --foreground: #fafafa;
+
+  --popover: #101013;
+  --popover-foreground: #fafafa;
+
+  --muted: #17171a;
+  --muted-foreground: #8b8b94;
+
+  --subtle: rgba(255, 255, 255, 0.035);
+  --subtle-strong: rgba(255, 255, 255, 0.065);
+
+  // ** hairlines **
+  --border: #232327;
+  --border-strong: #303036;
+  --input: #232327;
+
+  // ** the one accent **
+  --primary: #ff7a5c;
+  --primary-hover: #ff8f75;
+  --primary-foreground: #180d09;
+  --primary-subtle: rgba(255, 122, 92, 0.10);
+  --ring: #ff7a5c;
+
+  // ** ansi palette — the only colour on screen **
+  --ansi-black: #52525b;
+  --ansi-black-bright: #7c7c88;
+  --ansi-red: #ff6b6b;
+  --ansi-red-bright: #ff9a9a;
+  --ansi-green: #4ade80;
+  --ansi-green-bright: #86efac;
+  --ansi-yellow: #fbbf24;
+  --ansi-yellow-bright: #fcd34d;
+  --ansi-blue: #60a5fa;
+  --ansi-blue-bright: #93c5fd;
+  --ansi-magenta: #c084fc;
+  --ansi-magenta-bright: #d8b4fe;
+  --ansi-cyan: #22d3ee;
+  --ansi-cyan-bright: #67e8f9;
+  --ansi-white: #d4d4d8;
+  --ansi-white-bright: #fafafa;
+}
+
+.light {
+  color-scheme: light;
+
+  --background: #ffffff;
+  --foreground: #09090b;
+
+  --popover: #ffffff;
+  --popover-foreground: #09090b;
+
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+
+  --subtle: rgba(9, 9, 11, 0.035);
+  --subtle-strong: rgba(9, 9, 11, 0.065);
+
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --input: #e4e4e7;
+
+  --primary: #e2553a;
+  --primary-hover: #cc4830;
+  --primary-foreground: #ffffff;
+  --primary-subtle: rgba(226, 85, 58, 0.09);
+  --ring: #e2553a;
+
+  --ansi-black: #3f3f46;
+  --ansi-black-bright: #71717a;
+  --ansi-red: #dc2626;
+  --ansi-red-bright: #ef4444;
+  --ansi-green: #15803d;
+  --ansi-green-bright: #16a34a;
+  --ansi-yellow: #b45309;
+  --ansi-yellow-bright: #ca8a04;
+  --ansi-blue: #2563eb;
+  --ansi-blue-bright: #3b82f6;
+  --ansi-magenta: #9333ea;
+  --ansi-magenta-bright: #a855f7;
+  --ansi-cyan: #0e7490;
+  --ansi-cyan-bright: #0891b2;
+  --ansi-white: #52525b;
+  --ansi-white-bright: #27272a;
+}
+
+// **
+// icon helper
+//
+// The SVG assets are solid, evenodd-filled shapes, so they mask cleanly.
+// Masking them with `currentColor` means one icon set serves both themes and
+// icons inherit hover / active colour for free.
+// **
+
+@mixin icon($name, $size: 100%) {
+  background-color: currentColor;
+  -webkit-mask: url('../images/icons/#{$name}.svg') no-repeat 50% 50%;
+  mask: url('../images/icons/#{$name}.svg') no-repeat 50% 50%;
+  -webkit-mask-size: $size;
+  mask-size: $size;
+}
+
+@mixin icon-common($name, $size: 100%) {
+  background-color: currentColor;
+  -webkit-mask: url('../images/common/#{$name}.svg') no-repeat 50% 50%;
+  mask: url('../images/common/#{$name}.svg') no-repeat 50% 50%;
+  -webkit-mask-size: $size;
+  mask-size: $size;
+}

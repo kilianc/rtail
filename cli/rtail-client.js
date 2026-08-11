@@ -1,37 +1,30 @@
-#!/bin/sh
-":" //# comment; exec /usr/bin/env node --harmony "$0" "$@"
+#!/usr/bin/env node
 
 /*!
  * rtail-client.js
  * Created by Kilian Ciuffolo on Oct 26, 2014
- * (c) 2014-2015
  */
 
-'use strict'
-
-const dgram = require('dgram')
-const split = require('split')
-const chrono = require('chrono-node')
-const JSON5 = require('json5')
-const yargs = require('yargs')
-const map = require('through2-map')
-const stripAnsi = require('strip-ansi')
-const moniker_ = require('moniker').choose
-const updateNotifier = require('update-notifier')
-const pkg = require('../package')
+import dgram from 'node:dgram'
+import { createInterface } from 'node:readline'
+import * as chrono from 'chrono-node'
+import JSON5 from 'json5'
+import stripAnsi from 'strip-ansi'
+import updateNotifier from 'update-notifier'
+import yargs from 'yargs'
+import { hideBin } from 'yargs/helpers'
+import { choose as moniker } from './lib/moniker.js'
+import { pkg } from './lib/pkg.js'
 
 /*!
  * inform the user of updates
  */
-updateNotifier({
-  packageName: pkg.name,
-  packageVersion: pkg.version
-}).notify()
+updateNotifier({ pkg }).notify()
 
 /*!
  * parsing argv
  */
-let argv = yargs
+const argv = yargs(hideBin(process.argv))
   .usage('Usage: cmd | rtail [OPTIONS]')
   .example('server | rtail > server.log', 'localhost + file')
   .example('server | rtail --id api.domain.com', 'Name the log stream')
@@ -39,7 +32,7 @@ let argv = yargs
   .example('server | rtail --port 43567', 'Uses custom port')
   .example('server | rtail --mute', 'No stdout')
   .example('server | rtail --no-tty', 'Strips ansi colors')
-  .example('server | rtail --no-date-parse', 'Disable date parsing/stripping')
+  .example('server | rtail --no-parse-date', 'Disable date parsing/stripping')
   .option('host', {
     alias: 'h',
     type: 'string',
@@ -48,19 +41,21 @@ let argv = yargs
   })
   .option('port', {
     alias: 'p',
-    type: 'string',
+    type: 'number',
     default: 9999,
     describe: 'The server port'
   })
   .option('id', {
     alias: 'name',
     type: 'string',
-    default: function moniker() { return moniker_() } ,
+    default: moniker(),
+    defaultDescription: 'a random name',
     describe: 'The log stream id'
   })
   .option('mute', {
     alias: 'm',
     type: 'boolean',
+    default: false,
     describe: 'Don\'t pipe stdin with stdout'
   })
   .option('tty', {
@@ -74,83 +69,72 @@ let argv = yargs
     describe: 'Looks for dates to use as timestamp'
   })
   .help('help')
-  .version(pkg.version, 'version')
+  .version(pkg.version)
   .alias('version', 'v')
   .strict()
-  .argv
-
-/*!
- * setup pipes
- */
-if (!argv.mute) {
-  if (!process.stdout.isTTY || !argv.tty) {
-    process.stdin
-      .pipe(map(function (chunk) {
-        return stripAnsi(chunk.toString('utf8'))
-      }))
-      .pipe(process.stdout)
-  } else {
-    process.stdin.pipe(process.stdout)
-  }
-}
+  .parseSync()
 
 /*!
  * initialize socket
  */
 let isClosed = false
 let isSending = 0
-let socket = dgram.createSocket('udp4')
-let baseMessage = { id: argv.id }
+const socket = dgram.createSocket('udp4')
 
-socket.bind(function () {
-  socket.setBroadcast(true)
-})
+socket.bind(() => socket.setBroadcast(true))
+
+// Colours are kept only when stdout is a real terminal and --tty is on.
+const stripColors = !process.stdout.isTTY || !argv.tty
 
 /*!
- * broadcast lines to browser
+ * read stdin line by line, echoing to stdout and broadcasting to the server
+ *
+ * The old implementation piped stdin twice — once to stdout and once through a
+ * line splitter — using `split` and `through2-map`. One pass over readline does
+ * both and drops two dependencies.
  */
-process.stdin
-  .pipe(split(null, null, { trailing: false }))
-  .on('data', function (line) {
-    let timestamp = null
+const lines = createInterface({ input: process.stdin, crlfDelay: Infinity })
 
-    try {
-      // try to JSON parse
-      line = JSON5.parse(line)
-    } catch (err) {
-      // look for timestamps if not an object
-      timestamp = argv.parseDate ? chrono.parse(line)[0] : null
-    }
+lines.on('line', (raw) => {
+  if (!argv.mute) {
+    process.stdout.write((stripColors ? stripAnsi(raw) : raw) + '\n')
+  }
 
-    if (timestamp) {
-      // escape for regexp and remove from line
-      timestamp.text = timestamp.text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')
-      line = line.replace(new RegExp(' *[^ ]?' + timestamp.text + '[^ ]? *'), '')
-      // use timestamp as line timestamp
-      baseMessage.timestamp = Date.parse(timestamp.start.date())
-    } else {
-      baseMessage.timestamp = Date.now()
-    }
+  let content = raw
+  let timestamp = null
 
-    // update default message
-    baseMessage.content = line
+  try {
+    // try to JSON parse
+    content = JSON5.parse(raw)
+  } catch {
+    // look for timestamps if not an object
+    timestamp = argv.parseDate ? chrono.parse(raw)[0] : null
+  }
 
-    // prepare binary message
-    let buffer = new Buffer(JSON.stringify(baseMessage))
+  if (timestamp) {
+    // escape for regexp and remove from line
+    const text = timestamp.text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')
+    content = raw.replace(new RegExp(' *[^ ]?' + text + '[^ ]? *'), '')
+  }
 
-    // set semaphore
-    isSending ++
+  const buffer = Buffer.from(JSON.stringify({
+    id: argv.id,
+    timestamp: timestamp ? Date.parse(timestamp.start.date()) : Date.now(),
+    content
+  }))
 
-    socket.send(buffer, 0, buffer.length, argv.port, argv.host, function () {
-      isSending --
-      if (isClosed && !isSending) socket.close()
-    })
+  isSending++
+
+  socket.send(buffer, 0, buffer.length, argv.port, argv.host, () => {
+    isSending--
+    if (isClosed && !isSending) socket.close()
   })
+})
 
 /*!
  * drain pipe and exit
  */
-process.stdin.on('end', function () {
+lines.on('close', () => {
   isClosed = true
   if (!isSending) socket.close()
 })

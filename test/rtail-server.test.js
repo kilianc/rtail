@@ -1,138 +1,177 @@
-/*!
- * rtail-server.js
- * Created by Kilian Ciuffolo on Jul 7, 2015
- * (c) 2015
- */
+import assert from 'node:assert/strict'
+import dgram from 'node:dgram'
+import { after, before, describe, it } from 'node:test'
+import { io } from 'socket.io-client'
+import { delay, runClient, startServer, waitFor, waitForHttp } from './util.js'
 
-'use strict'
+const UDP_PORT = 9981
+const WEB_PORT = 8881
 
-const assert = require('chai').assert
-const dgram = require('dgram')
-const dns = require('dns')
-const io = require('socket.io/node_modules/socket.io-client')
-const spawnClient = require('./util').spawnClient
-const spawnServer = require('./util').spawnServer
-const get = require('request').get
-const os = require('os')
+/** Feeds `lines` into a named stream through the real client. */
+function feed(stream, lines) {
+  return runClient(['--port', String(UDP_PORT), '--name', stream, '--mute'], lines.join('\n') + '\n')
+}
 
-describe('rtail-server.js', function () {
-  this.timeout(5000)
+/** Connects a websocket client and records everything the server pushes. */
+function observe(port = WEB_PORT) {
+  const socket = io(`http://127.0.0.1:${port}`, { path: '/socket.io' })
+  const streams = []
+  const lines = []
+  const backlogs = []
 
-  let server = null
-  let streams = null
-  let lines = []
-  let backlogs = []
-  let fakeSocket = { close: function () {}, on: function () {} }
+  socket.on('streams', (data) => streams.push(data))
+  socket.on('line', (data) => lines.push(data))
+  socket.on('backlog', (data) => backlogs.push(data))
 
-  before(function (done) {
-    server = spawnServer()
+  return { socket, streams, lines, backlogs }
+}
 
-    setTimeout(function () {
-      spawnClient({ socket: fakeSocket }).stdin.end(['1', '2', ''].join('\n'))
-      spawnClient({ socket: fakeSocket }).stdin.end(['1', '2', ''].join('\n'))
+describe('rtail-server', () => {
+  let server
 
-      setTimeout(function () {
-        let ws = io.connect('http://localhost:8888')
-
-        ws.on('streams', function (data) {
-          if (null === streams) {
-            ws.emit('select stream', data[0])
-          }
-          streams = data
-        })
-
-        ws.on('backlog', function (data) {
-          backlogs.push(data)
-          spawnClient({ args: ['--name', streams[0]], socket: fakeSocket }).stdin.end(['A', 'B', ''].join('\n'))
-        })
-
-        ws.on('line', function (data) {
-          lines.push(data)
-          if (lines.length >= 2) done()
-        })
-      }, 500)
-    }, 500)
+  before(async () => {
+    server = await startServer([
+      '--udp-port', String(UDP_PORT),
+      '--web-port', String(WEB_PORT)
+    ], { webPort: WEB_PORT })
   })
 
-  after(function () {
-    server.kill()
+  after(async () => {
+    await server.stop()
   })
 
-  it('should send the streams list on connect (WS)', function () {
-    assert.lengthOf(streams, 2)
+  it('announces the streams list on connect', async () => {
+    await feed('alpha', ['1', '2'])
+    await feed('beta', ['1'])
+
+    const ws = observe()
+
+    try {
+      await waitFor(() => ws.streams.some((s) => s.includes('alpha') && s.includes('beta')), 'both streams')
+    } finally {
+      ws.socket.close()
+    }
   })
 
-  it('should listen for messages', function () {
-    assert.equal(lines[0].content, 'A')
-    assert.equal(lines[1].content, 'B')
+  it('replays the backlog when a stream is selected', async () => {
+    const ws = observe()
+
+    try {
+      await waitFor(() => ws.streams.length > 0, 'the streams list')
+      ws.socket.emit('select stream', 'alpha')
+
+      await waitFor(() => ws.backlogs.length > 0, 'a backlog')
+      assert.ok(ws.backlogs[0].length >= 2)
+      assert.ok(ws.backlogs[0].every((line) => 'alpha' === line.streamid))
+    } finally {
+      ws.socket.close()
+    }
   })
 
-  it('should skip non JSON messages', function () {
-    let socket = dgram.createSocket('udp4')
-    let buffer = new Buffer('foo')
-    socket.send(buffer, 0, buffer.length, 9999, 'localhost')
+  it('delivers live lines for the selected stream', async () => {
+    const ws = observe()
+
+    try {
+      await waitFor(() => ws.streams.length > 0, 'the streams list')
+      ws.socket.emit('select stream', 'alpha')
+      await waitFor(() => ws.backlogs.length > 0, 'a backlog')
+
+      await feed('alpha', ['live-one', 'live-two'])
+      await waitFor(() => ws.lines.length >= 2, 'two live lines')
+
+      assert.deepEqual(ws.lines.slice(0, 2).map((l) => l.content), ['live-one', 'live-two'])
+    } finally {
+      ws.socket.close()
+    }
   })
 
-  it('should serve the webapp', function (done) {
-    server.kill()
-    server = spawnServer()
+  // Regression test. `socket.rooms` is a Set that always contains the socket's
+  // own id; leaving every room including that one breaks direct delivery, and
+  // leaving none of them means the socket keeps receiving its previous stream.
+  // The original code did the latter, so switching streams interleaved output.
+  it('stops delivering the previous stream after switching', async () => {
+    const ws = observe()
 
-    setTimeout(function () {
-      get('http://localhost:8888', function (err, res, body) {
-        if (err) return done(err)
-        assert.match(body, /ng-app="app"/)
-        done(err)
-      })
-    }, 1000)
+    try {
+      await waitFor(() => ws.streams.length > 0, 'the streams list')
+
+      ws.socket.emit('select stream', 'alpha')
+      await waitFor(() => ws.backlogs.length > 0, 'the alpha backlog')
+
+      ws.socket.emit('select stream', 'beta')
+      await waitFor(() => ws.backlogs.length > 1, 'the beta backlog')
+
+      ws.lines.length = 0
+
+      await feed('alpha', ['should-not-arrive'])
+      await feed('beta', ['should-arrive'])
+
+      await waitFor(() => ws.lines.some((l) => 'should-arrive' === l.content), 'the beta line')
+      // Give any stray alpha delivery a chance to show up before asserting.
+      await delay(250)
+
+      assert.deepEqual(ws.lines.map((l) => l.streamid), ['beta'])
+    } finally {
+      ws.socket.close()
+    }
   })
 
+  it('ignores malformed UDP payloads', async () => {
+    const socket = dgram.createSocket('udp4')
+    const buffer = Buffer.from('not json')
 
-  it('should serve the webapp from s3', function (done) {
-    server.kill()
-    server = spawnServer({
-      args: ['--web-version', 'stable']
-    })
+    await new Promise((resolve) =>
+      socket.send(buffer, 0, buffer.length, UDP_PORT, '127.0.0.1', () => socket.close(resolve))
+    )
 
-    setTimeout(function () {
-      get('http://localhost:8888/index.html', function (err, res, body) {
-        if (err) return done(err)
-        assert.match(body, /ng-app="app"/)
-        assert.isDefined(res.headers['x-amz-request-id'])
-        done(err)
-      })
-    }, 1000)
+    // The server must still be answering afterwards.
+    await waitForHttp(`http://127.0.0.1:${WEB_PORT}/`)
+  })
+})
+
+describe('rtail-server webapp', () => {
+  const port = 8882
+  let server
+
+  before(async () => {
+    server = await startServer([
+      '--udp-port', '9982',
+      '--web-port', String(port),
+      '--web-version', 'development'
+    ], { webPort: port })
   })
 
-  it('should support custom port / host', function (done) {
-    server.kill()
+  after(async () => {
+    await server.stop()
+  })
 
-    dns.lookup(os.hostname(), function (err, address) {
-      server = spawnServer({
-        args: [
-          '--udp-host', address,
-          '--udp-port', 9998,
-          '--web-host', address,
-          '--web-port', 8889,
-        ]
-      })
+  it('serves the webapp shell', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/app/`)
+    const body = await res.text()
 
-      // check websocket
-      setTimeout(function () {
-        spawnClient({
-          socket: fakeSocket,
-          args: ['--port', 9998, '--host', address, '--name', 'foobar']
-        }).stdin.end(['1', '2', ''].join('\n'))
+    assert.equal(res.status, 200)
+    assert.match(body, /id="root"/)
+    assert.match(body, /bundle\.js/)
+  })
 
-        setTimeout(function () {
-          let ws = io.connect('http://' + address + ':8889')
+  it('does not let the browser cache development assets', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/app/`)
 
-          ws.on('streams', function (data) {
-            assert.lengthOf(data, 1)
-            assert.equal(data[0], 'foobar')
-            done()
-          })
-        }, 500)
-      }, 1000)
-    })
+    assert.equal(res.headers.get('cache-control'), 'no-store')
+  })
+
+  // The app lives under /app in development, but a bare / is what people type.
+  it('redirects the root to the app', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/`, { redirect: 'manual' })
+
+    assert.equal(res.status, 302)
+    assert.equal(res.headers.get('location'), '/app/')
+  })
+
+  it('lands on the app when the root redirect is followed', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/`)
+
+    assert.equal(res.status, 200)
+    assert.match(await res.text(), /id="root"/)
   })
 })

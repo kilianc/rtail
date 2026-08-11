@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Lower bound is the `engines` floor; upper bound is current LTS.
+        node: ['20', '22']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check the webapp
+        run: npm run typecheck
+
+      - name: Build the webapp
+        run: npm run build
+
+      - name: Build the distributable webapp
+        run: npm run dist
+
+      - name: Test
+        run: npm test

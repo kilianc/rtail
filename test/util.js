@@ -1,65 +1,105 @@
 /*!
- * util.js
- * Created by Kilian Ciuffolo on Jul 7, 2015
- * (c) 2015
+ * Test helpers.
  */
 
-'use strict'
+import { spawn } from 'node:child_process'
+import dgram from 'node:dgram'
+import { setTimeout as delay } from 'node:timers/promises'
+import { fileURLToPath } from 'node:url'
 
-const spawn = require('child_process').spawn
-const dgram = require('dgram')
+const root = new URL('../', import.meta.url)
+
+export const CLIENT = fileURLToPath(new URL('cli/rtail-client.js', root))
+export const SERVER = fileURLToPath(new URL('cli/rtail-server.js', root))
+
+/** Binds a UDP socket and collects every decoded rtail message it receives. */
+export async function listen(port, host = '127.0.0.1') {
+  const socket = dgram.createSocket('udp4')
+  const messages = []
+
+  socket.on('message', (data) => {
+    try {
+      messages.push(JSON.parse(data))
+    } catch {
+      messages.push({ malformed: String(data) })
+    }
+  })
+
+  await new Promise((resolve, reject) => {
+    socket.once('error', reject)
+    socket.bind(port, host, resolve)
+  })
+
+  return {
+    messages,
+    close: () => new Promise((resolve) => socket.close(resolve))
+  }
+}
 
 /**
+ * Runs the client with `input` on stdin and resolves once it exits.
  *
+ * @returns {Promise<{ code: number, stdout: string }>}
  */
-module.exports.spawnClient = function spawnClient(opts) {
-  opts = opts || {}
+export function runClient(args, input) {
+  const child = spawn(process.execPath, [CLIENT, ...args])
+  let stdout = ''
 
-  if (!opts.socket) {
-    opts.socket = dgram.createSocket('udp4')
-    opts.socket.bind(9999)
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk
+  })
+
+  child.stdin.end(input)
+
+  return new Promise((resolve, reject) => {
+    child.once('error', reject)
+    child.once('close', (code) => resolve({ code, stdout }))
+  })
+}
+
+/** Starts the server and resolves once its HTTP port answers. */
+export async function startServer(args, { webPort } = {}) {
+  const child = spawn(process.execPath, [SERVER, ...args], { stdio: 'ignore' })
+
+  if (webPort) await waitForHttp(`http://127.0.0.1:${webPort}/`)
+  else await delay(500)
+
+  return {
+    child,
+    stop: () =>
+      new Promise((resolve) => {
+        child.once('close', resolve)
+        child.kill('SIGTERM')
+      })
+  }
+}
+
+/** Polls a URL until it answers, so tests never race a fixed sleep. */
+export async function waitForHttp(url, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    try {
+      await fetch(url)
+      return
+    } catch {
+      await delay(100)
+    }
   }
 
-  let client = spawn('cli/rtail-client.js', opts.args)
-  let messages = []
-
-  client.stderr.pipe(process.stderr)
-
-  opts.socket.on('message', function (data) {
-    messages.push(JSON.parse(data))
-  })
-
-  client.on('exit', function (code) {
-    let err = code ? new Error('rtail exited with code: ' + code) : null
-    opts.test && opts.test(messages)
-    opts.socket.close()
-    opts.done && opts.done(err)
-  })
-
-  return client
+  throw new Error(`timed out waiting for ${url}`)
 }
 
-/**
- *
- */
-module.exports.spawnServer = function spawnServer(opts) {
-  opts = opts || {}
+/** Polls `predicate` until it returns true. */
+export async function waitFor(predicate, message = 'condition', timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs
 
-  let server = spawn('cli/rtail-server.js', opts.args)
-  server.stderr.pipe(process.stderr)
-  server.stdout.pipe(process.stdout)
+  while (Date.now() < deadline) {
+    if (await predicate()) return
+    await delay(50)
+  }
 
-  server.on('exit', function (code) {
-    let err = code ? new Error('rtail exited with code: ' + code) : null
-    opts.done && opts.done(err)
-  })
-
-  return server
+  throw new Error(`timed out waiting for ${message}`)
 }
 
-/**
- *
- */
-module.exports.s = function s(obj) {
-  return JSON.stringify(obj, null, '  ')
-}
+export { delay }
