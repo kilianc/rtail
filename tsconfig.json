@@ -13,7 +13,17 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+
+    // Nothing is compiled: the CLI ships as TypeScript and Node strips the
+    // types at load time. That means every relative import has to name the
+    // file that is actually on disk, extension and all.
+    "allowImportingTsExtensions": true,
+
+    // Type stripping only erases; it cannot *transform*. Enums, namespaces
+    // and constructor parameter properties all need real codegen, so this
+    // flag rejects them at type-check time rather than at a user's runtime.
+    "erasableSyntaxOnly": true
   },
-  "include": ["app/src"]
+  "include": ["app/src", "cli", "tools", "test"]
 }

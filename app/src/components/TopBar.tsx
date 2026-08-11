@@ -1,7 +1,7 @@
 import { useRef, useState } from 'preact/hooks'
-import { FONT_FAMILY_COUNT, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../lib/prefs.js'
-import type { Prefs, Theme } from '../lib/types.js'
-import { Popover } from './Popover.js'
+import { FONT_FAMILY_COUNT, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../lib/prefs.ts'
+import type { Prefs, Theme } from '../lib/types.ts'
+import { Popover } from './Popover.tsx'
 
 declare const __VERSION__: string
 

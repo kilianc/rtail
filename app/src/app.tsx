@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
-import { Sidebar } from './components/Sidebar.js'
-import { StreamView } from './components/StreamView.js'
-import { TopBar } from './components/TopBar.js'
-import { connect, type Connection } from './lib/connection.js'
-import { formatLine } from './lib/format.js'
-import { loadActiveStream, loadPrefs, savePrefs, saveActiveStream } from './lib/prefs.js'
-import { onRouteChange, readStream, writeStream } from './lib/router.js'
-import type { Line, Prefs } from './lib/types.js'
+import { Sidebar } from './components/Sidebar.tsx'
+import { StreamView } from './components/StreamView.tsx'
+import { TopBar } from './components/TopBar.tsx'
+import { connect, type Connection } from './lib/connection.ts'
+import { formatLine } from './lib/format.ts'
+import { loadActiveStream, loadPrefs, savePrefs, saveActiveStream } from './lib/prefs.ts'
+import { onRouteChange, readStream, writeStream } from './lib/router.ts'
+import type { Line, Prefs } from './lib/types.ts'
 
 /** Matches the server-side backlog cap. */
 const BUFFER_SIZE = 100

@@ -13,7 +13,7 @@
 # and mounts your checkout.
 
 # ---- build the webapp ------------------------------------------------------
-FROM node:22.12.0-bookworm-slim AS build
+FROM node:22.18.0-bookworm-slim AS build
 
 WORKDIR /src
 
@@ -25,7 +25,7 @@ COPY . .
 RUN npm run dist
 
 # ---- runtime ---------------------------------------------------------------
-FROM node:22.12.0-bookworm-slim AS runtime
+FROM node:22.18.0-bookworm-slim AS runtime
 
 # update-notifier phones npm on startup and prints a banner nobody can act on
 # from inside a container image.
@@ -58,4 +58,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 USER node
 
-ENTRYPOINT ["node", "cli/rtail-server.js"]
+ENTRYPOINT ["node", "cli/rtail-server.ts"]

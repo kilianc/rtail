@@ -9,7 +9,7 @@
 import { AnsiUp } from 'ansi_up'
 import hljs from 'highlight.js/lib/core'
 import json from 'highlight.js/lib/languages/json'
-import type { Line, WireLine } from './types.js'
+import type { Line, WireLine } from './types.ts'
 
 hljs.registerLanguage('json', json)
 

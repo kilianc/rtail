@@ -12,8 +12,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Lower bound is the `engines` floor; upper bound is current LTS.
-        node: ['20', '22']
+        # Lower bound is the `engines` floor — the first release that strips
+        # TypeScript types without a flag, which is what lets the CLI ship as
+        # .ts with no build step. Upper bound is current LTS.
+        node: ['22.18', '24']
 
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +27,7 @@ jobs:
 
       - run: npm ci
 
-      - name: Type-check the webapp
+      - name: Type-check
         run: npm run typecheck
 
       - name: Build the webapp
@@ -34,5 +36,39 @@ jobs:
       - name: Build the distributable webapp
         run: npm run dist
 
+      # Serves dist/, so this has to come after the build above.
       - name: Test
         run: npm test
+
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build the distributable webapp
+        run: npm run dist
+
+      # The version is pinned exactly in package.json; installing by that name
+      # keeps the browser build and the driver in step.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end smoke tests
+        run: npm run test:e2e
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

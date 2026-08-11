@@ -7,7 +7,7 @@
  * flashing the default while an async store resolves.
  */
 
-import type { Prefs, Theme } from './types.js'
+import type { Prefs, Theme } from './types.ts'
 
 const KEY = 'rtail:prefs'
 

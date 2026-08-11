@@ -1,11 +1,11 @@
 /*!
- * moniker.js — random, human-readable stream names.
+ * moniker.ts — random, human-readable stream names.
  *
  * Replaces the `moniker` package, which was last published in 2013 and pulled
  * in its own word-list files just to produce a two-word label.
  */
 
-const ADJECTIVES = [
+export const ADJECTIVES = [
   'amber', 'ancient', 'autumn', 'bitter', 'bold', 'brave', 'calm', 'cold',
   'crimson', 'damp', 'dawn', 'divine', 'dry', 'empty', 'falling', 'floral',
   'frosty', 'gentle', 'green', 'hidden', 'holy', 'icy', 'late', 'lingering',
@@ -16,7 +16,7 @@ const ADJECTIVES = [
   'wandering', 'weathered', 'white', 'wild', 'winter', 'wispy', 'withered'
 ]
 
-const NOUNS = [
+export const NOUNS = [
   'band', 'bar', 'base', 'bird', 'block', 'boat', 'bonus', 'bread', 'breeze',
   'brook', 'bush', 'butterfly', 'cake', 'cell', 'cherry', 'cloud', 'credit',
   'darkness', 'dawn', 'dew', 'disk', 'dream', 'dust', 'feather', 'field',
@@ -31,13 +31,14 @@ const NOUNS = [
   'wave', 'wildflower', 'wind', 'wood'
 ]
 
-function pick(list) {
-  return list[Math.floor(Math.random() * list.length)]
+function pick(list: string[], random: () => number): string {
+  return list[Math.floor(random() * list.length)]!
 }
 
 /**
- * @returns {string} a name like "wandering-brook"
+ * @param random injectable for tests; defaults to `Math.random`.
+ * @returns a name like "wandering-brook"
  */
-export function choose() {
-  return pick(ADJECTIVES) + '-' + pick(NOUNS)
+export function choose(random: () => number = Math.random): string {
+  return pick(ADJECTIVES, random) + '-' + pick(NOUNS, random)
 }

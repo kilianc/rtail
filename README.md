@@ -37,7 +37,9 @@ trusted network, or put a reverse proxy in front of it.
 ## Installing the client
 
 The client is a UNIX pipe and belongs on the host whose output you are tailing,
-not in the container. It needs Node.js 20 or newer:
+not in the container. It needs **Node.js 22.18 or newer** — rtail ships as
+TypeScript and relies on Node stripping the types at load time, which is
+unflagged from 22.18 on:
 
     $ npm install -g rtail
 
@@ -206,8 +208,9 @@ Other targets:
 
     $ make build      # build the webapp into app/
     $ make dist       # build the minified webapp into dist/
-    $ make test       # run the test suite
-    $ make typecheck  # type-check the webapp
+    $ make test       # unit + integration suite, with coverage thresholds
+    $ make test-e2e   # browser smoke suite (first run downloads Chromium)
+    $ make typecheck  # type-check everything
     $ make shell      # open a shell inside the toolchain container
     $ make clean      # remove generated assets and dependencies
 
@@ -229,14 +232,21 @@ npm scripts — `npm install && npm run dev`.
 
 | | |
 | --- | --- |
-| CLI | ESM, Node ≥ 20, [yargs](https://yargs.js.org), [socket.io](https://socket.io) |
+| CLI | TypeScript, ESM, Node ≥ 22.18, [yargs](https://yargs.js.org), [socket.io](https://socket.io) |
 | Webapp | [Preact](https://preactjs.com) + TypeScript, ~33 KB gzipped |
 | Build | [esbuild](https://esbuild.github.io) + [dart-sass](https://sass-lang.com) |
-| Tests | the built-in `node:test` runner |
+| Tests | the built-in `node:test` runner, [jsdom](https://github.com/jsdom/jsdom), [Playwright](https://playwright.dev) |
 
 The webapp has no framework runtime beyond Preact: routing, preferences,
 popovers, and timestamp formatting are a few dozen lines each over the
 platform (`history`, `localStorage`, `Intl`) rather than dependencies.
+
+The CLI has no build step at all. `bin` points straight at the `.ts` sources
+and Node strips the types as it loads them, so what you read in `cli/` is
+exactly what npm installs — nothing is compiled, bundled, or minified on the
+way. `tsc` never emits; it only type-checks, and `erasableSyntaxOnly` keeps the
+source to constructs that *can* be erased (no enums, namespaces, or constructor
+parameter properties, all of which would need real codegen).
 
 # How to contribute
 
@@ -245,17 +255,39 @@ This project follows the awesome [Vincent Driessen](http://nvie.com/about/) [bra
 * You must add a new feature on its own branch
 * You must contribute to hot-fixing, directly into the master branch (and pull-request to it)
 
-The test suite runs on the built-in [`node:test`](https://nodejs.org/api/test.html)
-runner. Use the tests to check whether your contribution breaks some part of the
-library, and be sure to add new tests for each new feature.
+There are three layers, and a change usually wants a test in exactly one of
+them:
+
+| Layer | Where | What it covers |
+| --- | --- | --- |
+| Unit | `test/unit` | The CLI modules, the webapp's libraries, and each Preact component against [jsdom](https://github.com/jsdom/jsdom) |
+| Integration | `test/integration` | The real `bin` entry points, spawned as processes and talking over a real UDP socket |
+| End to end | `test/e2e` | The published build in a real browser, fed by the real client bin |
+
+The first two run on the built-in [`node:test`](https://nodejs.org/api/test.html)
+runner and are what you want almost always. They are fast (a few seconds) and
+enforce a **90% line, branch and function coverage floor** — the run fails if a
+change drops below it.
 
     $ make test
 
-The webapp is TypeScript; please keep it type-clean:
+The browser suite is slower and needs its own image, so it is a separate target
+and a separate CI job:
+
+    $ make test-e2e
+
+Everything is TypeScript; please keep it type-clean:
 
     $ make typecheck
 
-CI runs both, plus the production build, on Node 20 and 22.
+One wrinkle worth knowing: Node cannot load `.tsx` at all — type stripping is
+an erasure pass and JSX needs a real transform — so `tools/tsx-hook.ts` runs
+the components through esbuild on the way into the test runner, using the same
+JSX settings as `tools/build.ts`. Source maps are inline, so coverage still
+reports against the original `.tsx` lines.
+
+CI runs the unit and integration suites plus the production build on Node 22.18
+and 24, and the browser suite on 22.18.
 
 ## Contributors
 

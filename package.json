@@ -1,6 +1,6 @@
 {
   "name": "rtail",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Terminal output to the browser in seconds, using UNIX pipes.",
   "keywords": [
     "log",
@@ -12,11 +12,11 @@
   ],
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.18"
   },
   "bin": {
-    "rtail": "./cli/rtail-client.js",
-    "rtail-server": "./cli/rtail-server.js"
+    "rtail": "./cli/rtail-client.ts",
+    "rtail-server": "./cli/rtail-server.ts"
   },
   "files": [
     "cli",
@@ -37,22 +37,31 @@
     "yargs": "^17.7.2"
   },
   "devDependencies": {
-    "@types/node": "^22.10.5",
+    "@playwright/test": "1.62.1",
+    "@types/debug": "^4.1.12",
+    "@types/express": "^4.17.21",
+    "@types/jsdom": "^21.1.7",
+    "@types/node": "^22.18.0",
+    "@types/update-notifier": "^6.0.8",
+    "@types/yargs": "^17.0.33",
     "ansi_up": "^6.0.2",
     "esbuild": "^0.24.2",
     "highlight.js": "^11.11.1",
+    "jsdom": "^26.0.0",
     "preact": "^10.25.4",
     "sass": "^1.83.0",
     "socket.io-client": "^4.8.1",
-    "typescript": "^5.7.3"
+    "typescript": "^5.9.2"
   },
   "scripts": {
-    "dev": "node tools/dev.js",
-    "build": "node tools/build.js",
-    "dist": "node tools/build.js --dist",
+    "dev": "node tools/dev.ts",
+    "build": "node tools/build.ts",
+    "dist": "node tools/build.ts --dist",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/*.test.js",
-    "prepack": "node tools/build.js --dist"
+    "test": "node --import ./tools/tsx-hook.ts --test-timeout=30000 --experimental-test-coverage --test-coverage-include='cli/**' --test-coverage-include='app/src/**' --test-coverage-exclude='app/src/main.tsx' --test-coverage-lines=90 --test-coverage-functions=90 --test-coverage-branches=90 --test 'test/unit/**/*.test.ts' 'test/unit/**/*.test.tsx' 'test/integration/**/*.test.ts'",
+    "test:unit": "node --import ./tools/tsx-hook.ts --test-timeout=30000 --test 'test/unit/**/*.test.ts' 'test/unit/**/*.test.tsx'",
+    "test:e2e": "playwright test",
+    "prepack": "node tools/build.ts --dist"
   },
   "browserslist": [
     "last 2 versions",
