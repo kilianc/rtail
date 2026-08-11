@@ -121,7 +121,7 @@ angular
         line.html = $sce.trustAsHtml('')
       } else if ('object' === line.type) {
         // for object just format JSON
-        line.html = hljs.highlight('json', JSON.stringify(line.content, null, '  ')).value
+        line.html = hljs.highlight(JSON.stringify(line.content, null, '  '), { language: 'json' }).value
         line.html = $sce.trustAsHtml('<pre>' + line.html + '</pre>')
       } else {
         // for log lines use ansi format

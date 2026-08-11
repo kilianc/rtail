@@ -17,9 +17,12 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Dart Sass replaces the abandoned node-sass@3 (libsass) the project used in
-# 2015. Pin it: this Dockerfile is the toolchain lockfile.
+# 2015. esbuild produces the one browser bundle the app still needs (highlight.js
+# ships no UMD build since v11). Pin both: this Dockerfile is the toolchain
+# lockfile.
 RUN npm install -g --ignore-scripts \
-      sass@1.83.0
+      sass@1.83.0 \
+      esbuild@0.24.2
 
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false \
     NPM_CONFIG_FUND=false

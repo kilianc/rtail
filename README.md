@@ -143,6 +143,30 @@ To scale and broadcast on multiple servers, instruct the `rtail` client to strea
 
 For the time being, the webapp doesn't have an authentication layer; it assumes that you will run it behind a VPN or reverse proxy, with a simple `Authorization` header check.
 
+# Running it locally
+
+The toolchain lives in a container ([`tools/Dockerfile`](tools/Dockerfile)), so Docker is
+the only thing you need installed — no Node.js, no npm, no global CLIs.
+
+    $ make dev
+
+That builds the assets, starts `rtail-server`, and feeds it three live demo
+streams, then serves the webapp on <http://localhost:8888/app>. Stylesheets
+recompile on save; reload the browser to pick them up. `Ctrl-C` stops
+everything.
+
+The first run also builds the toolchain image and installs dependencies, so it
+takes a minute; subsequent runs start immediately.
+
+Other targets:
+
+    $ make build   # build the generated assets once (css, app.js, vendor bundle)
+    $ make css     # recompile stylesheets only — the fast loop for UI work
+    $ make shell   # open a shell inside the toolchain container
+    $ make clean   # remove generated assets and dependencies
+
+Use `make dev PORT=9000` to serve on a different port.
+
 # How to contribute
 
 This project follows the awesome [Vincent Driessen](http://nvie.com/about/) [branching model](http://nvie.com/posts/a-successful-git-branching-model/).

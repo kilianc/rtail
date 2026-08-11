@@ -1,3 +1,5 @@
 app/css/*
+app/vendor
 app/*.js
 dist
+node_modules

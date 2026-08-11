@@ -57,7 +57,7 @@
     "gulp-uglify": "^1.2.0",
     "gulp-useref": "^1.1.2",
     "gulp-util": "^3.0.4",
-    "highlight.js": "isagalaev/highlight.js",
+    "highlight.js": "^11.11.1",
     "istanbul": "^0.3.17",
     "istanbul-harmony": "^0.3.16",
     "jquery": "^2.1.4",

@@ -1,3 +1,16 @@
+/**
+ * NOTE: this gulpfile does not currently run.
+ *
+ * gulp 3.9 cannot be loaded on Node >= 12 — it fails with "primordials is not
+ * defined" via its graceful-fs dependency. The dev loop has been moved to the
+ * Makefile (`make dev` / `make build`), which drives dart-sass, ejs and esbuild
+ * directly inside the toolchain container and needs no gulp at all.
+ *
+ * What is still only here is the `dist` pipeline (useref bundling plus JS/CSS/
+ * HTML minification) used to publish the webapp. Reviving that means either
+ * upgrading to gulp 4/5 or porting those few steps to the Makefile too.
+ */
+
 var gulp = require('gulp')
 var run = require('run-sequence')
 var plugins = require('gulp-load-plugins')()
