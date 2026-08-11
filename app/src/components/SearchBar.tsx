@@ -11,9 +11,9 @@
 
 import { useEffect, useRef, useState } from 'preact/hooks'
 import type { RefObject } from 'preact'
-import { parsePath, type FieldPath } from '../lib/json.js'
-import { MAX_FIELDS } from '../lib/prefs.js'
-import { Popover } from './Popover.js'
+import { parsePath, type FieldPath } from '../lib/json.ts'
+import { MAX_FIELDS } from '../lib/prefs.ts'
+import { Popover } from './Popover.tsx'
 
 export type SearchPanel = 'help' | 'fields'
 

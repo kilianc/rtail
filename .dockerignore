@@ -7,5 +7,9 @@ app/css
 app/bundle.js
 app/bundle.js.map
 *.log
+test
+playwright.config.ts
+playwright-report
+test-results
 Makefile
 README.md

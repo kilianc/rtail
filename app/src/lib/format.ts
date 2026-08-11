@@ -14,8 +14,8 @@
 import { AnsiUp } from 'ansi_up'
 import hljs from 'highlight.js/lib/core'
 import json from 'highlight.js/lib/languages/json'
-import { getPath, isPlainObject, parsePath, stringify } from './json.js'
-import type { JsonView, Line, WireLine } from './types.js'
+import { getPath, isPlainObject, parsePath, stringify } from './json.ts'
+import type { JsonView, Line, WireLine } from './types.ts'
 
 hljs.registerLanguage('json', json)
 

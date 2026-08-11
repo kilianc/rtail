@@ -1,22 +1,33 @@
 /*!
- * webapp.js
+ * webapp.ts
  * Created by Kilian Ciuffolo on Nov 11, 2014
  *
  * Serves the published webapp build, caching each asset in memory for `ttl`.
  */
 
 import createDebug from 'debug'
+import type { RequestHandler } from 'express'
 
 const debug = createDebug('rtail:webapp')
 
 const FORWARDED_HEADERS = ['content-type', 'content-encoding', 'etag', 'last-modified']
 
-/**
- * @param {{ origin: string, ttl: number }} opts
- * @returns {import('express').RequestHandler}
- */
-export function webapp(opts) {
-  let cache = new Map()
+export interface WebappOptions {
+  origin: string
+  /** How long a cached asset is served before it is fetched again, in ms. */
+  ttl: number
+  /** Injectable for tests; defaults to the global fetch. */
+  fetch?: typeof globalThis.fetch
+}
+
+interface CacheEntry {
+  headers: Record<string, string>
+  body: Buffer
+}
+
+export function webapp(opts: WebappOptions): RequestHandler {
+  const fetchImpl = opts.fetch ?? globalThis.fetch
+  let cache = new Map<string, CacheEntry>()
 
   /*!
    * wipes out cache every ttl ms
@@ -41,14 +52,14 @@ export function webapp(opts) {
     debug('caching %s', req.path)
 
     try {
-      const upstream = await fetch(opts.origin + req.path)
+      const upstream = await fetchImpl(opts.origin + req.path)
 
       if (!upstream.ok) {
         debug('upstream %s for %s', upstream.status, req.path)
         return res.sendStatus(upstream.status)
       }
 
-      const headers = {}
+      const headers: Record<string, string> = {}
       for (const name of FORWARDED_HEADERS) {
         const value = upstream.headers.get(name)
         if (value) headers[name] = value
@@ -62,7 +73,7 @@ export function webapp(opts) {
     } catch (err) {
       // A failed upstream fetch used to throw inside the callback and take the
       // whole server down; surface it to express instead.
-      debug('upstream error for %s: %s', req.path, err.message)
+      debug('upstream error for %s: %s', req.path, (err as Error).message)
       next(err)
     }
   }

@@ -1,0 +1,31 @@
+# tools/Dockerfile.e2e — browser toolchain for the end-to-end suite.
+#
+# Kept separate from tools/Dockerfile on purpose: Chromium and its system
+# libraries add several hundred megabytes, and the day-to-day loop (`make dev`,
+# `make test`) should not pay for a browser it never launches.
+#
+#   docker build -t rtail-e2e -f tools/Dockerfile.e2e tools/
+#
+# The Playwright version here MUST match the @playwright/test devDependency in
+# package.json exactly — which is why that one is pinned without a caret. Each
+# release expects a specific Chromium revision, and a mismatch surfaces as a
+# "Please run npx playwright install" that no amount of installing will fix.
+FROM node:22.18.0-bookworm-slim
+
+# Browsers live outside the mounted checkout, so they survive `make clean` and
+# are not owned by whichever UID happens to run the container.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright \
+    NPM_CONFIG_UPDATE_NOTIFIER=false \
+    NPM_CONFIG_FUND=false
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# `--with-deps` pulls the apt packages Chromium needs. Only Chromium is
+# installed; the suite is a smoke test, not a cross-browser matrix.
+RUN npx --yes playwright@1.62.1 install --with-deps chromium \
+ && rm -rf /var/lib/apt/lists/* \
+ && chmod -R a+rX /opt/playwright
+
+WORKDIR /work

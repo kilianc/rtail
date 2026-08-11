@@ -1,18 +1,16 @@
 /**
  * Emit representative log lines on stdout, for piping into `rtail`.
  *
- *   node tools/demo-logs.js api-gateway | node cli/rtail-client.js --id api-gateway
+ *   node tools/demo-logs.ts api-gateway | node cli/rtail-client.ts --id api-gateway
  *
- * Several of these are run side by side by tools/dev.sh so the sidebar has
+ * Several of these are run side by side by tools/dev.ts so the sidebar has
  * more than one stream in it — which is also how you check that switching
  * streams no longer interleaves their output.
  */
 
-'use strict'
+const stream = process.argv[2] || 'demo'
 
-var stream = process.argv[2] || 'demo'
-
-var LINES = [
+const LINES = [
   '[90mapi:logs[0m [32m200[0m GET /1/config',
   '[90mapi:logs[0m [32m200[0m GET /1/geocode?address=ny',
   '[90mapi:logs[0m [33m301[0m GET /1/users/556605ede9fa35333befa9e6/profile',
@@ -26,11 +24,11 @@ var LINES = [
   '<script>alert(1)</script>'
 ]
 
-setInterval(function () {
+setInterval(() => {
   if (Math.random() < 0.2) {
     // Object lines exercise the JSON highlighting path.
     process.stdout.write(JSON.stringify({
-      stream: stream,
+      stream,
       event: 'checkout.completed',
       count: Math.floor(Math.random() * 1000),
       ok: Math.random() > 0.3,

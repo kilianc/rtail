@@ -1,9 +1,9 @@
 import { useRef, useState } from 'preact/hooks'
-import type { FieldPath } from '../lib/json.js'
-import { FONT_FAMILY_COUNT, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../lib/prefs.js'
-import type { JsonView, Prefs, Theme } from '../lib/types.js'
-import { Popover } from './Popover.js'
-import { FieldsPicker, SearchBar, SearchHelp, type SearchPanel } from './SearchBar.js'
+import type { FieldPath } from '../lib/json.ts'
+import { FONT_FAMILY_COUNT, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../lib/prefs.ts'
+import type { JsonView, Prefs, Theme } from '../lib/types.ts'
+import { Popover } from './Popover.tsx'
+import { FieldsPicker, SearchBar, SearchHelp, type SearchPanel } from './SearchBar.tsx'
 
 declare const __VERSION__: string
 

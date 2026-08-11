@@ -3,7 +3,7 @@
  */
 
 import { io, type Socket } from 'socket.io-client'
-import type { WireLine } from './types.js'
+import type { WireLine } from './types.ts'
 
 interface ServerEvents {
   streams: (streams: string[]) => void

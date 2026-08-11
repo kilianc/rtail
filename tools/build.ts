@@ -1,9 +1,9 @@
 /*!
- * build.js — the whole webapp build.
+ * build.ts — the whole webapp build.
  *
- *   node tools/build.js            build into app/ for local development
- *   node tools/build.js --watch    ... and rebuild on change
- *   node tools/build.js --dist     minified, self-contained, into dist/
+ *   node tools/build.ts            build into app/ for local development
+ *   node tools/build.ts --watch    ... and rebuild on change
+ *   node tools/build.ts --dist     minified, self-contained, into dist/
  *
  * Replaces the gulp pipeline (gulp 3 cannot run on Node >= 12) with the
  * esbuild and dart-sass APIs directly.
@@ -16,19 +16,19 @@ import * as esbuild from 'esbuild'
 import * as sass from 'sass'
 
 const root = new URL('../', import.meta.url)
-const path = (rel) => fileURLToPath(new URL(rel, root))
+const path = (rel: string): string => fileURLToPath(new URL(rel, root))
 
 const args = new Set(process.argv.slice(2))
 const isDist = args.has('--dist')
 const isWatch = args.has('--watch')
 
 const outDir = isDist ? path('dist') : path('app')
-const pkg = JSON.parse(await readFile(path('package.json'), 'utf8'))
+const pkg = JSON.parse(await readFile(path('package.json'), 'utf8')) as { version: string }
 
 /**
  * Compile the stylesheets.
  */
-async function buildCss() {
+async function buildCss(): Promise<string[]> {
   const result = sass.compile(path('app/scss/main.scss'), {
     style: isDist ? 'compressed' : 'expanded',
     sourceMap: !isDist,
@@ -45,8 +45,11 @@ async function buildCss() {
 
 /**
  * Bundle the app. Shared config so watch and one-shot builds cannot drift.
+ *
+ * The JSX settings here are mirrored in tools/tsx-hook.ts, which is how the
+ * test suite loads the same components.
  */
-const jsOptions = {
+const jsOptions: esbuild.BuildOptions = {
   entryPoints: [path('app/src/main.tsx')],
   outfile: `${outDir}/bundle.js`,
   bundle: true,
@@ -61,7 +64,7 @@ const jsOptions = {
   logLevel: 'warning'
 }
 
-async function buildStatic() {
+async function buildStatic(): Promise<void> {
   await cp(path('app/index.html'), `${outDir}/index.html`)
   await cp(path('app/images'), `${outDir}/images`, { recursive: true })
 }
@@ -88,7 +91,7 @@ if (isWatch) {
   // non-recursive directory watch covers every partial — and watching the
   // directory rather than each file means edits that replace a file (most
   // editors save atomically via rename) still register.
-  let pending = null
+  let pending: NodeJS.Timeout | undefined
   watch(path('app/scss'), () => {
     clearTimeout(pending)
     pending = setTimeout(async () => {
@@ -96,7 +99,7 @@ if (isWatch) {
         await buildCss()
         console.log('css rebuilt')
       } catch (err) {
-        console.error('sass error:', err.message)
+        console.error('sass error:', (err as Error).message)
       }
     }, 50)
   })

@@ -12,7 +12,11 @@
 #
 # Everything else (esbuild, sass, typescript) is a devDependency pinned in
 # package-lock.json, so this image only needs to pin the runtime.
-FROM node:22.12.0-bookworm-slim
+#
+# 22.18 is the floor: it is the first release where TypeScript type stripping
+# is on by default. The CLI ships as .ts and is executed, unbuilt, by whatever
+# Node the user has — so the toolchain must not be older than `engines.node`.
+FROM node:22.18.0-bookworm-slim
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \

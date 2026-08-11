@@ -1,7 +1,7 @@
 // Styles are compiled separately by tools/build.js (dart-sass) and linked from
 // index.html, so there is no stylesheet import here.
 import { render } from 'preact'
-import { App } from './app.js'
+import { App } from './app.tsx'
 
 const root = document.getElementById('root')
 

@@ -27,7 +27,7 @@
  * for.
  */
 
-import { getPath, parsePath, stringify, type Path } from './json.js'
+import { getPath, parsePath, stringify, type Path } from './json.ts'
 
 /** Longest first, so `>=` is never read as `>` followed by a value of `=1`. */
 const OPERATORS = ['!=', '>=', '<=', ':', '=', '>', '<'] as const

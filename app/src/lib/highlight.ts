@@ -13,7 +13,7 @@
  * part by keeping the line.
  */
 
-import type { Needle } from './query.js'
+import type { Needle } from './query.ts'
 
 type Range = [start: number, end: number]
 
@@ -83,7 +83,10 @@ function findRanges(text: string, needles: Needle[]): Range[] {
     // A fresh regexp per pass: the query's own instance is shared by every
     // line, and a sticky `lastIndex` would make the marks depend on the order
     // the rows happened to render in.
-    const re = new RegExp(needle.re.source, needle.re.flags + 'g')
+    //
+    // `g` is dropped before being re-added: parseQuery strips it today, but
+    // this is an exported helper and `new RegExp(source, 'gg')` throws.
+    const re = new RegExp(needle.re.source, needle.re.flags.replace(/[gy]/g, '') + 'g')
 
     for (let match = re.exec(text); match; match = re.exec(text)) {
       if (match[0]) ranges.push([match.index, match.index + match[0].length])

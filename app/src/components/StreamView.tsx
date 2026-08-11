@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { defaultExpanded, formatTimestamp, renderFields } from '../lib/format.js'
-import { highlight } from '../lib/highlight.js'
-import type { Needle } from '../lib/query.js'
-import type { JsonView, Line } from '../lib/types.js'
+import { defaultExpanded, formatTimestamp, renderFields } from '../lib/format.ts'
+import { highlight } from '../lib/highlight.ts'
+import type { Needle } from '../lib/query.ts'
+import type { JsonView, Line } from '../lib/types.ts'
 
 interface Props {
   activeStream: string | null
@@ -83,7 +83,11 @@ export function StreamView({
     el.addEventListener('wheel', onWheel, { passive: true })
 
     return () => el.removeEventListener('wheel', onWheel)
-  }, [onPause])
+    // activeStream matters even though it is not read here: the scroller only
+    // exists once a stream is selected. Keyed on onPause alone, this ran once
+    // against a null ref and never again, so scroll-to-pause did nothing for
+    // anyone who picked their stream from the empty state.
+  }, [onPause, activeStream])
 
   useEffect(() => {
     if (!paused) return
