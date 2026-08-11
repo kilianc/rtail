@@ -1,6 +1,11 @@
 import test, { describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildFilter, formatLine, formatTimestamp } from '../../app/src/lib/format.ts'
+import {
+  defaultExpanded,
+  formatLine,
+  formatTimestamp,
+  renderFields
+} from '../../app/src/lib/format.ts'
 import type { Line, WireLine } from '../../app/src/lib/types.ts'
 
 function wire(content: unknown, type = typeof content): WireLine {
@@ -99,28 +104,119 @@ describe('formatTimestamp', () => {
   })
 })
 
-describe('buildFilter', () => {
-  const lines = ['alpha', 'beta', 'gamma'].map((text) => ({ text }) as Line)
+describe('formatLine: the compact and expanded payloads', () => {
+  test('gives an object line both a pretty and a one-line rendering', () => {
+    const line = formatLine(wire({ level: 'warn' }, 'object'))
 
-  test('matches everything when the pattern is empty', () => {
-    assert.deepEqual(lines.filter(buildFilter('')), lines)
+    assert.match(line.html, /\n/, 'the expanded form is pretty-printed')
+    assert.ok(line.htmlCompact)
+    assert.doesNotMatch(line.htmlCompact, /\n/, 'the compact form is one line')
   })
 
-  test('filters by regexp', () => {
-    assert.deepEqual(lines.filter(buildFilter('^a')).map((l) => l.text), ['alpha'])
+  test('leaves a text line with no compact form', () => {
+    // Nothing to collapse, so there is no caret to offer either.
+    assert.equal(formatLine(wire('plain')).htmlCompact, null)
+    assert.equal(formatLine(wire('')).htmlCompact, null)
   })
 
-  test('supports regexp syntax, not just substrings', () => {
-    assert.deepEqual(lines.filter(buildFilter('a(lph|mm)a')).map((l) => l.text), ['alpha', 'gamma'])
+  test('flags a payload that is taller than the auto-expand cutoff', () => {
+    const small = formatLine(wire({ a: 1 }, 'object'))
+    const large = formatLine(
+      wire(Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`k${i}`, i])), 'object')
+    )
+
+    assert.equal(small.bulky, false)
+    assert.equal(large.bulky, true)
+  })
+})
+
+describe('defaultExpanded', () => {
+  const line = (bulky: boolean) => ({ bulky }) as Line
+
+  test('expands everything when asked to', () => {
+    assert.equal(defaultExpanded('expanded', line(true)), true)
+    assert.equal(defaultExpanded('expanded', line(false)), true)
   })
 
-  test('matches everything when the pattern will not compile', () => {
-    // Half-typed patterns are the common case; blanking the viewport while
-    // someone is still typing would be worse than showing too much.
-    assert.deepEqual(lines.filter(buildFilter('[unclosed')), lines)
+  test('collapses everything when asked to', () => {
+    assert.equal(defaultExpanded('collapsed', line(false)), false)
+    assert.equal(defaultExpanded('collapsed', line(true)), false)
   })
 
-  test('is case sensitive', () => {
-    assert.deepEqual(lines.filter(buildFilter('ALPHA')), [])
+  test('collapses only the bulky ones on auto', () => {
+    assert.equal(defaultExpanded('auto', line(false)), true)
+    assert.equal(defaultExpanded('auto', line(true)), false)
+  })
+})
+
+describe('renderFields', () => {
+  const payload = { level: 'error', duration: 250, ok: false, user: { id: 42 } }
+
+  test('renders the requested fields as key=value pairs', () => {
+    const html = renderFields(payload, ['level', 'duration'])
+
+    assert.ok(html)
+    assert.match(html, /level/)
+    assert.match(html, /error/)
+    assert.match(html, /duration/)
+    assert.match(html, /250/)
+  })
+
+  test('keeps the requested order', () => {
+    const html = renderFields(payload, ['duration', 'level'])!
+
+    assert.ok(html.indexOf('duration') < html.indexOf('level'))
+  })
+
+  test('walks a dotted path', () => {
+    assert.match(renderFields(payload, ['user.id'])!, /42/)
+  })
+
+  test('drops fields the line does not carry', () => {
+    // A stream is rarely uniform, and a row of placeholders reads as data.
+    const html = renderFields(payload, ['level', 'missing'])!
+
+    assert.match(html, /error/)
+    assert.doesNotMatch(html, /missing/)
+  })
+
+  test('returns null when the line carries none of them', () => {
+    // So the caller can fall back to the payload rather than an empty row.
+    assert.equal(renderFields(payload, ['nope']), null)
+  })
+
+  test('returns null for a line that is not an object', () => {
+    assert.equal(renderFields('a string', ['level']), null)
+    assert.equal(renderFields(null, ['level']), null)
+    assert.equal(renderFields([1, 2], ['level']), null)
+  })
+
+  test('ignores a malformed path', () => {
+    assert.equal(renderFields(payload, ['...']), null)
+  })
+
+  test('quotes a value only where the quotes earn their place', () => {
+    const plain = renderFields({ msg: 'hello' }, ['msg'])!
+    const spaced = renderFields({ msg: 'hello there' }, ['msg'])!
+
+    assert.doesNotMatch(plain, /&quot;|"hello"/)
+    assert.match(spaced, /&quot;hello there&quot;/)
+  })
+
+  test('renders booleans and nulls as literals', () => {
+    assert.match(renderFields(payload, ['ok'])!, /hljs-literal/)
+    assert.match(renderFields({ n: null }, ['n'])!, /null/)
+  })
+
+  test('keeps nested objects highlighted as json', () => {
+    assert.match(renderFields(payload, ['user'])!, /hljs/)
+  })
+
+  test('escapes a field name and a value', () => {
+    const html = renderFields({ '<k>': '<script>alert(1)</script>' }, ['<k>'])
+
+    // The path regexp rejects `<k>`, so nothing is rendered — but if that ever
+    // changes, the value must still not come through as live markup.
+    if (html) assert.doesNotMatch(html, /<script>/)
   })
 })

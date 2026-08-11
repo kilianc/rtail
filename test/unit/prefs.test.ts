@@ -7,6 +7,7 @@ import {
   isTheme,
   loadActiveStream,
   loadPrefs,
+  MAX_FIELDS,
   savePrefs,
   saveActiveStream
 } from '../../app/src/lib/prefs.ts'
@@ -36,7 +37,9 @@ describe('prefs', () => {
       ascending: true,
       sidebarWidth: 240,
       favorites: [],
-      hiddenTimestamps: []
+      hiddenTimestamps: [],
+      jsonView: 'auto',
+      fields: {}
     })
   })
 
@@ -55,7 +58,9 @@ describe('prefs', () => {
       ascending: false,
       sidebarWidth: 320,
       favorites: ['api'],
-      hiddenTimestamps: ['worker']
+      hiddenTimestamps: ['worker'],
+      jsonView: 'collapsed',
+      fields: { api: ['level', 'user.id'] }
     }
 
     store(stored)
@@ -125,6 +130,48 @@ describe('prefs', () => {
 
     assert.deepEqual(loadPrefs().favorites, [])
     assert.deepEqual(loadPrefs().hiddenTimestamps, [])
+  })
+
+  test('accepts only the three json views', () => {
+    store({ jsonView: 'collapsed' })
+    assert.equal(loadPrefs().jsonView, 'collapsed')
+
+    store({ jsonView: 'sideways' })
+    assert.equal(loadPrefs().jsonView, 'auto')
+  })
+
+  test('reads the extracted fields, per stream', () => {
+    store({ fields: { api: ['level'], worker: ['user.id'] } })
+
+    assert.deepEqual(loadPrefs().fields, { api: ['level'], worker: ['user.id'] })
+  })
+
+  test('ignores a fields entry that is not an array', () => {
+    store({ fields: { api: 'level', worker: ['ok'] } })
+
+    assert.deepEqual(loadPrefs().fields, { worker: ['ok'] })
+  })
+
+  test('drops non-strings and empty entries from the fields', () => {
+    store({ fields: { api: [1, null, 'level'], empty: [], gone: [7] } })
+
+    // An entry that filters down to nothing is dropped rather than kept as [].
+    assert.deepEqual(loadPrefs().fields, { api: ['level'] })
+  })
+
+  test('caps how many fields a stream can extract', () => {
+    const tooMany = Array.from({ length: MAX_FIELDS + 5 }, (_, i) => `f${i}`)
+    store({ fields: { api: tooMany } })
+
+    assert.equal(loadPrefs().fields.api?.length, MAX_FIELDS)
+  })
+
+  test('ignores a fields value that is not an object', () => {
+    store({ fields: 'nope' })
+    assert.deepEqual(loadPrefs().fields, {})
+
+    store({ fields: null })
+    assert.deepEqual(loadPrefs().fields, {})
   })
 
   test('round-trips through savePrefs', () => {

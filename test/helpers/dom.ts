@@ -15,7 +15,10 @@ const GLOBALS = [
   'window', 'document', 'navigator', 'localStorage', 'sessionStorage',
   'HTMLElement', 'HTMLInputElement', 'Element', 'Node', 'Event', 'CustomEvent',
   'MouseEvent', 'KeyboardEvent', 'getComputedStyle', 'requestAnimationFrame',
-  'cancelAnimationFrame'
+  'cancelAnimationFrame',
+  // Used by highlight.ts, which walks the rendered fragment rather than
+  // string-replacing into it.
+  'NodeFilter', 'DocumentFragment', 'Text'
 ] as const
 
 export interface Dom {

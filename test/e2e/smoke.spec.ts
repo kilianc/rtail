@@ -105,9 +105,98 @@ test('filters the visible lines', async ({ page }) => {
   await page.goto(`/#/streams/${stream}`)
   await expect(page.locator('.stream-line-content')).toHaveCount(3)
 
-  await page.getByLabel('Filter stream').fill('^alpha')
+  await page.getByLabel('Filter lines').fill('alpha')
 
-  await expect(page.locator('.stream-line-content')).toHaveText(['alpha one', 'alpha three'])
+  await expect(page.locator('.stream-line-body')).toHaveText(['alpha one', 'alpha three'])
+  await expect(page.locator('.filter-count')).toHaveText('2/3')
+})
+
+test('marks the query hits', async ({ page }) => {
+  const stream = streamName('mark')
+
+  await pipe(stream, ['a boom here'])
+  await page.goto(`/#/streams/${stream}`)
+
+  await page.getByLabel('Filter lines').fill('boom')
+
+  await expect(page.locator('.stream-line-body mark')).toHaveText('boom')
+})
+
+test('filters object lines by a JSON field', async ({ page }) => {
+  const stream = streamName('field')
+
+  await pipe(stream, [
+    JSON.stringify({ level: 'error', msg: 'boom' }),
+    JSON.stringify({ level: 'info', msg: 'fine' })
+  ])
+  await page.goto(`/#/streams/${stream}`)
+  await expect(page.locator('.stream-line-content')).toHaveCount(2)
+
+  // The point of the query language: this must not match the info line just
+  // because the word "error" appears somewhere in its text.
+  await page.getByLabel('Filter lines').fill('level:error')
+
+  await expect(page.locator('.stream-line-content')).toHaveCount(1)
+  await expect(page.locator('.stream-line-body')).toContainText('boom')
+})
+
+test('reports a query that will not parse without blanking the view', async ({ page }) => {
+  const stream = streamName('badquery')
+
+  await pipe(stream, ['boom', 'quiet'])
+  await page.goto(`/#/streams/${stream}`)
+  await expect(page.locator('.stream-line-content')).toHaveCount(2)
+
+  await page.getByLabel('Filter lines').fill('boom /unclosed(/')
+
+  await expect(page.locator('.filter-box')).toHaveClass(/invalid/)
+  await expect(page.locator('.stream-line-body')).toHaveText(['boom'])
+})
+
+test('shows the filter syntax card', async ({ page }) => {
+  await page.goto('/')
+
+  const stream = streamName('help')
+  await pipe(stream, ['x'])
+  await page.getByRole('link', { name: stream }).click()
+
+  await page.getByLabel('Filter syntax').click()
+
+  await expect(page.locator('.popover-help')).toBeVisible()
+  await expect(page.locator('.popover-help dt').first()).toBeVisible()
+})
+
+test('extracts JSON fields and collapses the payload to them', async ({ page }) => {
+  const stream = streamName('fields')
+
+  await pipe(stream, [JSON.stringify({ level: 'error', noise: 'lots of it', n: 1 })])
+  await page.goto(`/#/streams/${stream}`)
+  await expect(page.locator('.stream-line-body')).toContainText('noise')
+
+  await page.getByRole('button', { name: /^Fields/ }).click()
+  await page.locator('.field-row', { hasText: 'level' }).first().click()
+
+  await expect(page.locator('.stream-line-body')).toContainText('level')
+  await expect(page.locator('.stream-line-body')).not.toContainText('noise')
+
+  // The picker offers the buffer's own field census, not a fixed schema.
+  await expect(page.locator('.btn-fields-count')).toHaveText('1')
+})
+
+test('collapses and expands an object payload', async ({ page }) => {
+  const stream = streamName('json-toggle')
+
+  await pipe(stream, [JSON.stringify({ a: 1, b: 2 })])
+  await page.goto(`/#/streams/${stream}`)
+
+  const toggle = page.getByLabel(/^(Collapse|Expand) payload$/)
+  await expect(toggle).toBeVisible()
+
+  await toggle.click()
+  await expect(page.getByLabel('Expand payload')).toBeVisible()
+
+  await page.getByLabel('Expand payload').click()
+  await expect(page.getByLabel('Collapse payload')).toBeVisible()
 })
 
 test('finds a stream through the sidebar search', async ({ page }) => {

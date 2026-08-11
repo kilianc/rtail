@@ -167,8 +167,60 @@ the container image is configured.
     rtail-server --web-port 8080         Use custom HTTP port
     rtail-server --udp-port 8080         Use custom UDP port
     rtail-server --web-version stable    Always uses latest stable webapp
-    rtail-server --web-version unstable  Always uses latest develop webapp
+    rtail-server --web-version unstable  Always uses latest unreleased webapp
     rtail-server --web-version 0.1.3     Use webapp v0.1.3
+
+## The web view
+
+### Filtering
+
+The filter box takes a small query language rather than a bare regexp. Terms
+are separated by spaces and **all** of them have to match; matching ignores
+case until a term contains a capital, the way `ag` and `rg` behave.
+
+| Query               | Matches                                          |
+| ------------------- | ------------------------------------------------ |
+| `payment failed`    | both words, in any order                         |
+| `"payment failed"`  | that exact phrase                                |
+| `-healthcheck`      | lines without it                                 |
+| `/GET \/1\/users/`  | a regexp — add `/i`, `/s`, `/m` or `/u` for flags |
+| `level:error`       | the JSON field contains `error`                  |
+| `user.id=42`        | the JSON field is exactly `42`                   |
+| `status!=200`       | it is anything else                              |
+| `duration>250`      | `>`, `>=`, `<` and `<=`, on numbers              |
+| `tags[0]:api`       | paths index into arrays                          |
+| `trace_id:*`        | the field is there at all                        |
+
+Field terms read the parsed payload, so `level:error` cannot be fooled by the
+word "error" sitting in a message three keys away. A field term never matches a
+line that does not carry the field — including `status!=200`, which means "has
+a status, and it is not 200". For "not 200, whether or not there is a status",
+negate the whole term instead: `-status:200`.
+
+Matches are marked in the viewport, and the box counts how many lines survived.
+An unfinished regexp turns the box's hairline red and keeps filtering on the
+terms that did parse. Press `f` to jump to the box, `Escape` to clear it.
+
+### Extracting fields
+
+`Fields` picks JSON paths out of object lines: `event=checkout.completed
+count=305 ok=false` instead of the whole payload. The list is a census of the
+paths in the buffer, most common first, and takes a hand-typed path for
+anything that has not come past yet. The picks belong to the stream — the
+fields of a billing worker are not the fields of an nginx log — and are
+remembered per stream.
+
+### JSON payloads
+
+Not every payload is worth six rows of the viewport. **Settings → JSON
+payloads** decides what an object line looks like before you touch it:
+
+* **Auto** (default) — expanded up to six rows, collapsed past that.
+* **One line** — always collapsed, truncated at the edge of the window.
+* **Pretty** — always expanded.
+
+The caret at the start of any object line overrides that for that line, whether
+it is showing a payload or extracted fields.
 
 ## UDP Broadcasting
 
@@ -250,10 +302,11 @@ parameter properties, all of which would need real codegen).
 
 # How to contribute
 
-This project follows the awesome [Vincent Driessen](http://nvie.com/about/) [branching model](http://nvie.com/posts/a-successful-git-branching-model/).
+`main` is the only long-lived branch, and it is always releasable.
 
-* You must add a new feature on its own branch
-* You must contribute to hot-fixing, directly into the master branch (and pull-request to it)
+* Branch off `main`, and open a pull request back into `main`
+* Keep the branch short-lived; there is no `develop` or release branch to merge through
+* CI must be green before a pull request lands
 
 There are three layers, and a change usually wants a test in exactly one of
 them:
@@ -288,6 +341,17 @@ reports against the original `.tsx` lines.
 
 CI runs the unit and integration suites plus the production build on Node 22.18
 and 24, and the browser suite on 22.18.
+
+## Releasing
+
+The `version` field in `package.json` is the release trigger. Bump it in a pull
+request like any other change; when that pull request lands on `main`, CI
+re-runs the type-check, build, and tests, then tags the commit `vX.Y.Z`, cuts a
+GitHub release with generated notes, and pushes the multi-arch container image
+to `ghcr.io/kilianc/rtail`.
+
+A version with a pre-release suffix (`0.3.0-rc.1`) is marked as a pre-release
+and is never tagged `latest`. Landing anything else on `main` releases nothing.
 
 ## Contributors
 

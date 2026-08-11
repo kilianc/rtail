@@ -223,7 +223,16 @@ describe('App', () => {
     assert.deepEqual(renderedLines(), ['first', 'missed while paused'])
   })
 
-  test('filters the rendered lines', async () => {
+  /** Types into the filter box. */
+  function filter(value: string) {
+    act(() => {
+      const input = dom.container.querySelector('.filter-box input') as HTMLInputElement
+      input.value = value
+      input.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    })
+  }
+
+  test('filters the rendered lines by text', async () => {
     await emit('api', 'alpha')
     await emit('api', 'beta')
 
@@ -232,13 +241,116 @@ describe('App', () => {
     await click(dom.container.querySelector('.stream-section a'))
     await waitFor(() => renderedLines().length === 2, 'the backlog to render')
 
-    act(() => {
-      const input = dom.container.querySelector('.filter-box input') as HTMLInputElement
-      input.value = '^a'
-      input.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
-    })
+    filter('alpha')
 
     assert.deepEqual(renderedLines(), ['alpha'])
+  })
+
+  test('filters by regexp when the term is slashed', async () => {
+    await emit('api', 'alpha')
+    await emit('api', 'beta')
+
+    start()
+    await waitFor(() => streamLinks().includes('api'), 'the stream to appear')
+    await click(dom.container.querySelector('.stream-section a'))
+    await waitFor(() => renderedLines().length === 2, 'the backlog to render')
+
+    // A bare `^a` is literal text under the query language; only the slashed
+    // form is a pattern.
+    filter('^a')
+    assert.deepEqual(renderedLines(), [])
+
+    filter('/^a/')
+    assert.deepEqual(renderedLines(), ['alpha'])
+  })
+
+  test('filters object lines by a JSON field', async () => {
+    await emit('api', { level: 'error', msg: 'boom' })
+    await emit('api', { level: 'info', msg: 'fine' })
+
+    start()
+    await waitFor(() => streamLinks().includes('api'), 'the stream to appear')
+    await click(dom.container.querySelector('.stream-section a'))
+    await waitFor(() => renderedLines().length === 2, 'the backlog to render')
+
+    filter('level:error')
+
+    await waitFor(() => renderedLines().length === 1, 'the field filter to apply')
+    assert.match(renderedLines()[0] ?? '', /boom/)
+  })
+
+  test('reports how many lines matched', async () => {
+    await emit('api', 'alpha')
+    await emit('api', 'beta')
+
+    start()
+    await waitFor(() => streamLinks().includes('api'), 'the stream to appear')
+    await click(dom.container.querySelector('.stream-section a'))
+    await waitFor(() => renderedLines().length === 2, 'the backlog to render')
+
+    filter('alpha')
+
+    await waitFor(
+      () => '1/2' === dom.container.querySelector('.filter-count')?.textContent,
+      'the match count'
+    )
+  })
+
+  test('marks the query hits in the rendered lines', async () => {
+    await emit('api', 'a boom here')
+
+    start()
+    await waitFor(() => streamLinks().includes('api'), 'the stream to appear')
+    await click(dom.container.querySelector('.stream-section a'))
+    await waitFor(() => renderedLines().length === 1, 'the backlog to render')
+
+    filter('boom')
+
+    await waitFor(() => !!dom.container.querySelector('mark'), 'the hit to be marked')
+    assert.equal(dom.container.querySelector('mark')?.textContent, 'boom')
+  })
+
+  test('keeps filtering on the terms that parsed, and says the query is broken', async () => {
+    await emit('api', 'boom')
+    await emit('api', 'quiet')
+
+    start()
+    await waitFor(() => streamLinks().includes('api'), 'the stream to appear')
+    await click(dom.container.querySelector('.stream-section a'))
+    await waitFor(() => renderedLines().length === 2, 'the backlog to render')
+
+    filter('boom /unclosed(/')
+
+    await waitFor(
+      () => /invalid/.test(dom.container.querySelector('.filter-box')?.className ?? ''),
+      'the box to be marked invalid'
+    )
+    assert.deepEqual(renderedLines(), ['boom'])
+  })
+
+  test('extracts chosen fields from object lines, and persists the choice', async () => {
+    await emit('api', { level: 'error', noise: 'lots' })
+
+    start()
+    await waitFor(() => streamLinks().includes('api'), 'the stream to appear')
+    await click(dom.container.querySelector('.stream-section a'))
+    await waitFor(() => renderedLines().length === 1, 'the backlog to render')
+
+    await click(dom.container.querySelector('.btn-fields'))
+    await waitFor(() => !!dom.container.querySelector('.field-row'), 'the field census')
+
+    const level = [...dom.container.querySelectorAll('.field-row')].find((el) =>
+      /^level$/.test(el.querySelector('.field-path')?.textContent ?? '')
+    )
+
+    await click(level ?? null)
+
+    await waitFor(() => !/noise/.test(renderedLines()[0] ?? ''), 'the payload to collapse to fields')
+
+    const stored = JSON.parse(localStorage.getItem('rtail:prefs') ?? '{}')
+
+    // Fields follow the stream, since they are a property of what it logs.
+    assert.deepEqual(stored.fields, { api: ['level'] })
   })
 
   test('applies the persisted theme to the body', async () => {

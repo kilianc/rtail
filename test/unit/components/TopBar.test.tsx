@@ -11,7 +11,9 @@ const PREFS: Prefs = {
   ascending: true,
   sidebarWidth: 240,
   favorites: [],
-  hiddenTimestamps: []
+  hiddenTimestamps: [],
+  jsonView: 'auto',
+  fields: {}
 }
 
 describe('TopBar', () => {
@@ -25,9 +27,15 @@ describe('TopBar', () => {
     isFavorite: false,
     paused: false,
     filter: '',
+    filterError: null as string | null,
+    matched: 0,
+    total: 0,
+    fields: [] as string[],
+    availableFields: [] as Array<{ path: string; count: number }>,
     onChangePrefs: noop as (patch: Partial<Prefs>) => void,
     onToggleFavorite: noop,
-    onFilter: noop as (pattern: string) => void
+    onFilter: noop as (pattern: string) => void,
+    onFields: noop as (fields: string[]) => void
   }
 
   beforeEach(() => {
@@ -233,6 +241,90 @@ describe('TopBar', () => {
 
       assert.deepEqual(patches, [{ theme: 'light' }])
       assert.match(dom.container.querySelector('.btn-theme-dark')!.className, /selected/)
+    })
+
+    test('offers the three json views and marks the active one', () => {
+      settings({ jsonView: 'collapsed' })
+
+      const views = [...dom.container.querySelectorAll('.btn-text')].map((el) => el.textContent)
+
+      assert.deepEqual(views, ['Auto', 'One line', 'Pretty'])
+      assert.match(
+        [...dom.container.querySelectorAll('.btn-text')].find((el) => 'One line' === el.textContent)!
+          .className,
+        /selected/
+      )
+    })
+
+    test('changes the json view', () => {
+      const patches = settings({ jsonView: 'auto' })
+
+      act(() => {
+        const pretty = [...dom.container.querySelectorAll('.btn-text')].find(
+          (el) => 'Pretty' === el.textContent
+        ) as HTMLElement
+        pretty.click()
+      })
+
+      assert.deepEqual(patches, [{ jsonView: 'expanded' }])
+    })
+  })
+
+  describe('search', () => {
+    test('passes the match counts down to the box', () => {
+      show({ filter: 'boom', matched: 2, total: 9 })
+
+      assert.equal(dom.container.querySelector('.filter-count')?.textContent, '2/9')
+    })
+
+    test('surfaces a query that did not parse', () => {
+      show({ filter: '/(', filterError: 'Invalid regular expression' })
+
+      assert.match(dom.container.querySelector('.filter-box')!.className, /invalid/)
+    })
+
+    test('badges the fields button with this stream\'s field count', () => {
+      show({ fields: ['level', 'user.id'] })
+
+      assert.equal(dom.container.querySelector('.btn-fields-count')?.textContent, '2')
+    })
+
+    test('opens the syntax card', () => {
+      show()
+
+      click('.filter-help')
+
+      assert.ok(dom.container.querySelector('.popover-help'))
+      assert.match(dom.container.textContent ?? '', /Filter syntax/)
+    })
+
+    test('opens the field picker with what the buffer offers', () => {
+      show({ availableFields: [{ path: 'level', count: 4 }] })
+
+      click('.btn-fields')
+
+      assert.ok(dom.container.querySelector('.popover-fields'))
+      assert.equal(dom.container.querySelector('.field-path')?.textContent, 'level')
+    })
+
+    test('reports a field being picked', () => {
+      const picked: string[][] = []
+      show({ availableFields: [{ path: 'level', count: 4 }], onFields: (f) => picked.push(f) })
+
+      click('.btn-fields')
+      click('.field-row')
+
+      assert.deepEqual(picked, [['level']])
+    })
+
+    test('swaps the search panels for the settings panel', () => {
+      show()
+
+      click('.filter-help')
+      click('.btn-settings')
+
+      assert.equal(dom.container.querySelector('.popover-help'), null)
+      assert.ok(dom.container.querySelector('.popover-settings'))
     })
   })
 })
