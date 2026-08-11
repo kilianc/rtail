@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
-import { Header } from './components/Header.js'
 import { Sidebar } from './components/Sidebar.js'
 import { StreamView } from './components/StreamView.js'
+import { TopBar } from './components/TopBar.js'
 import { connect, type Connection } from './lib/connection.js'
 import { formatLine } from './lib/format.js'
 import { loadActiveStream, loadPrefs, savePrefs, saveActiveStream } from './lib/prefs.js'
@@ -19,6 +19,7 @@ export function App() {
   )
   const [lines, setLines] = useState<Line[]>([])
   const [paused, setPaused] = useState(false)
+  const [filter, setFilter] = useState('')
 
   const socketRef = useRef<Connection | null>(null)
   const activeStreamRef = useRef(activeStream)
@@ -87,6 +88,12 @@ export function App() {
       `${prefs.theme} font-family-${prefs.fontFamily} font-size-${prefs.fontSize}`
   }, [prefs.theme, prefs.fontFamily, prefs.fontSize])
 
+  // The top bar's brand cell and the sidebar both read --sidebar-w, so the
+  // vertical hairline between them stays a single unbroken line while dragging.
+  useEffect(() => {
+    document.documentElement.style.setProperty('--sidebar-w', `${prefs.sidebarWidth}px`)
+  }, [prefs.sidebarWidth])
+
   const updatePrefs = useCallback((patch: Partial<Prefs>) => {
     setPrefs((current) => ({ ...current, ...patch }))
   }, [])
@@ -121,16 +128,26 @@ export function App() {
     socketRef.current?.emit('select stream', activeStreamRef.current)
   }, [])
 
+  const isFavorite = !!activeStream && prefs.favorites.includes(activeStream)
+
   return (
     <>
-      <Header prefs={prefs} onChange={updatePrefs} />
+      <TopBar
+        prefs={prefs}
+        activeStream={activeStream}
+        isFavorite={isFavorite}
+        paused={paused}
+        filter={filter}
+        onChangePrefs={updatePrefs}
+        onToggleFavorite={() => activeStream && toggleIn('favorites', activeStream)}
+        onFilter={setFilter}
+      />
 
       <div class="split-pane">
         <Sidebar
           streams={streams}
           favorites={prefs.favorites}
           activeStream={activeStream}
-          width={prefs.sidebarWidth}
           onSelect={setActiveStream}
           onResize={(sidebarWidth) => updatePrefs({ sidebarWidth })}
         />
@@ -138,11 +155,10 @@ export function App() {
         <StreamView
           activeStream={activeStream}
           lines={lines}
+          filter={filter}
           ascending={prefs.ascending}
-          isFavorite={!!activeStream && prefs.favorites.includes(activeStream)}
           timestampsHidden={!!activeStream && prefs.hiddenTimestamps.includes(activeStream)}
           paused={paused}
-          onToggleFavorite={() => activeStream && toggleIn('favorites', activeStream)}
           onToggleTimestamps={() => activeStream && toggleIn('hiddenTimestamps', activeStream)}
           onPause={pause}
           onResume={resume}

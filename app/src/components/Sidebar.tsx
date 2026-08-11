@@ -7,12 +7,11 @@ interface Props {
   streams: string[]
   favorites: string[]
   activeStream: string | null
-  width: number
   onSelect: (stream: string) => void
   onResize: (width: number) => void
 }
 
-export function Sidebar({ streams, favorites, activeStream, width, onSelect, onResize }: Props) {
+export function Sidebar({ streams, favorites, activeStream, onSelect, onResize }: Props) {
   const [filter, setFilter] = useState('')
   const [dragging, setDragging] = useState(false)
 
@@ -23,9 +22,8 @@ export function Sidebar({ streams, favorites, activeStream, width, onSelect, onR
   const shownFavorites = favorites.filter(matches).sort()
   const shownStreams = streams.filter((s) => !favouriteSet.has(s)).filter(matches).sort()
 
-  // Drag-to-resize. The old jQuery directive listened on window for the whole
-  // session; pointer capture scopes it to the drag and survives the cursor
-  // leaving the handle.
+  // Drag-to-resize. Pointer capture scopes the listeners to the drag and
+  // survives the cursor leaving the handle.
   const onPointerDown = useCallback((event: PointerEvent) => {
     event.preventDefault()
     ;(event.target as HTMLElement).setPointerCapture(event.pointerId)
@@ -35,7 +33,7 @@ export function Sidebar({ streams, favorites, activeStream, width, onSelect, onR
   const onPointerMove = useCallback(
     (event: PointerEvent) => {
       if (!dragging) return
-      onResize(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, event.clientX)))
+      onResize(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(event.clientX))))
     },
     [dragging, onResize]
   )
@@ -48,7 +46,8 @@ export function Sidebar({ streams, favorites, activeStream, width, onSelect, onR
   }, [dragging])
 
   return (
-    <div class="sidebar" style={{ width: `${width}px` }}>
+    // Width comes from the --sidebar-w grid track, shared with the top bar.
+    <div class="sidebar">
       <div class="search-box">
         <input
           type="text"
@@ -86,7 +85,6 @@ export function Sidebar({ streams, favorites, activeStream, width, onSelect, onR
         onPointerUp={stopDragging}
         onPointerCancel={stopDragging}
       />
-      <div class="fade" />
     </div>
   )
 }

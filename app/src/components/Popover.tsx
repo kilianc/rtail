@@ -1,8 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import type { ComponentChildren } from 'preact'
 
-const VIEWPORT_MARGIN = 8
-
 interface Props {
   /** The element the panel is anchored under. */
   anchor: HTMLElement | null
@@ -12,16 +10,14 @@ interface Props {
 }
 
 /**
- * A panel anchored below a trigger button.
+ * A panel anchored under a trigger, flush to the viewport edge it runs into.
  *
- * Replaces angular-rt-popup. That version positioned panels with hardcoded
- * pixel offsets per popover, which is why the settings panel needed a magic
- * `left: -60px` to stay on screen; this one measures itself, clamps to the
- * viewport, and moves its arrow to stay over the trigger.
+ * It measures itself and clamps, rather than carrying a hardcoded offset per
+ * popover the way the library it replaced did.
  */
 export function Popover({ anchor, onClose, class: className, children }: Props) {
   const ref = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState<{ top: number; left: number; arrow: number } | null>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
 
   useLayoutEffect(() => {
     const el = ref.current
@@ -30,11 +26,11 @@ export function Popover({ anchor, onClose, class: className, children }: Props) 
     const place = () => {
       const trigger = anchor.getBoundingClientRect()
       const width = el.offsetWidth
-      const centre = trigger.left + trigger.width / 2
-      const max = window.innerWidth - width - VIEWPORT_MARGIN
-      const left = Math.min(Math.max(centre - width / 2, VIEWPORT_MARGIN), Math.max(max, VIEWPORT_MARGIN))
 
-      setPos({ top: trigger.bottom, left, arrow: centre - left })
+      // Right-align to the trigger, then pull back if that would overflow.
+      const left = Math.max(0, Math.min(trigger.right - width, window.innerWidth - width))
+
+      setPos({ top: Math.round(trigger.bottom), left: Math.round(left) })
     }
 
     place()
@@ -74,11 +70,7 @@ export function Popover({ anchor, onClose, class: className, children }: Props) 
         visibility: pos ? 'visible' : 'hidden'
       }}
     >
-      <div
-        ref={ref}
-        class={`popover-content ${className ?? ''}`}
-        style={{ ['--arrow-x' as string]: `${pos?.arrow ?? 0}px` }}
-      >
+      <div ref={ref} class={`popover-content ${className ?? ''}`}>
         {children}
       </div>
     </div>

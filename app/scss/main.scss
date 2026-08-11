@@ -1,9 +1,16 @@
 // **
 // rTail webapp styles
 //
-// Minimal, monochrome, hairline-bordered. Flat surfaces separated by 1px
-// borders rather than shadows; one accent (see _tokens.scss) reserved for
-// interactive meaning. The log viewport is the only place colour appears.
+// Square corners, one top bar, and every length taken from the token scale in
+// _tokens.scss — no arbitrary pixel values below this line.
+//
+// Layout is CSS grid. The top bar and the pane below it declare the *same*
+// two-track template (`var(--sidebar-w) 1fr`), so the vertical hairline runs
+// unbroken down the window: the alignment is structural rather than two widths
+// that have to be kept equal by hand.
+//
+// Cascade is ordered with @layer, so component rules never need to out-specify
+// the reset and nothing depends on source order.
 // **
 
 @use 'tokens' as *;
@@ -11,235 +18,136 @@
 @use 'ansi';
 @use 'highlightjs';
 
+@layer reset, base, layout, components;
+
 // **
 // reset
 // **
 
-*,
-*::before,
-*::after {
-  background: none;
-  border: 0;
-  box-sizing: border-box;
-  color: inherit;
-  margin: 0;
-  padding: 0;
-  text-decoration: none;
-}
-
-ol,
-ul {
-  list-style: none;
-}
-
-pre {
-  font-family: inherit !important;
-}
-
-// Form controls do not inherit typography from their ancestors.
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
-
-button:not(:disabled) {
-  cursor: pointer;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: .4;
-}
-
-// Keyboard users get a ring; mouse users don't.
-:focus {
-  outline: none;
-}
-
-:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 1px;
-}
-
-::selection {
-  background: var(--primary-subtle);
-  color: var(--foreground);
-}
-
-@keyframes pulse {
-  0% { opacity: .7; transform: scale(1); }
-  70% { opacity: 0; transform: scale(2.6); }
-  100% { opacity: 0; transform: scale(2.6); }
-}
-
-@media (prefers-reduced-motion: reduce) {
+@layer reset {
   *,
   *::before,
   *::after {
-    animation-duration: .01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: .01ms !important;
+    background: none;
+    border: 0;
+    box-sizing: border-box;
+    color: inherit;
+    margin: 0;
+    padding: 0;
+    text-decoration: none;
+  }
+
+  :where(ol, ul) {
+    list-style: none;
+  }
+
+  pre {
+    font-family: inherit;
+  }
+
+  // Form controls do not inherit typography from their ancestors.
+  :where(button, input, select, textarea) {
+    font: inherit;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: .35;
+  }
+
+  // Keyboard users get a ring; mouse users don't. Drawn inside the element so
+  // it never nudges anything off the grid.
+  :focus {
+    outline: none;
+  }
+
+  :focus-visible {
+    outline: var(--hairline) solid var(--ring);
+    outline-offset: calc(var(--hairline) * -1);
   }
 }
 
 // **
-// scrollbars — thin and monochrome
+// base
 // **
 
-* {
-  scrollbar-color: var(--border-strong) transparent;
-  scrollbar-width: thin;
-}
-
-::-webkit-scrollbar {
-  height: 10px;
-  width: 10px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  background-clip: padding-box;
-  border: 3px solid transparent;
-  border-radius: var(--radius-pill);
-
-  &:hover {
-    background: var(--muted-foreground);
-    background-clip: padding-box;
-  }
-}
-
-// **
-// shell
-// **
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
-  font-size: 13px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  height: 100vh;
-  letter-spacing: -0.006em;
-  overflow: hidden;
-
-  &.resizing {
-    cursor: col-resize;
-    user-select: none;
-  }
-}
-
-// The app mounts into #root, so the column layout lives here rather than on
-// <body> — otherwise the header and the split pane are no longer siblings in
-// the same flex container and the panes collapse to their content height.
-#root {
-  align-items: stretch;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-// **
-// shared: ghost icon button
-// **
-
-@mixin ghost-button($size: 28px) {
-  align-items: center;
-  border-radius: var(--radius-sm);
-  color: var(--muted-foreground);
-  display: inline-flex;
-  flex-shrink: 0;
-  height: $size;
-  justify-content: center;
-  position: relative;
-  transition: background-color .12s ease, color .12s ease;
-  width: $size;
-
-  &:hover {
-    background: var(--subtle);
-    color: var(--foreground);
+@layer base {
+  html {
+    // Reserve the scrollbar track so content never shifts when it appears.
+    scrollbar-gutter: stable;
   }
 
-  &:active {
-    background: var(--subtle-strong);
-  }
-}
-
-// **
-// shared: input
-// **
-
-@mixin field {
-  background: var(--muted);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  color: var(--foreground);
-  font-size: 12.5px;
-  height: 30px;
-  min-width: 0;
-  transition: border-color .12s ease, background-color .12s ease;
-
-  &::placeholder {
-    color: var(--muted-foreground);
-  }
-
-  &:hover {
-    border-color: var(--border);
-  }
-
-  &:focus {
+  body {
     background: var(--background);
-    border-color: var(--border-strong);
-  }
-}
-
-// **
-// header
-// **
-
-header {
-  align-items: center;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  flex-direction: row;
-  flex-shrink: 0;
-  gap: 2px;
-  height: var(--header-height);
-  padding: 0 var(--gutter-sm) 0 var(--gutter);
-
-  .rtail-logo {
-    @include icon-common('logo-rtail', 54px 13px);
     color: var(--foreground);
-    flex-shrink: 0;
-    height: 16px;
-    margin-right: auto;
-    width: 54px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+      'Helvetica Neue', Arial, sans-serif;
+    font-size: var(--text-md);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    block-size: 100vh;
+    font-variant-ligatures: none;
+    letter-spacing: -0.006em;
+    overflow: hidden;
+
+    &.resizing {
+      cursor: col-resize;
+      user-select: none;
+    }
   }
 
-  .btn {
-    @include ghost-button;
+  // The shell: one fixed-height bar, then everything else.
+  #root {
+    block-size: 100%;
+    display: grid;
+    grid-template-rows: var(--bar-h) 1fr;
+    min-block-size: 0;
+  }
 
-    &::after {
-      content: '';
-      height: 15px;
-      position: absolute;
-      width: 15px;
+  ::selection {
+    background: var(--primary-subtle);
+    color: var(--foreground);
+  }
+
+  // ** scrollbars — square, monochrome **
+  * {
+    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-width: thin;
+  }
+
+  ::-webkit-scrollbar {
+    block-size: var(--space-2);
+    inline-size: var(--space-2);
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+
+    &:hover {
+      background: var(--muted-foreground);
     }
+  }
 
-    &.btn-info::after { @include icon('btn-info'); }
-    &.btn-github::after { @include icon('btn-github'); }
-    &.btn-settings::after { @include icon('btn-settings'); }
+  @keyframes pulse {
+    from { opacity: .6; }
+    to { opacity: 0; }
+  }
 
-    &[aria-expanded='true'] {
-      background: var(--subtle-strong);
-      color: var(--foreground);
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
     }
   }
 }
@@ -248,43 +156,359 @@ header {
 // layout
 // **
 
-.split-pane {
-  display: flex;
-  flex: 1;
-  flex-direction: row;
-  min-height: 0;
+@layer layout {
+  // Both grids below share this template. That is what keeps the brand cell
+  // and the sidebar edge on exactly the same pixel.
+  .topbar,
+  .split-pane {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) 1fr;
+  }
+
+  .topbar {
+    border-block-end: var(--hairline) solid var(--border);
+    min-inline-size: 0;
+  }
+
+  .topbar-brand {
+    align-items: center;
+    border-inline-end: var(--hairline) solid var(--border);
+    display: flex;
+    padding-inline: var(--space-4);
+  }
+
+  .topbar-main {
+    align-items: center;
+    // Queried below, so the bar adapts to its own width rather than the
+    // viewport's — it stays correct at any sidebar width.
+    container-type: inline-size;
+    display: flex;
+    gap: var(--space-3);
+    min-inline-size: 0;
+    padding-inline: var(--space-4) var(--space-2);
+  }
+
+  // One flexible gap, wherever the right-hand group starts. Two `auto` margins
+  // would split the free space between them instead of pushing one group over.
+  .topbar-actions {
+    display: flex;
+  }
+
+  .topbar-main:has(.filter-box) .filter-box,
+  .topbar-main:not(:has(.filter-box)) .topbar-actions {
+    margin-inline-start: auto;
+  }
+
+  .split-pane {
+    min-block-size: 0;
+  }
+
+  .sidebar {
+    border-inline-end: var(--hairline) solid var(--border);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    min-block-size: 0;
+    min-inline-size: 0;
+    position: relative;
+  }
+
+  .stream-view {
+    display: grid;
+    grid-template-rows: 1fr;
+    min-block-size: 0;
+    min-inline-size: 0;
+    position: relative;
+  }
 }
 
 // **
-// sidebar
+// components
 // **
 
-.sidebar {
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  position: relative;
-  width: 240px;
+@layer components {
+
+  // ** logo **
+
+  .rtail-logo {
+    @include icon-common('logo-rtail', contain);
+    block-size: var(--space-4);
+    color: var(--foreground);
+    flex-shrink: 0;
+    inline-size: calc(var(--space-6) * 2 + var(--space-2));
+  }
+
+  // ** ghost icon button **
+
+  // Scoped to the action cluster, not the whole bar: `.topbar .btn` also
+  // matched the buttons inside the settings popover and pinned them to the
+  // icon hit size instead of letting them fill their segmented track.
+  .topbar-actions .btn {
+    align-items: center;
+    block-size: var(--hit);
+    color: var(--muted-foreground);
+    display: inline-flex;
+    flex-shrink: 0;
+    inline-size: var(--hit);
+    justify-content: center;
+    position: relative;
+    transition: background-color .12s ease, color .12s ease;
+
+    &::after {
+      block-size: var(--icon);
+      content: '';
+      inline-size: var(--icon);
+      position: absolute;
+    }
+
+    &:hover {
+      background: var(--subtle);
+      color: var(--foreground);
+    }
+
+    &:active {
+      background: var(--subtle-strong);
+    }
+
+    &[aria-expanded='true'] {
+      background: var(--subtle-strong);
+      color: var(--foreground);
+    }
+
+    &.btn-info::after { @include icon('btn-info'); }
+    &.btn-github::after { @include icon('btn-github'); }
+    &.btn-settings::after { @include icon('btn-settings'); }
+  }
+
+  // ** text field **
+
+  :where(.search-box, .filter-box) {
+    align-items: center;
+    display: flex;
+    min-inline-size: 0;
+    position: relative;
+
+    &::before {
+      block-size: var(--icon-sm);
+      color: var(--muted-foreground);
+      content: '';
+      inline-size: var(--icon-sm);
+      inset-inline-start: var(--space-2);
+      pointer-events: none;
+      position: absolute;
+    }
+
+    input {
+      background: var(--muted);
+      block-size: var(--control-h);
+      color: var(--foreground);
+      flex: 1;
+      font-size: var(--text-sm);
+      min-inline-size: 0;
+      // icon inset + icon + gap
+      padding-inline: calc(var(--space-2) * 2 + var(--icon-sm)) var(--space-2);
+      transition: background-color .12s ease, box-shadow .12s ease;
+
+      &::placeholder {
+        color: var(--muted-foreground);
+      }
+
+      &:hover {
+        box-shadow: inset 0 0 0 var(--hairline) var(--border);
+      }
+
+      &:focus {
+        background: var(--background);
+        box-shadow: inset 0 0 0 var(--hairline) var(--border-strong);
+      }
+    }
+  }
+
+  .search-box::before { @include icon('icn-search'); }
+  .filter-box::before { @include icon-common('icn-filter'); }
+
+  // ** top bar: stream identity **
+
+  .stream-title {
+    align-items: center;
+    block-size: var(--control-h);
+    color: var(--foreground);
+    display: flex;
+    flex-shrink: 0;
+    font-size: var(--text-md);
+    font-weight: 500;
+    gap: var(--space-2);
+    letter-spacing: -0.01em;
+    max-inline-size: calc(var(--space-6) * 10);
+    min-inline-size: 0;
+    padding-inline: var(--space-2);
+    // Cancel the field padding so the star aligns with the sidebar text below.
+    margin-inline-start: calc(var(--space-2) * -1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background-color .12s ease;
+    white-space: nowrap;
+
+    &:hover {
+      background: var(--subtle);
+    }
+  }
+
+  .stream-title-favorite {
+    @include icon-common('btn-fav-off', contain);
+    block-size: var(--icon-sm);
+    color: var(--muted-foreground);
+    flex-shrink: 0;
+    inline-size: var(--icon-sm);
+    transition: color .12s ease;
+
+    &.on {
+      @include icon-common('btn-fav-on', contain);
+      color: var(--primary);
+    }
+  }
+
+  // Live / paused — the accent doing real work.
+  .stream-status {
+    align-items: center;
+    color: var(--muted-foreground);
+    display: flex;
+    flex-shrink: 0;
+    font-size: var(--text-xs);
+    gap: var(--space-2);
+    letter-spacing: .02em;
+    text-transform: uppercase;
+
+    i {
+      background: var(--primary);
+      block-size: var(--space-1);
+      display: block;
+      inline-size: var(--space-1);
+      position: relative;
+
+      // A halo that breathes, so "live" reads at a glance.
+      &::after {
+        animation: pulse 1.8s ease-out infinite;
+        background: var(--primary);
+        content: '';
+        inset: calc(var(--space-1) * -1);
+        position: absolute;
+      }
+    }
+
+    &.paused i {
+      background: var(--muted-foreground);
+
+      &::after {
+        content: none;
+      }
+    }
+  }
+
+  .topbar .filter-box {
+    inline-size: calc(var(--space-6) * 10);
+  }
+
+  // Below this width the filter box is the first thing to go.
+  @container (max-width: 640px) {
+    .topbar .filter-box {
+      display: none;
+    }
+  }
+
+  // ** sidebar **
+
+  .search-box {
+    border-block-end: var(--hairline) solid var(--border);
+    padding: var(--space-2);
+  }
+
+  .stream-sections {
+    min-block-size: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-block: var(--space-2) var(--space-4);
+
+    .stream-section h4 {
+      align-items: center;
+      color: var(--muted-foreground);
+      display: flex;
+      font-size: var(--text-xs);
+      font-weight: 500;
+      letter-spacing: .06em;
+      min-block-size: var(--row-h);
+      padding-inline: var(--space-4);
+      text-transform: uppercase;
+    }
+
+    .stream-section + .stream-section h4 {
+      margin-block-start: var(--space-2);
+    }
+
+    .stream-section a {
+      align-items: center;
+      color: var(--muted-foreground);
+      display: flex;
+      gap: var(--space-2);
+      min-block-size: var(--row-h);
+      padding-inline: var(--space-4);
+      position: relative;
+      transition: background-color .12s ease, color .12s ease;
+
+      &:hover {
+        background: var(--subtle);
+        color: var(--foreground);
+      }
+
+      // The active row is monochrome; the marker is the only colour here.
+      &.selected {
+        background: var(--subtle-strong);
+        color: var(--foreground);
+        font-weight: 500;
+
+        &::before {
+          background: var(--primary);
+          content: '';
+          inline-size: var(--marker-w);
+          inset-block: 0;
+          inset-inline-start: 0;
+          position: absolute;
+        }
+      }
+
+      span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      // Unread marker.
+      i {
+        background: var(--primary);
+        block-size: var(--space-1);
+        flex-shrink: 0;
+        inline-size: var(--space-1);
+        margin-inline-start: auto;
+      }
+    }
+  }
 
   .resize-handler {
     cursor: col-resize;
-    height: 100%;
+    inline-size: var(--space-2);
+    inset-block: 0;
+    // Straddle the hairline so the grab area is centred on it.
+    inset-inline-end: calc(var(--space-1) * -1);
     position: absolute;
-    right: -3px;
-    top: 0;
-    width: 7px;
     z-index: 2;
 
     &::after {
       background: transparent;
       content: '';
-      height: 100%;
-      left: 3px;
+      inline-size: var(--hairline);
+      inset-block: 0;
+      inset-inline-start: var(--space-1);
       position: absolute;
-      top: 0;
       transition: background-color .12s ease;
-      width: 1px;
     }
 
     &:hover::after {
@@ -292,529 +516,285 @@ header {
     }
   }
 
-  .search-box {
-    align-items: center;
-    display: flex;
-    flex-shrink: 0;
-    padding: var(--gutter-sm) var(--gutter-sm) var(--gutter-xs);
-    position: relative;
-
-    &::before {
-      @include icon('icn-search');
-      color: var(--muted-foreground);
-      content: '';
-      height: 13px;
-      left: 20px;
-      pointer-events: none;
-      position: absolute;
-      width: 13px;
-      z-index: 1;
-    }
-
-    input {
-      @include field;
-      flex: 1;
-      padding: 0 var(--gutter-sm) 0 28px;
-    }
-  }
-
-  .stream-sections {
-    flex: 1;
-    height: 0;
-    overflow-y: auto;
-    padding: 0 var(--gutter-xs) var(--gutter) var(--gutter-xs);
-
-    .stream-section {
-      h4 {
-        align-items: center;
-        color: var(--muted-foreground);
-        display: flex;
-        font-size: 10.5px;
-        font-weight: 500;
-        height: 26px;
-        letter-spacing: .06em;
-        margin-top: var(--gutter-sm);
-        padding-left: var(--gutter-sm);
-        text-transform: uppercase;
-      }
-
-      a {
-        align-items: center;
-        border-radius: var(--radius-sm);
-        color: var(--muted-foreground);
-        display: flex;
-        gap: var(--gutter-xs);
-        height: var(--row-height);
-        padding: 0 var(--gutter-sm);
-        position: relative;
-        transition: background-color .12s ease, color .12s ease;
-
-        &:hover {
-          background: var(--subtle);
-          color: var(--foreground);
-        }
-
-        // Active row stays monochrome — the accent is a single marker bar, the
-        // only colour in the entire sidebar.
-        &.selected {
-          background: var(--subtle-strong);
-          color: var(--foreground);
-          font-weight: 500;
-
-          &::before {
-            background: var(--primary);
-            border-radius: var(--radius-pill);
-            box-shadow: 0 0 8px var(--primary);
-            content: '';
-            height: 16px;
-            left: 0;
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 2.5px;
-          }
-        }
-
-        span {
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        i {
-          background: var(--primary);
-          border-radius: 50%;
-          flex-shrink: 0;
-          height: 5px;
-          margin-left: auto;
-          width: 5px;
-        }
-      }
-    }
-  }
-
-  // Bottom scroll fade, so the list dissolves rather than being cut off.
-  .fade {
-    background: linear-gradient(to top, var(--background), transparent);
-    bottom: 0;
-    height: 28px;
-    left: 0;
-    pointer-events: none;
-    position: absolute;
-    right: 1px;
-  }
-}
-
-// **
-// stream view
-// **
-
-.stream-view {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  position: relative;
-
-  .stream-header {
-    align-items: center;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    flex-shrink: 0;
-    gap: var(--gutter-sm);
-    height: var(--header-height);
-    padding: 0 var(--gutter);
-
-    .stream-title {
-      align-items: center;
-      border-radius: var(--radius-sm);
-      color: var(--foreground);
-      display: flex;
-      font-size: 13px;
-      font-weight: 500;
-      gap: var(--gutter-xs);
-      letter-spacing: -0.01em;
-      margin-left: -6px;
-      min-width: 0;
-      overflow: hidden;
-      padding: 5px 8px;
-      text-overflow: ellipsis;
-      transition: background-color .12s ease;
-      white-space: nowrap;
-
-      &:hover {
-        background: var(--subtle);
-      }
-    }
-
-    .stream-title-favorite {
-      @include icon-common('btn-fav-off', 13px 13px);
-      color: var(--muted-foreground);
-      display: inline-block;
-      flex-shrink: 0;
-      height: 13px;
-      transition: color .12s ease;
-      width: 13px;
-
-      &.on {
-        @include icon-common('btn-fav-on', 13px 13px);
-        color: var(--primary);
-      }
-    }
-
-    // Live / paused indicator — the accent doing real work.
-    .stream-status {
-      align-items: center;
-      color: var(--muted-foreground);
-      display: inline-flex;
-      flex-shrink: 0;
-      font-size: 11px;
-      font-variant-numeric: tabular-nums;
-      gap: var(--gutter-xs);
-      letter-spacing: .02em;
-
-      i {
-        background: var(--primary);
-        border-radius: 50%;
-        height: 6px;
-        position: relative;
-        width: 6px;
-
-        // A soft halo that breathes, so "live" is legible at a glance.
-        &::after {
-          animation: pulse 2s ease-out infinite;
-          background: var(--primary);
-          border-radius: 50%;
-          content: '';
-          inset: 0;
-          position: absolute;
-        }
-      }
-
-      &.paused {
-        i {
-          background: var(--muted-foreground);
-
-          &::after {
-            animation: none;
-            content: none;
-          }
-        }
-      }
-    }
-
-    .filter-box {
-      align-items: center;
-      display: flex;
-      margin-left: auto;
-      position: relative;
-      width: 260px;
-
-      &::before {
-        @include icon-common('icn-filter');
-        color: var(--muted-foreground);
-        content: '';
-        height: 12px;
-        left: 10px;
-        pointer-events: none;
-        position: absolute;
-        width: 12px;
-        z-index: 1;
-      }
-
-      input {
-        @include field;
-        flex: 1;
-        padding: 0 var(--gutter-sm) 0 28px;
-      }
-    }
-  }
+  // ** log viewport **
 
   .stream-lines {
-    flex: 1;
-    font-size: 12.5px;
-    height: 0;
+    // Two tracks; each row opts into them with subgrid, so every timestamp and
+    // every message share one column edge no matter what they contain.
+    display: grid;
+    grid-template-columns: var(--gutter-w) 1fr;
+    align-content: start;
+    font-size: var(--mono-size);
+    min-block-size: 0;
     overflow: auto;
-    padding: var(--gutter-xs) 0 var(--gutter);
+    overscroll-behavior: contain;
+  }
 
-    .stream-line {
-      align-items: baseline;
-      display: flex;
-      line-height: 1.6;
+  .stream-line {
+    // NB: no content-visibility here. It applies size containment, and a
+    // subgrid under containment silently degrades to a standalone grid — which
+    // put every timestamp on its own line. The buffer is capped at 100 rows,
+    // so there is nothing to gain from skipping off-screen work anyway.
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
 
-      &:hover {
-        background: var(--subtle);
-      }
+    &:hover {
+      background: var(--subtle);
+    }
 
-      pre {
-        line-height: 1.6;
-        margin: 0;
-      }
+    :is(.stream-line-timestamp, .stream-line-content) {
+      // No block padding: a single-line row is exactly --line-h tall, so the
+      // whole log keeps one rhythm.
+      line-height: var(--line-h);
+      min-block-size: var(--line-h);
+      padding-inline: var(--space-4);
+    }
 
-      .stream-line-timestamp {
-        border-right: 1px solid var(--border);
-        color: var(--muted-foreground);
-        flex-shrink: 0;
-        font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: .82em;
-        font-variant-numeric: tabular-nums;
-        opacity: .8;
-        padding-right: var(--gutter);
-        user-select: none;
-      }
+    .stream-line-timestamp {
+      border-inline-end: var(--hairline) solid var(--border);
+      color: var(--muted-foreground);
+      font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: var(--text-xs);
+      font-variant-numeric: tabular-nums;
+      overflow: hidden;
+      user-select: none;
+      white-space: nowrap;
+    }
 
-      .stream-line-content {
-        min-width: 0;
-        white-space: pre;
-      }
+    .stream-line-content {
+      min-inline-size: 0;
+      white-space: pre;
+    }
 
-      // Deliberately not flex containers. ANSI output is a run of sibling
-      // <span>s separated by literal spaces, and a flex container discards
-      // whitespace-only text nodes between its items — which silently ate the
-      // spaces between coloured segments.
-      .stream-line-timestamp,
-      .stream-line-content {
-        padding-bottom: 2px;
-        padding-left: var(--gutter);
-        padding-top: 2px;
-      }
+    pre {
+      line-height: var(--line-h);
     }
   }
 
-  // Empty state — shown until a stream is picked.
-  .stream-empty {
-    align-items: center;
-    color: var(--muted-foreground);
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: var(--gutter);
-    justify-content: center;
-    user-select: none;
+  // Collapsing the column drops the track to nothing, and the control that
+  // sits on its edge follows automatically.
+  .stream-view.no-timestamps {
+    --gutter-w: 0px;
 
-    .stream-empty-mark {
-      @include icon-common('logo-rtail', contain);
-      color: var(--border-strong);
-      height: 22px;
-      width: 84px;
-    }
-
-    p {
-      font-size: 12.5px;
+    .stream-lines {
+      grid-template-columns: 1fr;
     }
   }
 
   .btn-toggle-timestamp {
     align-items: center;
     background: var(--background);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xs);
-    bottom: 14px;
+    block-size: var(--space-4);
+    box-shadow: inset 0 0 0 var(--hairline) var(--border);
     color: var(--muted-foreground);
     display: flex;
-    height: 20px;
+    inline-size: var(--space-4);
+    inset-block-end: var(--space-4);
+    inset-inline-start: var(--gutter-w);
     justify-content: center;
     position: absolute;
     transform: translateX(-50%);
-    transition: color .12s ease, border-color .12s ease;
-    width: 20px;
+    transition: color .12s ease, box-shadow .12s ease;
     z-index: 1;
 
     &::after {
-      @include icon('icn-close-date', 4px 7px);
+      @include icon('icn-close-date', contain);
+      block-size: var(--space-2);
       content: '';
-      height: 7px;
-      width: 4px;
+      inline-size: var(--space-1);
     }
 
     &:hover {
-      border-color: var(--border-strong);
+      box-shadow: inset 0 0 0 var(--hairline) var(--border-strong);
       color: var(--foreground);
     }
 
     &.closed::after {
-      transform: rotate(180deg);
+      rotate: 180deg;
     }
   }
 
   .btn-resume {
     align-items: center;
     background: var(--primary);
-    border-radius: var(--radius-sm);
-    bottom: var(--gutter);
-    box-shadow: var(--shadow-float);
+    block-size: var(--control-h);
     color: var(--primary-foreground);
     display: flex;
-    font-size: 12.5px;
+    font-size: var(--text-sm);
     font-weight: 500;
-    gap: var(--gutter-xs);
-    height: 30px;
-    padding: 0 12px;
+    gap: var(--space-2);
+    inset-block-end: var(--space-4);
+    inset-inline-end: var(--space-4);
+    padding-inline: var(--space-3);
     position: absolute;
-    right: var(--gutter);
     transition: background-color .12s ease;
     z-index: 2;
 
     &::before {
-      @include icon-common('icn-resume', 7px 9px);
+      @include icon-common('icn-resume', contain);
+      block-size: var(--space-2);
       content: '';
-      height: 9px;
-      width: 7px;
+      inline-size: var(--space-2);
     }
 
     &:hover {
       background: var(--primary-hover);
     }
   }
-}
 
-// **
-// popovers
-// **
+  // ** empty state **
 
-.popover {
-  // Anchored to the trigger's viewport rect by Popover.tsx, which measures the
-  // panel and clamps it on screen, then reports where the arrow should sit.
-  position: fixed;
-  z-index: 10;
+  .stream-empty {
+    align-content: center;
+    color: var(--muted-foreground);
+    display: grid;
+    gap: var(--space-4);
+    justify-items: center;
+    user-select: none;
 
-  .popover-content {
-    background: var(--popover);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-popover);
-    color: var(--popover-foreground);
-    display: flex;
-    flex-direction: column;
-    font-size: 12.5px;
-    margin-top: 6px;
-    overflow: visible !important;
-    position: relative;
-    width: 200px;
-  }
-
-  .popover-info {
-    align-items: center;
-    padding: var(--gutter);
-
-    .rtail-logo {
+    .stream-empty-mark {
       @include icon-common('logo-rtail', contain);
-      color: var(--foreground);
-      height: 16px;
-      width: 62px;
+      block-size: var(--space-6);
+      color: var(--border-strong);
+      inline-size: calc(var(--space-6) * 3 + var(--space-2));
     }
 
-    .version {
-      color: var(--muted-foreground);
-      font-variant-numeric: tabular-nums;
-      margin: 8px 0 var(--gutter-sm);
-    }
-
-    .btn {
-      align-items: center;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      color: var(--foreground);
-      display: flex;
-      height: 30px;
-      justify-content: center;
-      margin-bottom: var(--gutter-xs);
-      transition: background-color .12s ease, border-color .12s ease;
-      width: 100%;
-
-      &:hover {
-        background: var(--subtle);
-        border-color: var(--border-strong);
-      }
-    }
-
-    // Designer credit.
-    .lukibear-logo {
-      @include icon('logo-lukibear', contain);
-      color: var(--muted-foreground);
-      height: 20px;
-      margin-top: var(--gutter-xs);
-      opacity: .5;
-      width: 52px;
+    p {
+      font-size: var(--text-sm);
     }
   }
 
-  .popover-settings {
-    padding: var(--gutter-sm);
+  // ** popovers **
 
-    h4 {
-      color: var(--muted-foreground);
-      font-size: 10.5px;
-      font-weight: 500;
-      letter-spacing: .06em;
-      margin-bottom: var(--gutter-xs);
-      text-transform: uppercase;
+  .popover {
+    // Anchored to the trigger's viewport rect by Popover.tsx, which measures
+    // the panel and clamps it on screen.
+    position: fixed;
+    z-index: 10;
+
+    .popover-content {
+      background: var(--popover);
+      box-shadow:
+        inset 0 0 0 var(--hairline) var(--border),
+        0 var(--space-2) var(--space-6) rgb(0 0 0 / .45);
+      color: var(--popover-foreground);
+      display: grid;
+      font-size: var(--text-sm);
+      inline-size: calc(var(--space-6) * 8);
+      margin-block-start: var(--hairline);
     }
 
-    // Segmented control: one recessed track, borderless items inside it.
-    // Flex rather than a fixed column count, so a two-item group (sorting,
-    // theme) fills its track instead of leaving a dead third cell.
-    .btn-group {
-      background: var(--muted);
-      border-radius: var(--radius-sm);
-      display: flex;
-      gap: 2px;
-      margin: 0 0 var(--gutter-sm);
-      padding: 2px;
+    .popover-info {
+      gap: var(--space-2);
+      justify-items: center;
+      padding: var(--space-4);
 
-      &:last-of-type {
-        margin-bottom: 0;
-      }
-
-      // The font-family swatches are a deliberate 3x2 grid.
-      &.six-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
+      .version {
+        color: var(--muted-foreground);
+        font-variant-numeric: tabular-nums;
       }
 
       .btn {
         align-items: center;
-        border-radius: var(--radius-xs);
-        color: var(--muted-foreground);
+        block-size: var(--control-h);
+        box-shadow: inset 0 0 0 var(--hairline) var(--border);
+        color: var(--foreground);
         display: flex;
-        flex: 1;
-        font-size: 13px;
-        height: 26px;
+        inline-size: 100%;
         justify-content: center;
-        min-width: 0;
-        position: relative;
-        transition: background-color .12s ease, color .12s ease;
+        transition: background-color .12s ease, box-shadow .12s ease;
 
-        &::after {
-          content: '';
-          height: 13px;
-          position: absolute;
-          width: 13px;
+        &:hover {
+          background: var(--subtle);
+          box-shadow: inset 0 0 0 var(--hairline) var(--border-strong);
         }
-
-        &:hover:not(.selected) {
-          color: var(--foreground);
-        }
-
-        // Selected reads as a raised "thumb" on the track, not a colour fill.
-        &.selected {
-          background: var(--popover);
-          box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
-          color: var(--foreground);
-        }
-
-        &.btn-font-smaller::after { @include icon('icn-font-decrease'); }
-        &.btn-font-reset::after   { @include icon('icn-font-reset'); }
-        &.btn-font-bigger::after  { @include icon('icn-font-increase'); }
-        &.btn-sorting-asc::after  { @include icon('icn-sort-asc'); }
-        &.btn-sorting-desc::after { @include icon('icn-sort-desc'); }
-        &.btn-theme-dark::after   { @include icon('icn-theme-dark'); }
-        &.btn-theme-light::after  { @include icon('icn-theme-light'); }
       }
 
-      // The font-family swatches show real glyphs, not icons.
-      &.six-grid .btn::after {
-        content: none;
+      // Designer credit.
+      .lukibear-logo {
+        @include icon('logo-lukibear', contain);
+        block-size: var(--space-4);
+        color: var(--muted-foreground);
+        inline-size: calc(var(--space-6) * 2);
+        opacity: .5;
+      }
+    }
+
+    .popover-settings {
+      gap: var(--space-1);
+      padding: var(--space-3);
+
+      h4 {
+        color: var(--muted-foreground);
+        font-size: var(--text-xs);
+        font-weight: 500;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+
+        // Space above each group except the first, without margins on both.
+        &:not(:first-child) {
+          margin-block-start: var(--space-3);
+        }
+      }
+
+      // Segmented control: one recessed track, square cells inside it. Grid
+      // with equal tracks, so two- and three-item groups both fill the rail.
+      .btn-group {
+        background: var(--muted);
+        display: grid;
+        gap: var(--hairline);
+        grid-auto-columns: 1fr;
+        grid-auto-flow: column;
+        padding: var(--hairline);
+
+        &.six-grid {
+          grid-auto-flow: row;
+          grid-template-columns: repeat(3, 1fr);
+        }
+
+        .btn {
+          align-items: center;
+          block-size: var(--row-h);
+          color: var(--muted-foreground);
+          display: flex;
+          font-size: var(--text-md);
+          justify-content: center;
+          min-inline-size: 0;
+          position: relative;
+          transition: background-color .12s ease, color .12s ease;
+
+          &::after {
+            block-size: var(--icon-sm);
+            content: '';
+            inline-size: var(--icon-sm);
+            position: absolute;
+          }
+
+          &:hover:not(.selected) {
+            color: var(--foreground);
+          }
+
+          // Selected reads as a cell lifted out of the rail.
+          &.selected {
+            background: var(--background);
+            box-shadow: inset 0 0 0 var(--hairline) var(--border-strong);
+            color: var(--foreground);
+          }
+
+          &.btn-font-smaller::after { @include icon('icn-font-decrease'); }
+          &.btn-font-reset::after   { @include icon('icn-font-reset'); }
+          &.btn-font-bigger::after  { @include icon('icn-font-increase'); }
+          &.btn-sorting-asc::after  { @include icon('icn-sort-asc'); }
+          &.btn-sorting-desc::after { @include icon('icn-sort-desc'); }
+          &.btn-theme-dark::after   { @include icon('icn-theme-dark'); }
+          &.btn-theme-light::after  { @include icon('icn-theme-light'); }
+        }
+
+        // The font-family swatches show real glyphs, not icons.
+        &.six-grid .btn::after {
+          content: none;
+        }
       }
     }
   }
