@@ -1,7 +1,9 @@
 import { useRef, useState } from 'preact/hooks'
+import type { FieldPath } from '../lib/json.js'
 import { FONT_FAMILY_COUNT, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../lib/prefs.js'
-import type { Prefs, Theme } from '../lib/types.js'
+import type { JsonView, Prefs, Theme } from '../lib/types.js'
 import { Popover } from './Popover.js'
+import { FieldsPicker, SearchBar, SearchHelp, type SearchPanel } from './SearchBar.js'
 
 declare const __VERSION__: string
 
@@ -11,12 +13,27 @@ interface Props {
   isFavorite: boolean
   paused: boolean
   filter: string
+  /** Set when the query did not fully parse. */
+  filterError: string | null
+  matched: number
+  total: number
+  /** Paths extracted from this stream's object lines. */
+  fields: string[]
+  /** Paths seen in the buffer, most common first. */
+  availableFields: FieldPath[]
   onChangePrefs: (patch: Partial<Prefs>) => void
   onToggleFavorite: () => void
   onFilter: (pattern: string) => void
+  onFields: (fields: string[]) => void
 }
 
-type OpenPanel = 'info' | 'settings' | null
+type OpenPanel = 'info' | 'settings' | SearchPanel | null
+
+const JSON_VIEWS: Array<[JsonView, string, string]> = [
+  ['auto', 'Auto', 'Expand small payloads, collapse the rest'],
+  ['collapsed', 'One line', 'Every payload on a single line'],
+  ['expanded', 'Pretty', 'Every payload expanded']
+]
 
 /**
  * The single top bar.
@@ -31,20 +48,32 @@ export function TopBar({
   isFavorite,
   paused,
   filter,
+  filterError,
+  matched,
+  total,
+  fields,
+  availableFields,
   onChangePrefs,
   onToggleFavorite,
-  onFilter
+  onFilter,
+  onFields
 }: Props) {
   const [open, setOpen] = useState<OpenPanel>(null)
   const infoRef = useRef<HTMLButtonElement>(null)
   const settingsRef = useRef<HTMLButtonElement>(null)
+  const helpRef = useRef<HTMLButtonElement>(null)
+  const fieldsRef = useRef<HTMLButtonElement>(null)
 
   const toggle = (panel: Exclude<OpenPanel, null>) =>
     setOpen((current) => (current === panel ? null : panel))
 
+  const close = () => setOpen(null)
+
   return (
-    // The popovers are siblings of the bar, not children, so bar-scoped styles
-    // cannot reach into them.
+    // The popovers are siblings of the bar, not children: bar-scoped styles
+    // cannot reach into them, and — since .topbar-main is a query container,
+    // which makes it the containing block for fixed descendants — a panel
+    // mounted inside would anchor to the bar's box rather than the viewport.
     <>
     <div class="topbar">
       <div class="topbar-brand">
@@ -68,15 +97,18 @@ export function TopBar({
               {paused ? 'Paused' : 'Live'}
             </span>
 
-            <div class="filter-box">
-              <input
-                type="text"
-                placeholder="filter stream (regexp allowed)"
-                aria-label="Filter stream"
-                value={filter}
-                onInput={(event) => onFilter(event.currentTarget.value)}
-              />
-            </div>
+            <SearchBar
+              value={filter}
+              error={filterError}
+              matched={matched}
+              total={total}
+              fieldCount={fields.length}
+              open={'help' === open || 'fields' === open ? open : null}
+              helpRef={helpRef}
+              fieldsRef={fieldsRef}
+              onChange={onFilter}
+              onToggle={toggle}
+            />
           </>
         )}
 
@@ -108,8 +140,20 @@ export function TopBar({
       </div>
     </div>
 
-    {'info' === open && (
-        <Popover anchor={infoRef.current} class="popover-info" onClose={() => setOpen(null)}>
+    {'help' === open && <SearchHelp anchor={helpRef.current} onClose={close} />}
+
+    {'fields' === open && (
+        <FieldsPicker
+          anchor={fieldsRef.current}
+          fields={fields}
+          available={availableFields}
+          onFields={onFields}
+          onClose={close}
+        />
+      )}
+
+      {'info' === open && (
+        <Popover anchor={infoRef.current} class="popover-info" onClose={close}>
           <div class="rtail-logo" />
           <div class="version">Version {__VERSION__}</div>
           <a
@@ -132,7 +176,7 @@ export function TopBar({
       )}
 
       {'settings' === open && (
-        <Popover anchor={settingsRef.current} class="popover-settings" onClose={() => setOpen(null)}>
+        <Popover anchor={settingsRef.current} class="popover-settings" onClose={close}>
           <h4>Font size</h4>
           <div class="btn-group">
             <button
@@ -180,6 +224,20 @@ export function TopBar({
               aria-label="Newest first"
               onClick={() => onChangePrefs({ ascending: false })}
             />
+          </div>
+
+          <h4>JSON payloads</h4>
+          <div class="btn-group">
+            {JSON_VIEWS.map(([view, label, title]) => (
+              <button
+                key={view}
+                class={`btn btn-text ${view === prefs.jsonView ? 'selected' : ''}`}
+                title={title}
+                onClick={() => onChangePrefs({ jsonView: view })}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
           <h4>Theme</h4>

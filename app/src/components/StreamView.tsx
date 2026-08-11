@@ -1,11 +1,19 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'preact/hooks'
-import { buildFilter, formatTimestamp } from '../lib/format.js'
-import type { Line } from '../lib/types.js'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { defaultExpanded, formatTimestamp, renderFields } from '../lib/format.js'
+import { highlight } from '../lib/highlight.js'
+import type { Needle } from '../lib/query.js'
+import type { JsonView, Line } from '../lib/types.js'
 
 interface Props {
   activeStream: string | null
+  /** Already filtered and ordered by App, which also counts them for the bar. */
   lines: Line[]
-  filter: string
+  /** What to mark in each line; empty when the filter box is empty. */
+  needles: Needle[]
+  /** JSON paths to show instead of the whole payload. */
+  fields: string[]
+  jsonView: JsonView
+  /** Only the scroll anchor: App has already put the lines in this order. */
   ascending: boolean
   timestampsHidden: boolean
   paused: boolean
@@ -17,7 +25,9 @@ interface Props {
 export function StreamView({
   activeStream,
   lines,
-  filter,
+  needles,
+  fields,
+  jsonView,
   ascending,
   timestampsHidden,
   paused,
@@ -27,14 +37,33 @@ export function StreamView({
 }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null)
 
-  // Lines arrive in order, so insertion order is the source of truth. The old
-  // implementation re-sorted by timestamp on every digest, which reordered
-  // lines that shared a millisecond.
-  const visible = useMemo(() => {
-    const matches = buildFilter(filter)
-    const filtered = lines.filter(matches)
-    return ascending ? filtered : filtered.slice().reverse()
-  }, [lines, filter, ascending])
+  // Which individual payloads the user has opened or closed by hand. Keyed by
+  // line, so a row that has been opened stays open as lines arrive around it.
+  const [toggled, setToggled] = useState<Record<number, boolean>>({})
+
+  const toggle = useCallback((key: number, expanded: boolean) => {
+    setToggled((current) => ({ ...current, [key]: expanded }))
+  }, [])
+
+  // Keys are monotonic and the buffer is capped, so the map would only ever
+  // grow; a stream switch is the natural place to drop it.
+  useEffect(() => setToggled({}), [activeStream])
+
+  const rows = useMemo(() => {
+    return lines.map((line) => {
+      const expandable = null !== line.htmlCompact
+
+      // With fields picked, the projection *is* the collapsed form — otherwise
+      // "expand small payloads" would quietly undo the extraction.
+      const projected = fields.length ? renderFields(line.content, fields) : null
+      const fallback = projected ? false : defaultExpanded(jsonView, line)
+      const expanded = expandable && (toggled[line.key] ?? fallback)
+
+      const html = expanded ? line.html : (projected ?? line.htmlCompact ?? line.html)
+
+      return { line, expandable, expanded, html: highlight(html, needles) }
+    })
+  }, [lines, needles, fields, jsonView, toggled])
 
   // Follow the tail. Skipped while paused so the viewport stays where the user
   // scrolled to.
@@ -42,7 +71,7 @@ export function StreamView({
     const el = scrollerRef.current
     if (!el || paused) return
     el.scrollTop = ascending ? el.scrollHeight : 0
-  }, [visible, ascending, paused])
+  }, [rows, ascending, paused])
 
   // Scrolling away from the tail pauses the stream; the server stops sending
   // until the user resumes.
@@ -87,15 +116,29 @@ export function StreamView({
     // column and the control that sits on its edge cannot drift apart.
     <div class={`stream-view ${timestampsHidden ? 'no-timestamps' : ''}`}>
       <div class="stream-lines" ref={scrollerRef}>
-        {visible.map((line) => (
+        {rows.map(({ line, expandable, expanded, html }) => (
           <div class="stream-line" key={line.key}>
             {!timestampsHidden && (
               <div class="stream-line-timestamp">{formatTimestamp(line.timestamp)}</div>
             )}
+
             <div
-              class={`stream-line-content ${line.type}`}
-              dangerouslySetInnerHTML={{ __html: line.html }}
-            />
+              class={`stream-line-content ${line.type} ${
+                expandable ? (expanded ? 'json expanded' : 'json collapsed') : ''
+              }`}
+            >
+              {expandable && (
+                <button
+                  class="json-toggle"
+                  title={expanded ? 'Collapse payload' : 'Expand payload'}
+                  aria-label={expanded ? 'Collapse payload' : 'Expand payload'}
+                  aria-expanded={expanded}
+                  onClick={() => toggle(line.key, !expanded)}
+                />
+              )}
+
+              <div class="stream-line-body" dangerouslySetInnerHTML={{ __html: html }} />
+            </div>
           </div>
         ))}
       </div>

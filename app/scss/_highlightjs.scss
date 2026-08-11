@@ -3,7 +3,7 @@
 // **
 
 .stream-line-content pre {
-  color: var(--text-secondary);
+  color: var(--foreground);
 }
 
 .hljs-attr,
@@ -25,5 +25,5 @@
 }
 
 .hljs-punctuation {
-  color: var(--text-faint);
+  color: var(--muted-foreground);
 }
