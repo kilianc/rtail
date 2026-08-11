@@ -151,13 +151,19 @@ the only thing you need installed — no Node.js, no npm, no global CLIs.
 
     $ make dev
 
-That builds the assets, starts `rtail-server`, and feeds it three live demo
-streams, then serves the webapp on <http://localhost:8888/app>. Stylesheets
-recompile on save; reload the browser to pick them up. `Ctrl-C` stops
-everything.
+That builds the assets, starts `rtail-server`, feeds it three live demo
+streams, and serves the webapp. It prints the URL — `make url` prints it
+again. Stylesheets recompile on save; reload the browser to pick them up.
+`Ctrl-C` stops everything.
 
 The first run also builds the toolchain image and installs dependencies, so it
 takes a minute; subsequent runs start immediately.
+
+To leave it running in the background instead:
+
+    $ make up         # start detached, wait for it, print the URL
+    $ make logs       # tail it
+    $ make down       # stop it
 
 Other targets:
 
@@ -168,7 +174,16 @@ Other targets:
     $ make shell      # open a shell inside the toolchain container
     $ make clean      # remove generated assets and dependencies
 
-Use `make dev PORT=9000` to serve on a different port.
+### Ports
+
+Ports are derived from the worktree path, so several checkouts of this repo can
+run at once without colliding. Each gets its own HTTP port, UDP port, and
+container name, fixed across runs — sharing any of the three fails confusingly,
+since two servers can both bind the same UDP port and the loser simply never
+receives a log line.
+
+`make url` reports the current one. Override with `make dev PORT=9000
+UDP_PORT=9001`.
 
 If you do have a Node.js toolchain on your machine, the same targets are plain
 npm scripts — `npm install && npm run dev`.
