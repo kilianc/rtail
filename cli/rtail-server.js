@@ -31,7 +31,7 @@ const argv = yargs(hideBin(process.argv))
   .example('rtail-server --web-port 8080', 'Use custom HTTP port')
   .example('rtail-server --udp-port 8080', 'Use custom UDP port')
   .example('rtail-server --web-version stable', 'Always uses latest stable webapp')
-  .example('rtail-server --web-version unstable', 'Always uses latest develop webapp')
+  .example('rtail-server --web-version unstable', 'Always uses latest unreleased webapp')
   .example('rtail-server --web-version 0.1.3', 'Use webapp v0.1.3')
   .option('udp-host', {
     alias: 'uh',

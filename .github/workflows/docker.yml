@@ -1,10 +1,28 @@
 name: Docker
 
-# Never fires on its own: only on a version tag you push, or a manual run.
+# Never fires on its own: the Release workflow calls it once a version bump has
+# been tagged, or you run it by hand to re-push an image.
 on:
-  push:
-    tags: ['v*']
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to tag the image with, e.g. 0.2.1'
+        required: true
+        type: string
+      latest:
+        description: 'Also push the `latest` tag'
+        default: true
+        type: boolean
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to tag the image with, e.g. 0.2.1'
+        required: true
+        type: string
+      latest:
+        description: 'Also push the `latest` tag'
+        default: true
+        type: boolean
 
 jobs:
   publish:
@@ -32,9 +50,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}},value=${{ inputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
+            type=raw,value=latest,enable=${{ inputs.latest }}
 
       - uses: docker/build-push-action@v6
         with:

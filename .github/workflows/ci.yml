@@ -1,9 +1,15 @@
 name: CI
 
+# Every change reaches main through a pull request, so a PR run and a post-merge
+# run on main are the only two that matter.
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
