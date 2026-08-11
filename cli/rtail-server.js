@@ -61,6 +61,22 @@ const argv = yargs(hideBin(process.argv))
     type: 'string',
     describe: 'Define web app version to serve'
   })
+  .option('backlog', {
+    alias: 'b',
+    type: 'number',
+    default: 100,
+    describe: 'Lines of history kept in memory, per stream'
+  })
+  .check((args) => {
+    if (!Number.isInteger(args.backlog) || args.backlog < 1) {
+      throw new Error('--backlog must be a positive integer')
+    }
+    return true
+  })
+  // Every option is also settable as RTAIL_*, e.g. RTAIL_WEB_HOST. The
+  // container image sets the listen hosts this way so that `docker run rtail`
+  // with extra flags appends to the command instead of replacing it.
+  .env('RTAIL')
   .help('help')
   .alias('help', 'h')
   .version(pkg.version)
@@ -68,7 +84,7 @@ const argv = yargs(hideBin(process.argv))
   .strict()
   .parseSync()
 
-const BACKLOG_SIZE = 100
+const BACKLOG_SIZE = argv.backlog
 
 const app = express()
 const http = createServer(app)

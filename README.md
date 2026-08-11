@@ -11,11 +11,38 @@
 
 `rtail` is a command line utility that grabs every line in `stdin` and broadcasts it over **UDP**. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using `rtail` broadcasting to an `rtail-server` – See multiple streams in the browser, in realtime.
 
-## Installation
+## Running the server
 
-Requires Node.js 20 or newer.
+The server ships as a container image — this is the recommended way to run it.
+
+    $ docker run -d --name rtail -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail
+
+Open <http://localhost:8888> and start piping. There is a
+[`docker-compose.yml`](docker-compose.yml) if you prefer:
+
+    $ docker compose up -d
+
+Options are flags, or `RTAIL_*` environment variables:
+
+    $ docker run -d -p 8080:8080 -p 9999:9999/udp \
+        -e RTAIL_WEB_PORT=8080 ghcr.io/kilianc/rtail
+
+    $ docker run -d -p 8888:8888 -p 9999:9999/udp \
+        ghcr.io/kilianc/rtail --backlog 500
+
+The image binds `0.0.0.0` inside the container, so **the published ports are
+reachable from your whole network**. It has no authentication — keep it on a
+trusted network, or put a reverse proxy in front of it.
+
+## Installing the client
+
+The client is a UNIX pipe and belongs on the host whose output you are tailing,
+not in the container. It needs Node.js 20 or newer:
 
     $ npm install -g rtail
+
+`npm install -g rtail` also gives you `rtail-server`, if you would rather run
+the server without Docker.
 
 ## Web app
 
@@ -126,8 +153,13 @@ Open your browser and start tailing logs!
     --web-host, --wh  The listening HTTP hostname           [default: "127.0.0.1"]
     --web-port, --wp  The listening HTTP port                      [default: 8888]
     --web-version     Define web app version to serve                     [string]
+    --backlog, -b     Lines of history kept per stream    [number] [default: 100]
     --help, -h        Show help                                          [boolean]
     --version, -v     Show version number                                [boolean]
+
+Every option can also be set as an environment variable, prefixed with
+`RTAIL_` — `RTAIL_WEB_PORT=8080`, `RTAIL_BACKLOG=500`, and so on. This is how
+the container image is configured.
 
     Examples:
     rtail-server --web-port 8080         Use custom HTTP port
@@ -145,6 +177,11 @@ To scale and broadcast on multiple servers, instruct the `rtail` client to strea
 For the time being, the webapp doesn't have an authentication layer; it assumes that you will run it behind a VPN or reverse proxy, with a simple `Authorization` header check.
 
 # Running it locally
+
+Note there are two images, and they are not the same thing:
+[`Dockerfile`](Dockerfile) is the server you deploy, and
+[`tools/Dockerfile`](tools/Dockerfile) below is the development toolchain,
+which mounts your checkout.
 
 The toolchain lives in a container ([`tools/Dockerfile`](tools/Dockerfile)), so Docker is
 the only thing you need installed — no Node.js, no npm, no global CLIs.
@@ -230,13 +267,29 @@ CI runs both, plus the production build, on Node 20 and 22.
 
 ## Roadmap (aka where you can help)
 
-* Write a rock solid test suite
-* Allow use of DTLS (waiting for node to support this https://github.com/joyent/node/pull/6704)
-* Add GitHub OAuth and basic auth for teams (join proposal convo here: https://github.com/kilianc/rtail/issues/44)
-* Implement infinite-scroll like behavior in the webapp to support bigger backlogs and make it future proof.
-* Publish base rtail docker image to DockerHub
-* Create a catch all docker logs image
-* Rewrite webapp using ng2
+* Optional HTTP basic auth on the web port, and a shared secret on UDP ingest.
+  Full OAuth ([#44](https://github.com/kilianc/rtail/issues/44)) needs a user
+  model and session storage, which is a lot of machinery for a tool with no
+  persistence layer — basic auth covers the actual risk.
+* A catch-all docker logs image: watch `docker events`, pipe every container's
+  `docker logs -f` into a stream named after it.
+* Broaden the test suite, particularly around the UDP ingest path.
+
+Dropped, and why:
+
+* ~~Rewrite webapp using ng2~~ — done differently. The webapp is now Preact +
+  TypeScript; Angular 2 was already obsolete by the time it came up.
+* ~~Publish base rtail docker image to DockerHub~~ — done, but to GHCR rather
+  than DockerHub, since it needs no separate account or secrets.
+* ~~Write a rock solid test suite~~ — a suite exists and runs in CI. Deepening
+  it is the open item above.
+* ~~Allow use of DTLS~~ — the linked PR was against `joyent/node`, a repo that
+  no longer exists, and Node core still has no DTLS. Run rtail over WireGuard
+  or Tailscale instead; that is the modern answer to this problem.
+* ~~Infinite-scroll in the webapp~~ — cannot be built as stated. The server
+  keeps a fixed-size ring buffer per stream and sends it in one message; there
+  is no pagination to scroll through. Real history means a persistence layer,
+  which contradicts the design. `--backlog` covers the useful part.
 
 ## Sponsors
 ❤ rTail? Consider sponsoring this project to keep it alive and free for the community.

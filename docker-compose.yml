@@ -1,0 +1,24 @@
+# Run rtail-server.
+#
+#   docker compose up -d
+#
+# Then point clients at this host's UDP port:
+#
+#   mycommand | rtail --host <this-host>
+#
+# `build: .` is here so the file works straight from a checkout; delete it to
+# always pull the published image instead.
+
+services:
+  rtail:
+    image: ghcr.io/kilianc/rtail:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - '8888:8888'
+      - '9999:9999/udp'
+    environment:
+      # Uncomment to see every line the server ingests.
+      # DEBUG: 'rtail:*'
+      RTAIL_WEB_PORT: '8888'
+      RTAIL_UDP_PORT: '9999'
