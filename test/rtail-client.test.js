@@ -1,131 +1,119 @@
-/*!
- * cli.test.js
- * Created by Kilian Ciuffolo on Jul 7, 2015
- * (c) 2015
- */
+import assert from 'node:assert/strict'
+import dns from 'node:dns/promises'
+import os from 'node:os'
+import { after, before, describe, it } from 'node:test'
+import { listen, runClient, waitFor } from './util.js'
 
-'use strict'
+const PORT = 9991
 
-const assert = require('chai').assert
-const dgram = require('dgram')
-const dns = require('dns')
-const os = require('os')
-const s = require('./util').s
-const spawnClient = require('./util').spawnClient
+describe('rtail-client', () => {
+  let udp
 
-describe('rtail-client.js', function () {
-  it('should split stdin by \\n', function (done) {
-    spawnClient({
-      args: [],
-      done: done,
-      test: function (messages) {
-        assert.equal(3, messages.length, s(messages))
-
-        assert.equal(messages[0].content, '0')
-        assert.equal(messages[1].content, '1')
-        assert.equal(messages[2].content, '2')
-
-        assert.isDefined(messages[0].id)
-        assert.isNumber(messages[0].timestamp)
-      }
-    }).stdin.end(['0', '1', '2', ''].join('\n'))
+  before(async () => {
+    udp = await listen(PORT)
   })
 
-  it('should use custom name', function (done) {
-    spawnClient({
-      args: ['--name', 'test'],
-      done: done,
-      test: function (messages) {
-        assert.equal(3, messages.length, s(messages))
-        assert.equal(messages[0].id, 'test')
-      }
-    }).stdin.end(['0', '1', '2', ''].join('\n'))
+  after(async () => {
+    await udp.close()
   })
 
-  it('should respect --mute', function (done) {
-    let client = spawnClient({ args: ['--mute'], done: done })
-    client.stdout.on('data', function (data) {
-      done(new Error('Expected no output instead got: "' + data.toString() + '"'))
-    })
-    client.stdin.end(['0', '1', '2', ''].join('\n'))
+  /** Runs the client against the shared listener and returns just its messages. */
+  async function send(args, input) {
+    const before = udp.messages.length
+    const result = await runClient(['--port', String(PORT), ...args], input)
+    return { result, messages: udp.messages.slice(before) }
+  }
+
+  it('splits stdin by newline', async () => {
+    const { messages } = await send([], 'alpha\nbeta\ngamma\n')
+
+    assert.equal(messages.length, 3)
+    assert.deepEqual(messages.map((m) => m.content), ['alpha', 'beta', 'gamma'])
+    assert.ok(messages[0].id)
+    assert.equal(typeof messages[0].timestamp, 'number')
   })
 
-  it('should parse JSON lines', function (done) {
-    spawnClient({
-      args: [],
-      done: done,
-      test: function (messages) {
-        assert.equal(1, messages.length, s(messages))
-        assert.equal(messages[0].content.foo, 'bar')
-      }
-    }).stdin.end(['{ "foo": "bar" }', ''].join('\n'))
+  // Every line is offered to JSON5 first, so a line that happens to be a bare
+  // number arrives as a number rather than a string. Long-standing behaviour,
+  // pinned here because it is surprising.
+  it('parses a bare numeric line as a number', async () => {
+    const { messages } = await send([], '0\n1\n2\n')
+
+    assert.deepEqual(messages.map((m) => m.content), [0, 1, 2])
   })
 
-  it('should parse JSON5 lines', function (done) {
-    spawnClient({
-      args: [],
-      done: done,
-      test: function (messages) {
-        assert.equal(1, messages.length, s(messages))
-        assert.equal(messages[0].content.foo, 'bar')
-      }
-    }).stdin.end(['{ foo: "bar" }', ''].join('\n'))
+  it('uses a custom stream name', async () => {
+    const { messages } = await send(['--name', 'test'], 'a\nb\nc\n')
+
+    assert.equal(messages.length, 3)
+    assert.ok(messages.every((m) => 'test' === m.id))
   })
 
-  it('should support custom port / host', function (done) {
-    dns.lookup(os.hostname(), function (err, address) {
-      let socket = dgram.createSocket('udp4')
-      socket.bind(9998, address)
+  it('echoes stdin to stdout by default', async () => {
+    const { result } = await send([], 'hello\n')
 
-      spawnClient({
-        done: done,
-        socket: socket,
-        args: ['-p', '9998', '-h', address],
-        test: function (messages) {
-          assert.equal(1, messages.length, s(messages))
-          assert.equal(messages[0].content.foo, 'bar')
-        }
-      }).stdin.end(['{ foo: "bar" }', ''].join('\n'))
-    })
+    assert.equal(result.stdout, 'hello\n')
   })
 
-  it('should strip colors with --no-tty', function (done) {
-    let client = spawnClient({
-      args: ['--no-tty'],
-      done: done
-    })
+  it('respects --mute', async () => {
+    const { result } = await send(['--mute'], '0\n1\n2\n')
 
-    client.stdout.on('data', function (data) {
-      assert.equal(data.toString(), 'Hello world\n')
-    })
-
-    client.stdin.end(['\u001b[31mHello world\u001b[0m', ''].join('\n'))
+    assert.equal(result.stdout, '')
   })
 
-  it('should parse date if --parse-date', function (done) {
-    let date = 'Wed Jul 08 2010 01:01:03 GMT-0700 (PDT)'
-    let client = spawnClient({
-      done: done,
-      test: function (messages) {
-        assert.equal(messages[0].timestamp, Date.parse(date))
-        assert.equal(messages[0].content, 'hello')
-      }
-    })
+  it('strips ansi colours when stdout is not a tty', async () => {
+    const esc = String.fromCharCode(27)
+    const { result } = await send([], `hello ${esc}[32mworld${esc}[0m\n`)
 
-    client.stdin.end(['[' + date + ']  hello', ''].join('\n'))
+    assert.equal(result.stdout, 'hello world\n')
   })
 
-  it('should not parse date if --no-parse-date', function (done) {
-    let date = 'Wed Jul 08 2010 01:01:03 GMT-0700 (PDT)'
-    let client = spawnClient({
-      args: ['--no-parse-date'],
-      done: done,
-      test: function (messages) {
-        assert.notEqual(messages[0].timestamp, Date.parse(date))
-        assert.equal(messages[0].content, '[' + date + ']  hello')
-      }
-    })
+  it('parses JSON lines', async () => {
+    const { messages } = await send([], '{ "foo": "bar" }\n')
 
-    client.stdin.end(['[' + date + ']  hello', ''].join('\n'))
+    assert.equal(messages.length, 1)
+    assert.equal(messages[0].content.foo, 'bar')
+  })
+
+  it('parses JSON5 lines', async () => {
+    const { messages } = await send([], '{ foo: "bar" }\n')
+
+    assert.equal(messages.length, 1)
+    assert.equal(messages[0].content.foo, 'bar')
+  })
+
+  it('emits a line for a blank input line', async () => {
+    const { messages } = await send([], 'a\n\nb\n')
+
+    assert.deepEqual(messages.map((m) => m.content), ['a', '', 'b'])
+  })
+
+  it('extracts a leading date and strips it from the line', async () => {
+    const { messages } = await send([], '2015-07-08T10:00:00Z something happened\n')
+
+    assert.equal(messages.length, 1)
+    assert.equal(messages[0].content, 'something happened')
+    assert.equal(messages[0].timestamp, Date.parse('2015-07-08T10:00:00Z'))
+  })
+
+  it('leaves the line alone with --no-parse-date', async () => {
+    const line = '2015-07-08T10:00:00Z something happened'
+    const { messages } = await send(['--no-parse-date'], `${line}\n`)
+
+    assert.equal(messages[0].content, line)
+  })
+
+  it('supports a custom host and port', async () => {
+    const { address } = await dns.lookup(os.hostname())
+    const other = await listen(9992, address)
+
+    try {
+      await runClient(['--port', '9992', '--host', address, '--mute'], '{ foo: "bar" }\n')
+      await waitFor(() => other.messages.length >= 1, 'a message on the custom port')
+
+      assert.equal(other.messages[0].content.foo, 'bar')
+    } finally {
+      await other.close()
+    }
   })
 })

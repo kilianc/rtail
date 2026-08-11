@@ -2,9 +2,9 @@
 // design tokens
 //
 // Everything themeable is a CSS custom property. Dark is the default and
-// lives on :root, so the app paints correctly on first frame — before
-// localForage has resolved the persisted theme and Angular has stamped the
-// `dark` / `light` class onto <body>. `.light` is a pure override layer.
+// lives on :root, so the app paints correctly on the first frame even before
+// the bundle has run and stamped the persisted theme onto <body>. `.light` is
+// a pure override layer.
 // **
 
 :root {
@@ -133,13 +133,13 @@
 // The SVG assets are solid, evenodd-filled shapes, so they mask cleanly.
 // Masking them with `currentColor` means one icon set serves both themes
 // and icons inherit hover/selected colour for free — replacing the old
-// duplicated images/light + images/dark background-image pairs.
+// duplicated per-theme background-image pairs.
 // **
 
 @mixin icon($name, $size: 100%) {
   background-color: currentColor;
-  -webkit-mask: url('../images/dark/#{$name}.svg') no-repeat 50% 50%;
-  mask: url('../images/dark/#{$name}.svg') no-repeat 50% 50%;
+  -webkit-mask: url('../images/icons/#{$name}.svg') no-repeat 50% 50%;
+  mask: url('../images/icons/#{$name}.svg') no-repeat 50% 50%;
   -webkit-mask-size: $size;
   mask-size: $size;
 }

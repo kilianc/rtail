@@ -1,5 +1,5 @@
-app/css/*
-app/vendor
-app/*.js
-dist
 node_modules
+dist
+app/css
+app/bundle.js
+app/bundle.js.map

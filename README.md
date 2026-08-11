@@ -1,7 +1,6 @@
 # `rtail(1)`
 
-[![Wercker CI](https://img.shields.io/wercker/ci/556547b7be632a8c751c857d.svg?style=flat-square)](https://app.wercker.com/project/bykey/54b073dac5b9156509c26031c78c98d4)
-[![Coveralls](https://img.shields.io/coveralls/kilianc/rtail.svg?style=flat-square)](https://coveralls.io/r/kilianc/rtail)
+[![CI](https://github.com/kilianc/rtail/actions/workflows/ci.yml/badge.svg)](https://github.com/kilianc/rtail/actions/workflows/ci.yml)
 [![NPM version](https://img.shields.io/npm/v/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
 [![NPM downloads](https://img.shields.io/npm/dm/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
 [![GitHub Stars](https://img.shields.io/github/stars/kilianc/rtail.svg?style=flat-square)](https://github.com/kilianc/rtail)
@@ -13,6 +12,8 @@
 `rtail` is a command line utility that grabs every line in `stdin` and broadcasts it over **UDP**. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using `rtail` broadcasting to an `rtail-server` – See multiple streams in the browser, in realtime.
 
 ## Installation
+
+Requires Node.js 20 or newer.
 
     $ npm install -g rtail
 
@@ -160,12 +161,30 @@ takes a minute; subsequent runs start immediately.
 
 Other targets:
 
-    $ make build   # build the generated assets once (css, app.js, vendor bundle)
-    $ make css     # recompile stylesheets only — the fast loop for UI work
-    $ make shell   # open a shell inside the toolchain container
-    $ make clean   # remove generated assets and dependencies
+    $ make build      # build the webapp into app/
+    $ make dist       # build the minified webapp into dist/
+    $ make test       # run the test suite
+    $ make typecheck  # type-check the webapp
+    $ make shell      # open a shell inside the toolchain container
+    $ make clean      # remove generated assets and dependencies
 
 Use `make dev PORT=9000` to serve on a different port.
+
+If you do have a Node.js toolchain on your machine, the same targets are plain
+npm scripts — `npm install && npm run dev`.
+
+### The stack
+
+| | |
+| --- | --- |
+| CLI | ESM, Node ≥ 20, [yargs](https://yargs.js.org), [socket.io](https://socket.io) |
+| Webapp | [Preact](https://preactjs.com) + TypeScript, ~33 KB gzipped |
+| Build | [esbuild](https://esbuild.github.io) + [dart-sass](https://sass-lang.com) |
+| Tests | the built-in `node:test` runner |
+
+The webapp has no framework runtime beyond Preact: routing, preferences,
+popovers, and timestamp formatting are a few dozen lines each over the
+platform (`history`, `localStorage`, `Intl`) rather than dependencies.
 
 # How to contribute
 
@@ -174,11 +193,17 @@ This project follows the awesome [Vincent Driessen](http://nvie.com/about/) [bra
 * You must add a new feature on its own branch
 * You must contribute to hot-fixing, directly into the master branch (and pull-request to it)
 
-This project uses JSCS to enforce a consistent code style. Your contribution must be pass jscs validation.
+The test suite runs on the built-in [`node:test`](https://nodejs.org/api/test.html)
+runner. Use the tests to check whether your contribution breaks some part of the
+library, and be sure to add new tests for each new feature.
 
-The test suite is written on top of [mochajs/mocha](http://mochajs.org/). Use the tests to check if your contribution breaks some part of the library and be sure to add new tests for each new feature.
+    $ make test
 
-    $ npm test
+The webapp is TypeScript; please keep it type-clean:
+
+    $ make typecheck
+
+CI runs both, plus the production build, on Node 20 and 22.
 
 ## Contributors
 

@@ -36,8 +36,12 @@ pre {
   font-family: inherit !important;
 }
 
-input {
-  font: inherit !important;
+// Form controls do not inherit typography from their ancestors.
+button,
+input,
+select,
+textarea {
+  font: inherit;
 }
 
 // Keyboard users get a ring; mouse users don't. The old reset killed the
@@ -91,11 +95,8 @@ input {
 // **
 
 body {
-  align-items: stretch;
   background: var(--bg-app);
   color: var(--text-primary);
-  display: flex;
-  flex-direction: column;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto,
     'Helvetica Neue', Arial, sans-serif;
   font-size: 14px;
@@ -108,6 +109,16 @@ body {
     cursor: col-resize;
     user-select: none;
   }
+}
+
+// The app mounts into #root, so the column layout lives here rather than on
+// <body> — otherwise the header and the split pane are no longer siblings in
+// the same flex container and the panes collapse to their content height.
+#root {
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 // **
@@ -280,12 +291,6 @@ header {
         margin-top: var(--space-sm);
         padding-left: var(--space-xs);
         text-transform: uppercase;
-      }
-
-      // Hide a section header when it has no streams under it, so an empty
-      // "Favorites" list doesn't leave a dangling label.
-      &:not(:has(a)) h4 {
-        display: none;
       }
 
       a {
@@ -464,6 +469,7 @@ header {
     padding: var(--space-xs) 0 var(--space) 0;
 
     .stream-line {
+      align-items: baseline;
       display: flex;
       line-height: 1.55;
 
@@ -493,10 +499,12 @@ header {
         white-space: pre;
       }
 
+      // Deliberately not flex containers. ANSI output is a run of sibling
+      // <span>s separated by literal spaces, and a flex container discards
+      // whitespace-only text nodes between its items — which silently ate the
+      // spaces between coloured segments.
       .stream-line-timestamp,
       .stream-line-content {
-        align-items: baseline;
-        display: flex;
         padding-bottom: 3px;
         padding-left: var(--space-sm);
         padding-top: 3px;
@@ -580,7 +588,9 @@ header {
 // **
 
 .popover {
-  position: absolute;
+  // Anchored to the trigger's viewport rect by Popover.tsx, which measures the
+  // panel and clamps it on screen, then reports where the arrow should sit.
+  position: fixed;
   z-index: 10;
 
   .popover-content {
@@ -603,7 +613,7 @@ header {
       border-right: 7px solid transparent;
       content: '';
       height: 0;
-      left: 50%;
+      left: var(--arrow-x, 50%);
       position: absolute;
       top: 0;
       transform: translate(-50%, -100%);
@@ -674,16 +684,6 @@ header {
 
   .popover-settings {
     padding: var(--space-sm);
-
-    // The settings button sits at the right edge of the header, so the panel
-    // is nudged left to stay on screen and the arrow is pinned back over the
-    // button. These offsets preserve the original anchor geometry.
-    left: -60px;
-
-    &::before {
-      left: 129px;
-      transform: translateY(-100%);
-    }
 
     h4 {
       color: var(--text-faint);
