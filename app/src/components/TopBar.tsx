@@ -128,7 +128,6 @@ export function TopBar({
           >
             Fork it
           </a>
-          <div class="lukibear-logo" />
         </Popover>
       )}
 

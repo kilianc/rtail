@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 
 const MIN_WIDTH = 180
 const MAX_WIDTH = 600
@@ -14,6 +14,7 @@ interface Props {
 export function Sidebar({ streams, favorites, activeStream, onSelect, onResize }: Props) {
   const [filter, setFilter] = useState('')
   const [dragging, setDragging] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
 
   const needle = filter.trim().toLowerCase()
   const matches = (stream: string) => !needle || stream.toLowerCase().includes(needle)
@@ -45,17 +46,52 @@ export function Sidebar({ streams, favorites, activeStream, onSelect, onResize }
     return () => document.body.classList.remove('resizing')
   }, [dragging])
 
+  // `/` jumps to the stream search, the convention in log and code tools.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ('/' !== event.key || event.metaKey || event.ctrlKey) return
+
+      const target = event.target as HTMLElement | null
+      if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return
+
+      event.preventDefault()
+      searchRef.current?.focus()
+      searchRef.current?.select()
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   return (
     // Width comes from the --sidebar-w grid track, shared with the top bar.
     <div class="sidebar">
       <div class="search-box">
         <input
+          ref={searchRef}
           type="text"
           placeholder="Search streams"
           aria-label="Search streams"
           value={filter}
           onInput={(event) => setFilter(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if ('Escape' !== event.key) return
+            // Escape clears a query, or steps out of the field if it is empty.
+            if (filter) setFilter('')
+            else event.currentTarget.blur()
+          }}
         />
+
+        {filter && (
+          <button
+            class="search-clear"
+            aria-label="Clear search"
+            onClick={() => {
+              setFilter('')
+              searchRef.current?.focus()
+            }}
+          />
+        )}
       </div>
 
       <div class="stream-sections">
@@ -68,12 +104,20 @@ export function Sidebar({ streams, favorites, activeStream, onSelect, onResize }
           />
         )}
 
-        <StreamSection
-          title="Streams"
-          streams={shownStreams}
-          activeStream={activeStream}
-          onSelect={onSelect}
-        />
+        {shownStreams.length > 0 && (
+          <StreamSection
+            title="Streams"
+            streams={shownStreams}
+            activeStream={activeStream}
+            onSelect={onSelect}
+          />
+        )}
+
+        {0 === shownFavorites.length + shownStreams.length && (
+          <span class="no-matches">
+            {needle ? `No streams match “${filter}”` : 'No streams yet'}
+          </span>
+        )}
       </div>
 
       <div

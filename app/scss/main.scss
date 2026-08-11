@@ -279,7 +279,12 @@
     &.btn-settings::after { @include icon('btn-settings'); }
   }
 
-  // ** text field **
+  // ** text fields **
+  //
+  // Two contexts, deliberately different. The filter sits among other controls
+  // in the bar, so it is a discrete filled box. The search spans the sidebar
+  // edge to edge, so it is full-bleed and transparent — a filled box inside a
+  // padded, bordered strip was two boxes doing one job.
 
   :where(.search-box, .filter-box) {
     align-items: center;
@@ -292,25 +297,34 @@
       color: var(--muted-foreground);
       content: '';
       inline-size: var(--icon-sm);
-      inset-inline-start: var(--space-2);
       pointer-events: none;
       position: absolute;
     }
 
     input {
-      background: var(--muted);
-      block-size: var(--control-h);
       color: var(--foreground);
       flex: 1;
       font-size: var(--text-sm);
       min-inline-size: 0;
-      // icon inset + icon + gap
-      padding-inline: calc(var(--space-2) * 2 + var(--icon-sm)) var(--space-2);
-      transition: background-color .12s ease, box-shadow .12s ease;
 
       &::placeholder {
         color: var(--muted-foreground);
       }
+    }
+  }
+
+  .filter-box {
+    &::before {
+      @include icon-common('icn-filter');
+      inset-inline-start: var(--space-2);
+    }
+
+    input {
+      background: var(--muted);
+      block-size: var(--control-h);
+      // icon inset + icon + gap
+      padding-inline: calc(var(--space-2) * 2 + var(--icon-sm)) var(--space-2);
+      transition: background-color .12s ease, box-shadow .12s ease;
 
       &:hover {
         box-shadow: inset 0 0 0 var(--hairline) var(--border);
@@ -323,8 +337,75 @@
     }
   }
 
-  .search-box::before { @include icon('icn-search'); }
-  .filter-box::before { @include icon-common('icn-filter'); }
+  // Full-bleed, exactly --bar-h tall so it stays on the 4px grid, with the
+  // icon on the same 16px rail as the section labels and stream rows below.
+  .search-box {
+    block-size: var(--bar-h);
+    border-block-end: var(--hairline) solid var(--border);
+    padding-inline: var(--space-4);
+
+    &::before {
+      @include icon('icn-search');
+      inset-inline-start: var(--space-4);
+    }
+
+    &:focus-within::before {
+      color: var(--foreground);
+    }
+
+    input {
+      block-size: 100%;
+      // Clears the icon on the rail; the trailing space keeps text off the
+      // clear button.
+      padding-inline: calc(var(--icon-sm) + var(--space-2)) var(--space-4);
+    }
+  }
+
+  // Drawn rather than an asset: two 1px rules crossed, so it stays crisp and
+  // inherits colour like every other icon here.
+  .search-clear {
+    block-size: var(--space-4);
+    color: var(--muted-foreground);
+    flex-shrink: 0;
+    inline-size: var(--space-4);
+    position: relative;
+    rotate: 45deg;
+    transition: color .12s ease;
+
+    &::before,
+    &::after {
+      background: currentColor;
+      content: '';
+      inset: 50%;
+      position: absolute;
+      translate: -50% -50%;
+    }
+
+    &::before {
+      block-size: var(--hairline);
+      inline-size: var(--space-2);
+    }
+
+    &::after {
+      block-size: var(--space-2);
+      inline-size: var(--hairline);
+    }
+
+    &:hover {
+      color: var(--foreground);
+    }
+  }
+
+  // Shown when a query matches nothing, so the section header is never left
+  // hanging over an empty list.
+  .stream-sections .no-matches {
+    color: var(--muted-foreground);
+    display: block;
+    font-size: var(--text-sm);
+    min-block-size: var(--row-h);
+    line-height: var(--row-h);
+    padding-inline: var(--space-4);
+  }
 
   // ** top bar: stream identity **
 
@@ -416,11 +497,6 @@
   }
 
   // ** sidebar **
-
-  .search-box {
-    border-block-end: var(--hairline) solid var(--border);
-    padding: var(--space-2);
-  }
 
   .stream-sections {
     min-block-size: 0;
@@ -709,15 +785,6 @@
           background: var(--subtle);
           box-shadow: inset 0 0 0 var(--hairline) var(--border-strong);
         }
-      }
-
-      // Designer credit.
-      .lukibear-logo {
-        @include icon('logo-lukibear', contain);
-        block-size: var(--space-4);
-        color: var(--muted-foreground);
-        inline-size: calc(var(--space-6) * 2);
-        opacity: .5;
       }
     }
 
