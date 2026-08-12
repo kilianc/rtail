@@ -45,7 +45,7 @@
     "@types/update-notifier": "^6.0.8",
     "@types/yargs": "^17.0.33",
     "ansi_up": "^6.0.2",
-    "esbuild": "^0.24.2",
+    "esbuild": "^0.25.0",
     "highlight.js": "^11.11.1",
     "jsdom": "^26.0.0",
     "preact": "^10.25.4",
