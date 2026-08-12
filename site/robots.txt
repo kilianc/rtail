@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# Framed by the landing page; it has no meaning as a standalone result.
+Disallow: /preview.html

@@ -5,3 +5,5 @@ app/bundle.js
 app/bundle.js.map
 playwright-report
 test-results
+site/dist
+.vercel

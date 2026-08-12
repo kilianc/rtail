@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>rtail — terminal output to the browser in seconds</title>
+  <meta name="description" content="rtail is a command line utility that pipes stdin over UDP to a server that streams it into your browser, live. No agents, no config, no persistence layer — just a UNIX pipe.">
+
+  <link rel="canonical" href="https://rtail.ciuffolo.com/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://rtail.ciuffolo.com/">
+  <meta property="og:title" content="rtail — terminal output to the browser in seconds">
+  <meta property="og:description" content="Pipe any command's output over UDP and watch it stream into your browser, live.">
+  <meta name="twitter:card" content="summary">
+
+  <link href="css/site.css" rel="stylesheet">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inconsolata:wght@400;500&display=swap" rel="stylesheet">
+
+  <link rel="icon" href="images/common/favicon-16x16.png" sizes="16x16">
+  <link rel="icon" href="images/common/favicon-32x32.png" sizes="32x32">
+  <link rel="icon" href="images/common/favicon-96x96.png" sizes="96x96">
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/" aria-label="rtail">
+      <span class="brand-mark" aria-hidden="true"></span>
+    </a>
+
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#how">How it works</a>
+      <a href="#start">Get started</a>
+      <a href="https://github.com/kilianc/rtail#readme">Docs</a>
+      <a href="https://www.npmjs.com/package/rtail">npm</a>
+      <a class="nav-cta" href="https://github.com/kilianc/rtail">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- hero -->
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow">MIT licensed · no agents · no persistence layer</p>
+
+      <h1>Terminal output to the browser, in seconds.</h1>
+
+      <p class="lede">
+        <code>rtail</code> takes every line on <code>stdin</code> and broadcasts it over
+        UDP. <code>rtail-server</code>, if it is listening, streams those lines straight
+        into your browser — live, from as many machines as you like. That is the whole
+        idea.
+      </p>
+
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#start">Get started</a>
+        <a class="btn" href="https://github.com/kilianc/rtail">View on GitHub</a>
+      </div>
+
+      <figure class="shell">
+        <figcaption class="shell-bar">
+          <span class="shell-label">your machine</span>
+          <button class="copy" type="button" data-copy="node server.js 2>&amp;1 | rtail --id api.myproject.com">Copy</button>
+        </figcaption>
+        <pre class="shell-body"><code><span class="p">$</span> node server.js 2>&amp;1 | rtail <span class="f">--id</span> api.myproject.com</code></pre>
+      </figure>
+    </div>
+  </section>
+
+  <!-- the live preview -->
+  <section class="preview" id="preview">
+    <div class="wrap">
+      <header class="section-head">
+        <h2>This is the app, running.</h2>
+        <p>
+          Not a screenshot. The frame below is the real <code>rtail-server</code> webapp —
+          the same bundle, components and stylesheet the server ships — driven by a
+          generated log source instead of a UDP socket, because this page is static.
+          Click a stream, filter it, pause it, switch the theme.
+        </p>
+      </header>
+
+      <div class="window">
+        <div class="window-bar">
+          <span class="window-dot" aria-hidden="true"></span>
+          <span class="window-url">localhost:8888</span>
+          <button class="window-action" type="button" data-preview-theme aria-pressed="false">
+            Light
+          </button>
+        </div>
+
+        <iframe
+          class="window-frame"
+          title="Live preview of the rtail web app"
+          src="preview.html#/streams/api.myproject.com"
+          loading="eager"></iframe>
+      </div>
+
+      <p class="note">
+        Three streams, a few lines a second. On a real server the streams are whatever
+        you named your pipes, and the lines are whatever your processes printed.
+      </p>
+    </div>
+  </section>
+
+  <!-- how it works -->
+  <section class="how" id="how">
+    <div class="wrap">
+      <header class="section-head">
+        <h2>Three moving parts.</h2>
+        <p>There is no agent to install, no log format to adopt, and nothing to configure.</p>
+      </header>
+
+      <ol class="steps">
+        <li>
+          <span class="step-n">01</span>
+          <h3>Pipe</h3>
+          <p>
+            Send any command's output into <code>rtail</code>. It passes every line
+            through to <code>stdout</code> untouched, so redirects and existing log files
+            keep working exactly as before.
+          </p>
+        </li>
+        <li>
+          <span class="step-n">02</span>
+          <h3>Broadcast</h3>
+          <p>
+            Each line leaves as a single UDP datagram. Fire and forget: there is no
+            handshake, no back-pressure, and if nothing is listening on the other end,
+            your process neither blocks nor notices.
+          </p>
+        </li>
+        <li>
+          <span class="step-n">03</span>
+          <h3>Watch</h3>
+          <p>
+            <code>rtail-server</code> receives the datagrams, groups them by stream id,
+            and dispatches each one to the browser over socket.io. Open the page and the
+            lines are already moving.
+          </p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- features -->
+  <section class="features">
+    <div class="wrap">
+      <header class="section-head">
+        <h2>What you get.</h2>
+      </header>
+
+      <div class="grid">
+        <article>
+          <h3>ANSI colours survive the trip</h3>
+          <p>
+            Your <code>grep --color</code> output, your test runner's greens and reds, your
+            framework's log levels — all rendered in the browser. Or strip them with
+            <code>--no-tty</code>.
+          </p>
+        </article>
+        <article>
+          <h3>JSON and JSON5 lines</h3>
+          <p>
+            Print an object and it arrives parsed, pretty-printed and syntax highlighted,
+            instead of as one long unreadable line. Unquoted keys and trailing commas are
+            fine.
+          </p>
+        </article>
+        <article>
+          <h3>As many streams as you have machines</h3>
+          <p>
+            Name each pipe with <code>--id</code> and every host, service or environment
+            gets its own entry in the sidebar. Star the ones you watch most.
+          </p>
+        </article>
+        <article>
+          <h3>A filter that understands the line</h3>
+          <p>
+            Terms are ANDed and <code>-</code> negates one. <code>"quoted"</code> matches a
+            phrase, <code>/regexp/</code> when you need one, and <code>level:error</code> or
+            <code>duration&gt;250</code> address parsed JSON fields rather than the text
+            around them. Scroll up and the stream pauses server-side, so a parked tab costs
+            nothing.
+          </p>
+        </article>
+        <article>
+          <h3>Log-rotate safe</h3>
+          <p>
+            Pair it with <code>tail -F</code> and rotation is a non-event. Dates already in
+            your lines are parsed out and used as the timestamp.
+          </p>
+        </article>
+        <article>
+          <h3>Small and forgettable</h3>
+          <p>
+            The webapp is Preact and TypeScript, about 33 KB gzipped. The server keeps a
+            fixed ring buffer per stream and writes nothing to disk.
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- get started -->
+  <section class="start" id="start">
+    <div class="wrap">
+      <header class="section-head">
+        <h2>Get started.</h2>
+        <p>Two pieces: a server that listens, and a client that pipes.</p>
+      </header>
+
+      <div class="steps-code">
+        <article>
+          <h3><span class="step-n">01</span> Run the server</h3>
+          <p>
+            It ships as a container image, which is the recommended way to run it. Port
+            8888 serves the webapp; 9999/udp receives the lines.
+          </p>
+          <figure class="shell">
+            <figcaption class="shell-bar">
+              <span class="shell-label">wherever you want to watch from</span>
+              <button class="copy" type="button" data-copy="docker run -d --name rtail -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail">Copy</button>
+            </figcaption>
+            <pre class="shell-body"><code><span class="p">$</span> docker run -d --name rtail <span class="f">-p</span> 8888:8888 <span class="f">-p</span> 9999:9999/udp ghcr.io/kilianc/rtail</code></pre>
+          </figure>
+          <p class="hint">Then open <a href="http://localhost:8888">localhost:8888</a>.</p>
+        </article>
+
+        <article>
+          <h3><span class="step-n">02</span> Install the client</h3>
+          <p>
+            The client is a UNIX pipe, so it belongs on the host whose output you are
+            tailing — not in the container. It needs Node.js 22.18 or newer: rtail
+            ships as TypeScript and relies on Node stripping the types at load time,
+            so what you read in <code>cli/</code> is exactly what npm installs.
+          </p>
+          <figure class="shell">
+            <figcaption class="shell-bar">
+              <span class="shell-label">on each machine you tail</span>
+              <button class="copy" type="button" data-copy="npm install -g rtail">Copy</button>
+            </figcaption>
+            <pre class="shell-body"><code><span class="p">$</span> npm install <span class="f">-g</span> rtail</code></pre>
+          </figure>
+        </article>
+
+        <article>
+          <h3><span class="step-n">03</span> Pipe something into it</h3>
+          <p>
+            Point the client at the host running the server with <code>--host</code>, name
+            the stream with <code>--id</code>, and you are done.
+          </p>
+          <figure class="shell">
+            <figcaption class="shell-bar">
+              <span class="shell-label">anything that writes to stdout</span>
+              <button class="copy" type="button" data-copy="node server.js 2>&amp;1 | rtail --host logs.example.com --id api.myproject.com">Copy</button>
+            </figcaption>
+            <pre class="shell-body"><code><span class="p">$</span> node server.js 2>&amp;1 | rtail <span class="f">--host</span> logs.example.com <span class="f">--id</span> api.myproject.com
+<span class="p">$</span> tail -F log.txt | rtail <span class="f">--id</span> nginx
+<span class="p">$</span> echo <span class="s">"Server rebooted!"</span> | rtail <span class="f">--id</span> `hostname`</code></pre>
+          </figure>
+        </article>
+      </div>
+
+      <aside class="callout">
+        <h3>Before you put it on the internet</h3>
+        <p>
+          rtail has no authentication layer. The container binds <code>0.0.0.0</code>, so
+          published ports are reachable from your whole network. Keep it on a trusted
+          network, behind a VPN such as WireGuard or Tailscale, or behind a reverse proxy
+          that checks an <code>Authorization</code> header.
+        </p>
+      </aside>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div>
+      <p class="footer-brand">rtail</p>
+      <p class="footer-meta">
+        Released under the MIT license.<br>
+        Copyright © 2014–2026 Kilian Ciuffolo.
+      </p>
+    </div>
+
+    <nav class="footer-links" aria-label="Footer">
+      <a href="https://github.com/kilianc/rtail">Source</a>
+      <a href="https://github.com/kilianc/rtail/issues">Issues</a>
+      <a href="https://www.npmjs.com/package/rtail">npm</a>
+      <a href="https://github.com/kilianc/rtail/pkgs/container/rtail">Container image</a>
+    </nav>
+  </div>
+</footer>
+
+<script type="module" src="site.js"></script>
+</body>
+</html>

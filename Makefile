@@ -10,6 +10,8 @@
 #   make url        print this worktree's URL
 #   make build      build the webapp into app/
 #   make dist       build the minified webapp into dist/
+#   make site       build the landing page into site/dist
+#   make site-serve build it and serve it on SITE_PORT
 #   make test       run the unit + integration suite, with coverage
 #   make test-e2e   run the browser smoke suite (heavy: pulls chromium)
 #   make typecheck  type-check the webapp
@@ -31,9 +33,10 @@ IMAGE     := rtail-tools
 E2E_IMAGE := rtail-e2e
 
 # 0-499, stable per worktree.
-OFFSET   := $(shell printf '%s' "$(CURDIR)" | cksum | awk '{print $$1 % 500}')
-PORT     ?= $(shell expr 8000 + $(OFFSET))
-UDP_PORT ?= $(shell expr 9000 + $(OFFSET))
+OFFSET    := $(shell printf '%s' "$(CURDIR)" | cksum | awk '{print $$1 % 500}')
+PORT      ?= $(shell expr 8000 + $(OFFSET))
+UDP_PORT  ?= $(shell expr 9000 + $(OFFSET))
+SITE_PORT ?= $(shell expr 7000 + $(OFFSET))
 
 SLUG      := $(shell basename "$(CURDIR)" | tr -cd 'a-zA-Z0-9_.-')
 CONTAINER := rtail-dev-$(SLUG)
@@ -48,7 +51,7 @@ DOCKER_RUN := docker run --rm \
 
 DEV_ENV := -e WEB_PORT=$(PORT) -e UDP_PORT=$(UDP_PORT) -p $(PORT):$(PORT)
 
-.PHONY: dev up down logs url build dist test test-e2e typecheck shell clean image image-e2e deps
+.PHONY: dev up down logs url build dist site site-serve test test-e2e typecheck shell clean image image-e2e deps
 
 ## Run the app in the foreground: builds and watches assets, serves the webapp,
 ## and feeds it three live demo streams. Ctrl-C to stop.
@@ -81,6 +84,17 @@ build: image deps
 
 dist: image deps
 	$(DOCKER_RUN) $(IMAGE) npm run dist
+
+## Build the landing page (rtail.ciuffolo.com) into site/dist. This is what
+## Vercel runs, via the buildCommand in vercel.json.
+site: image deps
+	$(DOCKER_RUN) $(IMAGE) npm run build:site
+
+## Build it and serve it locally. Static files only, so the server is python3
+## on the host rather than another container.
+site-serve: site
+	@echo "==> http://localhost:$(SITE_PORT)/"
+	@cd site/dist && python3 -m http.server $(SITE_PORT) --bind 127.0.0.1
 
 test: image deps
 	$(DOCKER_RUN) $(IMAGE) npm test

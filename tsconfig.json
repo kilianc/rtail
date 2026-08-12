@@ -25,5 +25,5 @@
     // flag rejects them at type-check time rather than at a user's runtime.
     "erasableSyntaxOnly": true
   },
-  "include": ["app/src", "cli", "tools", "test"]
+  "include": ["app/src", "cli", "tools", "test", "site/src"]
 }

@@ -57,6 +57,8 @@
     "dev": "node tools/dev.ts",
     "build": "node tools/build.ts",
     "dist": "node tools/build.ts --dist",
+    "build:site": "node tools/build-site.ts",
+    "dev:site": "node tools/build-site.ts --watch",
     "typecheck": "tsc --noEmit",
     "test": "node --import ./tools/tsx-hook.ts --test-timeout=30000 --experimental-test-coverage --test-coverage-include='cli/**' --test-coverage-include='app/src/**' --test-coverage-exclude='app/src/main.tsx' --test-coverage-lines=90 --test-coverage-functions=90 --test-coverage-branches=90 --test 'test/unit/**/*.test.ts' 'test/unit/**/*.test.tsx' 'test/integration/**/*.test.ts'",
     "test:unit": "node --import ./tools/tsx-hook.ts --test-timeout=30000 --test 'test/unit/**/*.test.ts' 'test/unit/**/*.test.tsx'",

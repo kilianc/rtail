@@ -1,0 +1,633 @@
+// **
+// rtail.ciuffolo.com
+//
+// The page obeys the app's design system rather than inventing a second one:
+// tokens are imported from app/scss/_tokens.scss, so the accent, the greys and
+// the hairlines on this page are literally the same values the product paints
+// with. Square corners everywhere, separation by hairline rather than shadow,
+// monochrome chrome with one accent.
+//
+// The page is dark only. The app supports both themes and the preview's own
+// theme button still works inside the frame — but the marketing page having an
+// opinion, and that opinion matching the app's default, is worth more here
+// than a second toggle.
+// **
+
+@use '../../app/scss/tokens';
+
+// ** page-level scale — larger than the app's, which is a dense tool UI **
+:root {
+  --wrap: 1120px;
+  --text-lg: 17px;
+  --text-xl: 20px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --mono: 'Inconsolata', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--sans);
+  font-size: var(--text-lg);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  color: var(--foreground);
+  background: var(--subtle);
+  border: var(--hairline) solid var(--border);
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+.wrap {
+  width: 100%;
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+
+  &:focus {
+    left: var(--space-4);
+    top: var(--space-4);
+    z-index: 10;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    padding: var(--space-2) var(--space-3);
+  }
+}
+
+// **
+// nav
+// **
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  border-bottom: var(--hairline) solid var(--border);
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  height: 56px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+// One source of truth for the wordmark: the same asset the app's top bar
+// masks, so the two can never drift.
+.brand-mark {
+  display: block;
+  width: 92px;
+  height: 22px;
+  background-color: currentColor;
+  -webkit-mask: url('../images/common/logo-rtail.svg') no-repeat 50% 50%;
+  mask: url('../images/common/logo-rtail.svg') no-repeat 50% 50%;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  font-size: var(--text-md);
+
+  a {
+    color: var(--muted-foreground);
+    text-decoration: none;
+    transition: color 0.12s;
+
+    &:hover {
+      color: var(--foreground);
+    }
+  }
+
+  .nav-cta {
+    color: var(--foreground);
+    border: var(--hairline) solid var(--border-strong);
+    padding: 5px var(--space-3);
+
+    &:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+  }
+}
+
+@media (max-width: 720px) {
+  .nav-links a:not(.nav-cta) {
+    display: none;
+  }
+}
+
+// **
+// hero
+// **
+
+.hero {
+  padding: var(--space-24) 0 var(--space-16);
+  border-bottom: var(--hairline) solid var(--border);
+}
+
+.eyebrow {
+  margin: 0 0 var(--space-6);
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.hero h1 {
+  max-width: 15ch;
+  font-size: clamp(40px, 7vw, 76px);
+  letter-spacing: -0.035em;
+}
+
+.lede {
+  max-width: 62ch;
+  margin: var(--space-6) 0 0;
+  font-size: var(--text-xl);
+  color: var(--muted-foreground);
+
+  code {
+    color: var(--foreground);
+  }
+}
+
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: var(--space-8) 0 var(--space-12);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 var(--space-6);
+  border: var(--hairline) solid var(--border-strong);
+  color: var(--foreground);
+  font-size: var(--text-md);
+  font-weight: 500;
+  text-decoration: none;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+
+  &:hover {
+    border-color: var(--foreground);
+  }
+}
+
+.btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+
+  &:hover {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+  }
+}
+
+// **
+// shell blocks
+// **
+
+.shell {
+  margin: 0;
+  min-width: 0;
+  border: var(--hairline) solid var(--border);
+  background: var(--muted);
+  overflow: hidden;
+}
+
+.shell-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  height: var(--bar-h);
+  padding: 0 var(--space-2) 0 var(--space-4);
+  border-bottom: var(--hairline) solid var(--border);
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.shell-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.copy {
+  flex: none;
+  height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: var(--hairline) solid transparent;
+  background: none;
+  color: var(--muted-foreground);
+  font: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+
+  &:hover {
+    color: var(--foreground);
+    border-color: var(--border-strong);
+  }
+
+  &[data-copied] {
+    color: var(--primary);
+    border-color: var(--primary);
+  }
+}
+
+.shell-body {
+  margin: 0;
+  padding: var(--space-4);
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: var(--mono-size);
+  line-height: 1.7;
+
+  code {
+    background: none;
+    border: 0;
+    padding: 0;
+    font-size: inherit;
+    white-space: pre;
+  }
+
+  .p {
+    color: var(--muted-foreground);
+    user-select: none;
+  }
+
+  .f {
+    color: var(--primary);
+  }
+
+  .s {
+    color: var(--ansi-green);
+  }
+}
+
+// **
+// sections
+// **
+
+section {
+  padding: var(--space-24) 0;
+  border-bottom: var(--hairline) solid var(--border);
+}
+
+.section-head {
+  max-width: 68ch;
+  margin-bottom: var(--space-12);
+
+  h2 {
+    font-size: clamp(28px, 4vw, 40px);
+  }
+
+  p {
+    margin: var(--space-4) 0 0;
+    color: var(--muted-foreground);
+  }
+}
+
+// **
+// the live preview
+// **
+
+.window {
+  border: var(--hairline) solid var(--border-strong);
+  background: var(--background);
+}
+
+.window-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--bar-h);
+  padding: 0 var(--space-2) 0 var(--space-4);
+  border-bottom: var(--hairline) solid var(--border);
+  background: var(--muted);
+}
+
+// A single live dot rather than three decorative traffic lights: it says
+// "this is streaming", which is the one thing the frame needs to say.
+.window-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  background: var(--ansi-green);
+  border-radius: 50%;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .window-dot {
+    animation: none;
+  }
+}
+
+.window-url {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+}
+
+.window-action {
+  height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: var(--hairline) solid var(--border);
+  background: none;
+  color: var(--muted-foreground);
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--foreground);
+    border-color: var(--border-strong);
+  }
+}
+
+.window-frame {
+  display: block;
+  width: 100%;
+  height: 560px;
+  border: 0;
+  background: var(--background);
+}
+
+@media (max-width: 720px) {
+  .window-frame {
+    height: 420px;
+  }
+}
+
+.note {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-md);
+  color: var(--muted-foreground);
+}
+
+// **
+// how it works
+// **
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: var(--hairline) solid var(--border);
+
+  li {
+    padding: var(--space-8) var(--space-6) 0;
+    border-right: var(--hairline) solid var(--border);
+
+    &:first-child {
+      padding-left: 0;
+    }
+
+    &:last-child {
+      border-right: 0;
+    }
+  }
+
+  h3 {
+    margin: var(--space-3) 0 var(--space-3);
+    font-size: var(--text-xl);
+  }
+
+  p {
+    margin: 0;
+    font-size: var(--text-md);
+    color: var(--muted-foreground);
+  }
+}
+
+.step-n {
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  color: var(--primary);
+}
+
+@media (max-width: 860px) {
+  .steps {
+    grid-template-columns: 1fr;
+  }
+
+  .steps li {
+    padding: var(--space-8) 0;
+    border-right: 0;
+    border-bottom: var(--hairline) solid var(--border);
+
+    &:last-child {
+      border-bottom: 0;
+    }
+  }
+}
+
+// **
+// features
+// **
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-12) var(--space-8);
+
+  h3 {
+    font-size: var(--text-lg);
+    padding-top: var(--space-4);
+    border-top: 2px solid var(--primary);
+  }
+
+  p {
+    margin: var(--space-3) 0 0;
+    font-size: var(--text-md);
+    color: var(--muted-foreground);
+  }
+}
+
+@media (max-width: 860px) {
+  .grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-8);
+  }
+}
+
+// **
+// get started
+// **
+
+.steps-code {
+  display: grid;
+  // minmax(0, …) rather than 1fr: a grid item defaults to min-width:auto, which
+  // is the min-content width of the longest unwrappable command in its <pre> —
+  // wide enough to push the whole page sideways on a phone. Letting the track
+  // go to zero is what allows .shell-body's overflow-x to take over instead.
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-12);
+
+  article > p {
+    max-width: 68ch;
+    margin: var(--space-3) 0 var(--space-6);
+    color: var(--muted-foreground);
+    font-size: var(--text-md);
+  }
+
+  h3 {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    font-size: var(--text-xl);
+  }
+}
+
+.hint {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-md);
+  color: var(--muted-foreground);
+
+  a {
+    color: var(--primary);
+  }
+}
+
+.callout {
+  margin-top: var(--space-12);
+  padding: var(--space-6);
+  border: var(--hairline) solid var(--border);
+  border-left: 2px solid var(--primary);
+  background: var(--primary-subtle);
+
+  h3 {
+    font-size: var(--text-lg);
+  }
+
+  p {
+    margin: var(--space-3) 0 0;
+    max-width: 76ch;
+    font-size: var(--text-md);
+    color: var(--muted-foreground);
+  }
+}
+
+// **
+// footer
+// **
+
+.footer {
+  padding: var(--space-16) 0;
+  border-bottom: 0;
+}
+
+.footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  justify-content: space-between;
+}
+
+.footer-brand {
+  margin: 0;
+  font-weight: 600;
+}
+
+.footer-meta {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-md);
+  color: var(--muted-foreground);
+}
+
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  font-size: var(--text-md);
+
+  a {
+    color: var(--muted-foreground);
+    text-decoration: none;
+
+    &:hover {
+      color: var(--foreground);
+    }
+  }
+}
