@@ -27,8 +27,21 @@ import { complete, type Completion } from '../lib/query.js'
 /** Shown under an empty editor, and inserted on click. */
 const EXAMPLES = ['level>=ERROR', 'service=api latency_ms>500', '"connection reset"']
 
+/*!
+ * The SQL examples name physical columns, because that is what the expression
+ * is spliced into: promoted fields carry an `a_` prefix on disk, and the
+ * envelope keeps its own names.
+ */
+const SQL_EXAMPLES = [
+  "level = 'ERROR'",
+  'a_latency_ms > 500',
+  "a_service LIKE 'api%' AND level IN ('ERROR','FATAL')"
+]
+
 interface Props {
   value: string
+  lang: 'rql' | 'sql'
+  onChangeLang: (lang: 'rql' | 'sql') => void
   fields: Field[]
   /** Parse error from the last attempt, with the offset it happened at. */
   error?: { message: string; position?: number } | null
@@ -37,15 +50,18 @@ interface Props {
   onSubmit: () => void
 }
 
-export function CommandBar({ value, fields, error, busy, onChange, onSubmit }: Props) {
+export function CommandBar({ value, lang, onChangeLang, fields, error, busy, onChange, onSubmit }: Props) {
   const input = useRef<HTMLInputElement>(null)
   const [cursor, setCursor] = useState(0)
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
 
   const suggestions = useMemo(
-    () => (open ? complete(value, cursor, fields) : { from: 0, to: 0, items: [] as Completion[] }),
-    [open, value, cursor, fields]
+    () =>
+      open && 'rql' === lang
+        ? complete(value, cursor, fields)
+        : { from: 0, to: 0, items: [] as Completion[] },
+    [open, lang, value, cursor, fields]
   )
 
   useEffect(() => setActive(0), [suggestions.items.length, value])
@@ -149,7 +165,11 @@ export function CommandBar({ value, fields, error, busy, onChange, onSubmit }: P
           autocomplete="off"
           autocorrect="off"
           autocapitalize="off"
-          placeholder="Start writing a query using rQL (rTail query language)"
+          placeholder={
+            'sql' === lang
+              ? "Start writing a SQL expression — level = 'ERROR' AND a_latency_ms > 500"
+              : 'Start writing a query using rQL (rTail query language)'
+          }
           aria-label="Query"
           value={value}
           onInput={(event) => {
@@ -189,7 +209,25 @@ export function CommandBar({ value, fields, error, busy, onChange, onSubmit }: P
         than a page about it would.
       */}
       <div class="command-help">
-        {EXAMPLES.map((example) => (
+        {/*
+          The language switch sits with the examples, because the examples are
+          what tell you what each language looks like.
+        */}
+        <div class="command-lang" role="group" aria-label="Query language">
+          {(['rql', 'sql'] as const).map((option) => (
+            <button
+              key={option}
+              class={option === lang ? 'on' : ''}
+              aria-pressed={option === lang}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onChangeLang(option)}
+            >
+              {'rql' === option ? 'rQL' : 'SQL'}
+            </button>
+          ))}
+        </div>
+
+        {(('sql' === lang ? SQL_EXAMPLES : EXAMPLES)).map((example) => (
           <button
             key={example}
             class="command-example"

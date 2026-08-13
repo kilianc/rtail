@@ -21,6 +21,8 @@ export interface ViewState {
   live: boolean
   /** Fields promoted out of the summary into columns of their own. */
   columns: string[]
+  /** Which language the query is written in. */
+  lang: 'rql' | 'sql'
 }
 
 export const DEFAULT_STATE: ViewState = {
@@ -28,7 +30,8 @@ export const DEFAULT_STATE: ViewState = {
   query: '',
   range: DEFAULT_RANGE,
   live: true,
-  columns: []
+  columns: [],
+  lang: 'rql'
 }
 
 export function read(): ViewState {
@@ -52,7 +55,8 @@ export function read(): ViewState {
     live: 'false' !== params.get('live'),
     // Comma-separated, because a field name cannot contain one and the URL
     // stays readable — `cols=service,latency_ms` says what it is at a glance.
-    columns: (params.get('cols') ?? '').split(',').map((name) => name.trim()).filter(Boolean)
+    columns: (params.get('cols') ?? '').split(',').map((name) => name.trim()).filter(Boolean),
+    lang: 'sql' === params.get('lang') ? 'sql' : 'rql'
   }
 }
 
@@ -65,6 +69,7 @@ export function write(state: ViewState): void {
   if (state.range.to) params.set('to', state.range.to)
   if (!state.live) params.set('live', 'false')
   if (state.columns.length) params.set('cols', state.columns.join(','))
+  if ('sql' === state.lang) params.set('lang', 'sql')
 
   const next = `#/${params}`
 

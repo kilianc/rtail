@@ -22,9 +22,21 @@ import (
 	"github.com/kilianc/rtail/v2/internal/rql"
 )
 
+// Lang selects how Query is interpreted.
+type Lang string
+
+const (
+	// LangRQL is the filter bar's own language.
+	LangRQL Lang = "rql"
+	// LangSQL is a raw SQL boolean expression, spliced into the WHERE clause.
+	LangSQL Lang = "sql"
+)
+
 // Request is one search.
 type Request struct {
-	Query  string
+	Query string
+	// Lang defaults to rQL when empty.
+	Lang   Lang
 	Stream string
 	From   time.Time
 	To     time.Time
@@ -98,22 +110,73 @@ type Scanned struct {
 }
 
 /*!
- * Search runs a filter and returns a page of records.
+ * predicate turns a request's query into a WHERE fragment.
+ *
+ * One place decides, so search, the histogram and the field explorer cannot
+ * disagree about what a query means — a chart that describes a different
+ * filter than the list under it is worse than no chart.
  */
-func (e *Engine) Search(ctx context.Context, req Request) (*Result, error) {
-	started := time.Now()
+func (e *Engine) predicate(req Request, plan *Plan) (*rql.SQL, error) {
+	if LangSQL == req.Lang {
+		return sqlPredicate(req.Query)
+	}
 
 	node, err := rql.Parse(req.Query)
 	if nil != err {
 		return nil, err
 	}
 
-	plan, err := e.Plan(ctx, req.Stream, req.From, req.To, rql.Fields(node))
+	return rql.ToSQL(node, plan.Resolver)
+}
+
+/*!
+ * sqlPredicate accepts a raw boolean expression.
+ *
+ * The expression is spliced into a WHERE clause, so it is parenthesised: an
+ * `OR 1=1` then applies inside the parentheses rather than defeating the time
+ * range and the stream filter beside it. A semicolon is rejected outright,
+ * because it is the one character that could end our statement and begin
+ * another.
+ *
+ * This is deliberately not the security boundary. The connection is: DuckDB is
+ * opened read-only over an in-memory database with external access disabled,
+ * the data directory allowlisted and the configuration locked, so the worst a
+ * hostile expression can do is fail. The checks here exist to turn a mistake
+ * into a clear message rather than a confusing one.
+ */
+func sqlPredicate(expr string) (*rql.SQL, error) {
+	trimmed := strings.TrimSpace(expr)
+
+	if "" == trimmed {
+		return &rql.SQL{Expr: "TRUE"}, nil
+	}
+
+	if strings.Contains(trimmed, ";") {
+		return nil, &rql.Error{
+			Message:  "a filter is a single expression, so it cannot contain ';'",
+			Position: strings.Index(trimmed, ";"),
+		}
+	}
+
+	if err := rejectMutations(trimmed); nil != err {
+		return nil, &rql.Error{Message: err.Error()}
+	}
+
+	return &rql.SQL{Expr: "(" + trimmed + ")"}, nil
+}
+
+/*!
+ * Search runs a filter and returns a page of records.
+ */
+func (e *Engine) Search(ctx context.Context, req Request) (*Result, error) {
+	started := time.Now()
+
+	plan, err := e.Plan(ctx, req.Stream, req.From, req.To, e.referenced(req))
 	if nil != err {
 		return nil, err
 	}
 
-	predicate, err := rql.ToSQL(node, plan.Resolver)
+	predicate, err := e.predicate(req, plan)
 	if nil != err {
 		return nil, err
 	}
@@ -203,6 +266,27 @@ func (e *Engine) Search(ctx context.Context, req Request) (*Result, error) {
 }
 
 /*!
+ * referenced lists the fields a query mentions, for catalog pruning.
+ *
+ * Only rQL can be introspected this way. A raw SQL expression names physical
+ * columns rather than source keys, and parsing it to find them would mean
+ * carrying a second SQL parser purely to make a hint — so a SQL filter simply
+ * prunes on time and stream, which is the bulk of the win anyway.
+ */
+func (e *Engine) referenced(req Request) []string {
+	if LangSQL == req.Lang {
+		return nil
+	}
+
+	node, err := rql.Parse(req.Query)
+	if nil != err {
+		return nil
+	}
+
+	return rql.Fields(node)
+}
+
+/*!
  * Bucket is one bar of the histogram.
  */
 type Bucket struct {
@@ -224,17 +308,12 @@ func (e *Engine) Histogram(ctx context.Context, req Request, buckets int) ([]Buc
 		buckets = 60
 	}
 
-	node, err := rql.Parse(req.Query)
+	plan, err := e.Plan(ctx, req.Stream, req.From, req.To, e.referenced(req))
 	if nil != err {
 		return nil, 0, err
 	}
 
-	plan, err := e.Plan(ctx, req.Stream, req.From, req.To, rql.Fields(node))
-	if nil != err {
-		return nil, 0, err
-	}
-
-	predicate, err := rql.ToSQL(node, plan.Resolver)
+	predicate, err := e.predicate(req, plan)
 	if nil != err {
 		return nil, 0, err
 	}
@@ -333,12 +412,7 @@ func (e *Engine) FieldValues(ctx context.Context, req Request, field string, lim
 		limit = 10
 	}
 
-	node, err := rql.Parse(req.Query)
-	if nil != err {
-		return nil, err
-	}
-
-	plan, err := e.Plan(ctx, req.Stream, req.From, req.To, append(rql.Fields(node), field))
+	plan, err := e.Plan(ctx, req.Stream, req.From, req.To, append(e.referenced(req), field))
 	if nil != err {
 		return nil, err
 	}
@@ -348,7 +422,7 @@ func (e *Engine) FieldValues(ctx context.Context, req Request, field string, lim
 		return nil, nil
 	}
 
-	predicate, err := rql.ToSQL(node, plan.Resolver)
+	predicate, err := e.predicate(req, plan)
 	if nil != err {
 		return nil, err
 	}

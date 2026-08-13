@@ -36,6 +36,13 @@ func (s *Server) searchRequest(r *http.Request) (query.Request, error) {
 		Ascending: "asc" == values.Get("order"),
 	}
 
+	// Anything other than an explicit sql is rQL, so a missing or misspelled
+	// lang falls back to the safe, parseable language rather than handing the
+	// text to DuckDB.
+	if "sql" == values.Get("lang") {
+		req.Lang = query.LangSQL
+	}
+
 	from, err := parseTime(values.Get("from"))
 	if nil != err {
 		return req, err

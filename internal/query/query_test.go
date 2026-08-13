@@ -427,3 +427,169 @@ func TestQueriesSpanHeterogeneousFiles(t *testing.T) {
 		t.Errorf("records = %d, want 2", len(both.Records))
 	}
 }
+
+/*!
+ * The SQL filter: a raw boolean expression spliced into the WHERE clause.
+ */
+func TestSQLFilterMatchesTheSameRowsAsRQL(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+	h.ingest(t, "s", []string{
+		`{"level":"error","msg":"a","service":"api","latency_ms":900}`,
+		`{"level":"error","msg":"b","service":"worker","latency_ms":100}`,
+		`{"level":"info","msg":"c","service":"api","latency_ms":5}`,
+	})
+
+	// The same question in both languages has to give the same answer, or one
+	// of the two is lying about what the data contains.
+	pairs := []struct{ rql, sql string }{
+		{`level=ERROR`, `level = 'ERROR'`},
+		{`service=api`, `a_service = 'api'`},
+		{`latency_ms>500`, `a_latency_ms > 500`},
+		{`level=ERROR service=api`, `level = 'ERROR' AND a_service = 'api'`},
+	}
+
+	for _, pair := range pairs {
+		viaRQL, err := h.engine.Search(ctx, request(pair.rql))
+		if nil != err {
+			t.Fatalf("rql %q: %v", pair.rql, err)
+		}
+
+		req := request(pair.sql)
+		req.Lang = query.LangSQL
+
+		viaSQL, err := h.engine.Search(ctx, req)
+		if nil != err {
+			t.Fatalf("sql %q: %v", pair.sql, err)
+		}
+
+		if len(viaRQL.Records) != len(viaSQL.Records) {
+			t.Errorf("%q matched %d but %q matched %d",
+				pair.rql, len(viaRQL.Records), pair.sql, len(viaSQL.Records))
+		}
+	}
+}
+
+// An empty SQL filter means everything, exactly as an empty rQL one does.
+func TestEmptySQLFilterMatchesEverything(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+	h.ingest(t, "s", []string{`{"msg":"a"}`, `{"msg":"b"}`})
+
+	req := request("")
+	req.Lang = query.LangSQL
+
+	result, err := h.engine.Search(ctx, req)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 2 != len(result.Records) {
+		t.Errorf("records = %d, want 2", len(result.Records))
+	}
+}
+
+/*!
+ * The expression is parenthesised, so it cannot defeat the clauses beside it.
+ *
+ * An `OR 1=1` spliced in bare would apply to the whole WHERE and return every
+ * record in the store, ignoring both the time range and the stream. This is
+ * the check that the parentheses are actually there.
+ */
+func TestSQLFilterCannotEscapeItsClause(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+	h.ingest(t, "wanted", []string{`{"msg":"a"}`, `{"msg":"b"}`})
+	h.ingest(t, "other", []string{`{"msg":"c"}`, `{"msg":"d"}`})
+
+	req := request(`msg = 'a' OR 1=1`)
+	req.Lang = query.LangSQL
+	req.Stream = "wanted"
+
+	result, err := h.engine.Search(ctx, req)
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	for _, rec := range result.Records {
+		if "wanted" != rec.Stream {
+			t.Fatalf("a record from %q leaked past the stream filter", rec.Stream)
+		}
+	}
+
+	if 2 != len(result.Records) {
+		t.Errorf("records = %d, want the 2 on the selected stream", len(result.Records))
+	}
+}
+
+func TestSQLFilterRejectsStatementBreaks(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+	h.ingest(t, "s", []string{`{"msg":"a"}`})
+
+	for _, attempt := range []string{
+		`msg = 'a'; DROP TABLE logs`,
+		`msg = 'a'; SELECT 1`,
+	} {
+		req := request(attempt)
+		req.Lang = query.LangSQL
+
+		if _, err := h.engine.Search(ctx, req); nil == err {
+			t.Errorf("accepted a filter with a statement break: %s", attempt)
+		}
+	}
+}
+
+// A malformed expression is the query's fault, and says so with a position.
+func TestSQLFilterReportsItsOwnErrors(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+	h.ingest(t, "s", []string{`{"msg":"a"}`})
+
+	req := request(`level = = 'ERROR'`)
+	req.Lang = query.LangSQL
+
+	if _, err := h.engine.Search(ctx, req); nil == err {
+		t.Error("a malformed SQL expression was accepted")
+	}
+}
+
+// The histogram and the field explorer read the same filter as the results.
+func TestSQLFilterAppliesToHistogramAndFields(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+	h.ingest(t, "s", []string{
+		`{"level":"error","service":"api"}`,
+		`{"level":"error","service":"api"}`,
+		`{"level":"info","service":"worker"}`,
+	})
+
+	req := request(`level = 'ERROR'`)
+	req.Lang = query.LangSQL
+
+	buckets, _, err := h.engine.Histogram(ctx, req, 60)
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	var total int64
+	for _, bucket := range buckets {
+		total += bucket.Total
+	}
+	if 2 != total {
+		t.Errorf("histogram total = %d, want 2", total)
+	}
+
+	values, err := h.engine.FieldValues(ctx, req, "service", 10)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 1 != len(values) || "api" != values[0].Value || 2 != values[0].Count {
+		t.Errorf("field values = %+v, want api x2", values)
+	}
+}

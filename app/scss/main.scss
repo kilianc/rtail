@@ -480,6 +480,28 @@
     padding-inline-start: var(--space-6);
   }
 
+  // A two-state switch, sized like the example links beside it.
+  .command-lang {
+    border: var(--hairline) solid var(--border);
+    border-radius: var(--radius-sm);
+    display: flex;
+    overflow: hidden;
+
+    button {
+      color: var(--faint-foreground);
+      font-size: var(--text-xs);
+      padding: 1px var(--space-2);
+      transition: background-color .12s ease, color .12s ease;
+
+      &:hover { color: var(--foreground); }
+
+      &.on {
+        background: var(--primary-subtle);
+        color: var(--primary);
+      }
+    }
+  }
+
   .command-example {
     color: var(--primary);
     font-family: var(--mono);

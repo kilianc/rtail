@@ -70,16 +70,25 @@ export function App() {
   const params: Params = useMemo(
     () => ({
       q: view.query,
+      lang: view.lang,
       stream: view.stream,
       from: view.range.from,
       to: view.range.to,
       limit: PAGE
     }),
-    [view.query, view.stream, view.range.from, view.range.to]
+    [view.query, view.lang, view.stream, view.range.from, view.range.to]
   )
 
-  const active = useMemo(() => fieldsUsed(view.query), [view.query])
-  const needles = useMemo(() => highlightTerms(view.query), [view.query])
+  // Both read rQL. Against a SQL expression they would be guessing, so they
+  // stand down rather than highlight the wrong thing.
+  const active = useMemo(
+    () => ('sql' === view.lang ? [] : fieldsUsed(view.query)),
+    [view.query, view.lang]
+  )
+  const needles = useMemo(
+    () => ('sql' === view.lang ? [] : highlightTerms(view.query)),
+    [view.query, view.lang]
+  )
 
   /*!
    * Promoting a field to a column.
@@ -254,7 +263,7 @@ export function App() {
       .catch(() => setBuckets([]))
 
     return () => controller.abort()
-  }, [params.q, params.stream, params.from, params.to])
+  }, [params.q, params.lang, params.stream, params.from, params.to])
 
   // In history mode the query runs whenever the committed state changes.
   useEffect(() => {
@@ -262,7 +271,23 @@ export function App() {
     setCursor(undefined)
     runSearch(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view.live, params.q, params.stream, params.from, params.to])
+  }, [view.live, params.q, params.lang, params.stream, params.from, params.to])
+
+  /*!
+   * Switching language.
+   *
+   * SQL forces history: the live path compiles the query to a Go predicate and
+   * evaluates it per record, and there is no in-process SQL engine to do that
+   * with. Streaming a SQL filter would mean either ignoring it or shipping
+   * every record to DuckDB one at a time, and both are worse than saying so.
+   */
+  const setLang = useCallback((lang: 'rql' | 'sql') => {
+    setView((current) => ({
+      ...current,
+      lang,
+      live: 'sql' === lang ? false : current.live
+    }))
+  }, [])
 
   /*!
    * commit promotes the draft to the committed query.
@@ -375,6 +400,8 @@ export function App() {
       <div class="query-row">
         <CommandBar
           value={draft}
+          lang={view.lang}
+          onChangeLang={setLang}
           fields={fields}
           error={error}
           busy={loading}

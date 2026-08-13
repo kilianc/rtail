@@ -59,6 +59,8 @@ export interface SqlResponse {
 /** Parameters shared by every search endpoint. */
 export interface Params {
   q?: string
+  /** How to read `q`. Defaults to rQL. */
+  lang?: 'rql' | 'sql'
   stream?: string | null
   from?: string
   to?: string
@@ -89,6 +91,7 @@ function search(params: Params): URLSearchParams {
   const query = new URLSearchParams()
 
   if (params.q) query.set('q', params.q)
+  if ('sql' === params.lang) query.set('lang', 'sql')
   if (params.stream) query.set('stream', params.stream)
   if (params.from) query.set('from', params.from)
   if (params.to) query.set('to', params.to)
