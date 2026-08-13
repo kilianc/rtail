@@ -55,6 +55,18 @@ type WriteOptions struct {
 	// roughly halves the footprint at the cost of making unpromoted keys
 	// unqueryable — a retention-policy decision, not a default.
 	KeepRaw bool
+
+	/*!
+	 * SortBy names the columns rows are ordered by, outermost first. Empty
+	 * means seq, which is the order a flush already has.
+	 *
+	 * This is the single biggest lever on query latency, which is why it is a
+	 * per-file decision rather than a constant. Sorting a compacted file by ts
+	 * makes time-range pruning exact at row-group granularity instead of
+	 * merely likely; adding a low-cardinality leading column (level, service)
+	 * turns the most common filter into a row-group skip rather than a scan.
+	 */
+	SortBy []string
 }
 
 /*!
@@ -84,14 +96,22 @@ func Write(
 
 	counter := &countingWriter{inner: object}
 
+	sortBy := opts.SortBy
+	if 0 == len(sortBy) {
+		// Records arrive in seq order, so this costs nothing and makes the
+		// file's ordering explicit to any reader.
+		sortBy = []string{ColSeq}
+	}
+
+	sorting := make([]parquet.SortingColumn, 0, len(sortBy))
+	for _, column := range sortBy {
+		sorting = append(sorting, parquet.Ascending(column))
+	}
+
 	writer := parquet.NewGenericWriter[any](counter,
 		schema.Parquet(),
 		parquet.Compression(&parquet.Zstd),
-		// Sorting by seq costs nothing here — records arrive in seq order —
-		// and it makes the file's ordering explicit to any reader.
-		parquet.SortingWriterConfig(
-			parquet.SortingColumns(parquet.Ascending(ColSeq)),
-		),
+		parquet.SortingWriterConfig(parquet.SortingColumns(sorting...)),
 	)
 
 	stats := &Stats{

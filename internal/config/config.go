@@ -16,6 +16,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Config is the server's runtime configuration.
@@ -34,6 +35,16 @@ type Config struct {
 	// in the binary. This is what the asset watcher needs during development,
 	// and it replaces v1's --web-version development mode.
 	WebRoot string
+
+	// Compaction and retention. All durations accept a `d` or `w` suffix as
+	// well as Go's own units — log retention is naturally expressed in days,
+	// and `--retention 720h` is nobody's idea of clear.
+	CompactInterval time.Duration
+	ClusterBy       string
+	Retention       time.Duration
+	RetentionRaw    time.Duration
+	DownsampleAfter time.Duration
+	DownsampleLevel string
 
 	Verbose bool
 }
@@ -57,6 +68,19 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 		}
 	}
 
+	dur := func(field *time.Duration, fallback time.Duration, long, usage string) {
+		value := envDuration(long, fallback)
+		set.Func(long, usage+" (default "+value.String()+")", func(raw string) error {
+			parsed, err := ParseDuration(raw)
+			if nil != err {
+				return err
+			}
+			*field = parsed
+			return nil
+		})
+		*field = value
+	}
+
 	num := func(field *int, fallback int, long, short, usage string) {
 		value := envInt(long, fallback)
 		set.IntVar(field, long, value, usage)
@@ -72,6 +96,13 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 	num(&cfg.Backlog, 100, "backlog", "b", "lines of history kept per stream")
 	str(&cfg.DataDir, "", "data", "", "directory for durable storage (unset: memory only)")
 	str(&cfg.WebRoot, "", "web-root", "", "serve the webapp from this directory instead of the binary")
+
+	dur(&cfg.CompactInterval, 5*time.Minute, "compact-interval", "how often to compact; 0 disables it")
+	str(&cfg.ClusterBy, "level", "cluster-by", "", "leading sort column for daily files (empty: time only)")
+	dur(&cfg.Retention, 0, "retention", "delete data older than this (unset: keep forever)")
+	dur(&cfg.RetentionRaw, 0, "retention-raw", "drop the original line after this, keeping the columns")
+	dur(&cfg.DownsampleAfter, 0, "downsample-after", "discard low-severity records older than this")
+	str(&cfg.DownsampleLevel, "WARN", "downsample-level", "", "lowest severity kept by --downsample-after")
 
 	set.BoolVar(&cfg.Verbose, "verbose", envBool("verbose", false), "log at debug level")
 	set.BoolVar(&showVersion, "version", false, "print the version and exit")
@@ -128,6 +159,56 @@ func envBool(name string, fallback bool) bool {
 	if value, ok := os.LookupEnv(envKey(name)); ok {
 		if b, err := strconv.ParseBool(value); nil == err {
 			return b
+		}
+	}
+	return fallback
+}
+
+/*!
+ * ParseDuration is time.ParseDuration plus `d` and `w`.
+ *
+ * Retention is naturally expressed in days and weeks, and making an operator
+ * write `--retention 720h` for a month is the kind of small hostility that
+ * makes a tool feel unfinished. Go's own parser has no unit longer than an
+ * hour because days are ambiguous under daylight saving; that ambiguity does
+ * not matter for "delete things older than about a month", which is the only
+ * thing this is used for.
+ */
+func ParseDuration(value string) (time.Duration, error) {
+	trimmed := strings.TrimSpace(value)
+	if "" == trimmed {
+		return 0, nil
+	}
+
+	multiplier := time.Duration(0)
+
+	switch {
+	case strings.HasSuffix(trimmed, "d"):
+		multiplier = 24 * time.Hour
+	case strings.HasSuffix(trimmed, "w"):
+		multiplier = 7 * 24 * time.Hour
+	}
+
+	if 0 != multiplier {
+		count, err := strconv.ParseFloat(strings.TrimRight(trimmed, "dw"), 64)
+		if nil != err {
+			return 0, fmt.Errorf("bad duration %q", value)
+		}
+		return time.Duration(count * float64(multiplier)), nil
+	}
+
+	parsed, err := time.ParseDuration(trimmed)
+	if nil != err {
+		return 0, fmt.Errorf("bad duration %q (try 30d, 12h, 90m)", value)
+	}
+
+	return parsed, nil
+}
+
+func envDuration(name string, fallback time.Duration) time.Duration {
+	if value, ok := os.LookupEnv(envKey(name)); ok {
+		if parsed, err := ParseDuration(value); nil == err {
+			return parsed
 		}
 	}
 	return fallback

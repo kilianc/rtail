@@ -25,6 +25,7 @@ import (
 
 	"github.com/kilianc/rtail/v2/internal/api"
 	"github.com/kilianc/rtail/v2/internal/catalog"
+	"github.com/kilianc/rtail/v2/internal/compact"
 	"github.com/kilianc/rtail/v2/internal/config"
 	"github.com/kilianc/rtail/v2/internal/ingest"
 	"github.com/kilianc/rtail/v2/internal/logstore"
@@ -98,7 +99,33 @@ func run() error {
 		}
 		defer engine.Close()
 
-		log.Info("storing logs as parquet", "data", cfg.DataDir)
+		/*!
+		 * Compaction runs in the background for the life of the process.
+		 *
+		 * Without it, files accumulate at one per flush per stream — thousands
+		 * a day — and every query pays for all of them. It is an optimisation
+		 * rather than a correctness requirement, so a failed pass is logged and
+		 * the loop continues; --compact-interval 0 turns it off entirely.
+		 */
+		compactor := compact.New(cat, durable.Backend(), compact.Options{
+			ClusterBy: cfg.ClusterBy,
+			KeepRaw:   true,
+			Retention: compact.Retention{
+				DeleteAfter:     cfg.Retention,
+				DropRawAfter:    cfg.RetentionRaw,
+				MinLevelAfter:   cfg.DownsampleLevel,
+				DownsampleAfter: cfg.DownsampleAfter,
+			},
+			Log: log,
+		})
+
+		go compactor.Run(ctx, cfg.CompactInterval)
+
+		log.Info("storing logs as parquet",
+			"data", cfg.DataDir,
+			"compact_every", cfg.CompactInterval,
+			"retention", cfg.Retention,
+			"retention_raw", cfg.RetentionRaw)
 	}
 
 	defer store.Close()

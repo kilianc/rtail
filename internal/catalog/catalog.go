@@ -161,10 +161,46 @@ func (c *Catalog) Register(ctx context.Context, file File, columns []Column) (in
 	}
 	defer tx.Rollback()
 
+	id, existed, err := insertFileTx(ctx, tx, file, columns, rollupAdd|countOccurrences)
+	if nil != err {
+		return 0, false, err
+	}
+
+	if err := tx.Commit(); nil != err {
+		return 0, false, fmt.Errorf("committing file registration: %w", err)
+	}
+
+	return id, existed, nil
+}
+
+/*!
+ * insertMode tunes what a file insert does to the cumulative statistics.
+ *
+ * Compaction rewrites rows that are already counted, so it publishes files
+ * without re-counting their keys: the occurrences in schema_keys drive
+ * autocomplete ranking, and adding them again on every compaction would inflate
+ * a key's apparent frequency without bound. The stream rollup is adjusted by a
+ * delta instead — added here, subtracted when the inputs are tombstoned.
+ */
+type insertMode uint8
+
+const (
+	rollupAdd insertMode = 1 << iota
+	countOccurrences
+)
+
+// insertFileTx inserts a file and its columns inside an existing transaction.
+func insertFileTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	file File,
+	columns []Column,
+	mode insertMode,
+) (int64, bool, error) {
 	var existing int64
 	switch err := tx.QueryRowContext(ctx, `SELECT id FROM files WHERE path = ?`, file.Path).Scan(&existing); {
 	case nil == err:
-		return existing, true, tx.Commit()
+		return existing, true, nil
 	case !errors.Is(err, sql.ErrNoRows):
 		return 0, false, err
 	}
@@ -216,45 +252,152 @@ func (c *Catalog) Register(ctx context.Context, file File, columns []Column) (in
 		// in one file and a string in another is marked polymorphic forever,
 		// which is what the UI needs to know to stop offering numeric
 		// comparisons on it.
+		//
+		// occurrences is zero unless this insert represents genuinely new rows;
+		// a compaction rewrites rows that were already counted.
+		var occurrences int64
+		if 0 != mode&countOccurrences {
+			occurrences = file.RowCount - column.NullCount
+		}
+
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO schema_keys
 				(stream, source_key, kind, polymorphic, occurrences, first_seen, last_seen)
 			VALUES (?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(stream, source_key) DO UPDATE SET
 				occurrences = occurrences + excluded.occurrences,
-				last_seen   = excluded.last_seen,
+				last_seen   = max(last_seen, excluded.last_seen),
 				polymorphic = polymorphic | excluded.polymorphic
 					| (kind <> excluded.kind),
 				kind        = CASE WHEN kind = excluded.kind THEN kind ELSE 'string' END`,
 			file.Stream, column.SourceKey, column.Kind, boolToInt(column.Polymorphic),
-			file.RowCount-column.NullCount, file.MinTs.UnixMicro(), file.MaxTs.UnixMicro(),
+			occurrences, file.MinTs.UnixMicro(), file.MaxTs.UnixMicro(),
 		); nil != err {
 			return 0, false, fmt.Errorf("recording schema key %s: %w", column.SourceKey, err)
 		}
 	}
 
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO streams (name, first_seen, last_seen, row_count, byte_size)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(name) DO UPDATE SET
-			first_seen = min(first_seen, excluded.first_seen),
-			last_seen  = max(last_seen,  excluded.last_seen),
-			row_count  = row_count + excluded.row_count,
-			byte_size  = byte_size + excluded.byte_size`,
-		file.Stream, file.MinTs.UnixMicro(), file.MaxTs.UnixMicro(), file.RowCount, file.ByteSize,
-	); nil != err {
-		return 0, false, fmt.Errorf("updating stream rollup: %w", err)
+	if 0 != mode&rollupAdd {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO streams (name, first_seen, last_seen, row_count, byte_size)
+			VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT(name) DO UPDATE SET
+				first_seen = min(first_seen, excluded.first_seen),
+				last_seen  = max(last_seen,  excluded.last_seen),
+				row_count  = row_count + excluded.row_count,
+				byte_size  = byte_size + excluded.byte_size`,
+			file.Stream, file.MinTs.UnixMicro(), file.MaxTs.UnixMicro(), file.RowCount, file.ByteSize,
+		); nil != err {
+			return 0, false, fmt.Errorf("updating stream rollup: %w", err)
+		}
 	}
 
 	if err := setMetaTx(ctx, tx, metaMaxSeq, file.MaxSeq); nil != err {
 		return 0, false, err
 	}
 
-	if err := tx.Commit(); nil != err {
-		return 0, false, fmt.Errorf("committing file registration: %w", err)
+	return id, false, nil
+}
+
+/*!
+ * Replacement is one output file of a compaction, with its columns.
+ */
+type Replacement struct {
+	File    File
+	Columns []Column
+}
+
+/*!
+ * Replace publishes compacted files and retires their inputs, atomically.
+ *
+ * This is the operation the whole compactor is built around. Either the new
+ * files are live and the old ones tombstoned, or nothing changed — there is no
+ * window in which a row exists twice or not at all, because a reader only ever
+ * sees `state = 'live'` and that flips for every file in one commit.
+ *
+ * The inputs are only *tombstoned*, never deleted. A query that snapshotted the
+ * file list a moment ago still has its files on disk until the GC grace period
+ * elapses; see Collectable.
+ *
+ * Idempotent, which is what makes crash recovery work: output paths are derived
+ * from their content, so a compaction that died after writing the objects but
+ * before committing rewrites the same files and lands here again. An output
+ * whose path already exists is skipped, and an input that is already tombstoned
+ * is not retired twice — both of which matter because the stream rollups are
+ * counters, and applying either twice would corrupt them permanently.
+ */
+func (c *Catalog) Replace(ctx context.Context, outputs []Replacement, inputs []int64) ([]int64, error) {
+	tx, err := c.db.BeginTx(ctx, nil)
+	if nil != err {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	ids := make([]int64, 0, len(outputs))
+
+	for _, output := range outputs {
+		id, existed, err := insertFileTx(ctx, tx, output.File, output.Columns, rollupAdd)
+		if nil != err {
+			return nil, err
+		}
+
+		// Already published by an earlier attempt at this same compaction.
+		if existed {
+			ids = append(ids, id)
+			continue
+		}
+
+		ids = append(ids, id)
 	}
 
-	return id, false, nil
+	now := time.Now().UTC().UnixMicro()
+
+	for _, id := range inputs {
+		result, err := tx.ExecContext(ctx, `
+			UPDATE files SET state = ?, tombstoned_at = ?
+			WHERE id = ? AND state = ?`,
+			StateTombstoned, now, id, StateLive)
+		if nil != err {
+			return nil, fmt.Errorf("tombstoning %d: %w", id, err)
+		}
+
+		affected, err := result.RowsAffected()
+		if nil != err {
+			return nil, err
+		}
+
+		// Already retired: its contribution was subtracted the first time.
+		if 0 == affected {
+			continue
+		}
+
+		if err := adjustRollupTx(ctx, tx, id, -1); nil != err {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); nil != err {
+		return nil, fmt.Errorf("committing replacement: %w", err)
+	}
+
+	return ids, nil
+}
+
+/*!
+ * adjustRollupTx applies a file's row and byte counts to its stream, scaled by
+ * sign. Compaction leaves rows unchanged and bytes smaller, so the rollup has
+ * to move by the delta rather than be recomputed — recomputing would mean a
+ * full scan of `files` on every compaction.
+ */
+func adjustRollupTx(ctx context.Context, tx *sql.Tx, fileID int64, sign int64) error {
+	_, err := tx.ExecContext(ctx, `
+		UPDATE streams SET
+			row_count = max(0, row_count + ? * (SELECT row_count FROM files WHERE id = ?)),
+			byte_size = max(0, byte_size + ? * (SELECT byte_size FROM files WHERE id = ?))
+		WHERE name = (SELECT stream FROM files WHERE id = ?)`,
+		sign, fileID, sign, fileID, fileID)
+
+	return err
 }
 
 /*!

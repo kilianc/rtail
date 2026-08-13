@@ -19,11 +19,12 @@
 > already have installed works against a v2 server unchanged. Everything else
 > on this branch is subject to change until 2.0.0 ships.
 >
-> **Where it is:** P0 (Go port), P1 (durable Parquet storage) and P2 (SQL
-> search) are done. `--data` keeps your logs across restarts as plain Parquet,
-> and you can search them with a filter bar or with raw SQL. The new interface
-> that makes all of it pleasant to use is P4, and is not here yet — today the
-> search API is an API.
+> **Where it is:** P0 (Go port), P1 (durable Parquet storage), P2 (SQL search)
+> and P3 (compaction and retention) are done. `--data` keeps your logs across
+> restarts as plain Parquet, compacts them in the background, expires them on
+> a schedule, and lets you search them with a filter bar or raw SQL. The new
+> interface that makes all of it pleasant to use is P4, and is not here yet —
+> today the search API is an API.
 
 `rtail` is a command line utility that grabs every line in `stdin` and broadcasts it over **UDP**. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using `rtail` broadcasting to an `rtail-server` – See multiple streams in the browser, in realtime.
 
@@ -125,8 +126,47 @@ replays whatever the previous process did not finish, and is idempotent —
 crashing midway through a flush and restarting produces the same files, not
 duplicates.
 
-Compaction is not implemented yet, so files currently accumulate at one per
-flush per stream. Retention and the L0→L1→L2 merge are P3.
+**Compaction.** A flush every thirty seconds per stream is thousands of tiny
+files a day, each with a footer to open. A background pass merges them:
+
+| level | holds | sorted by |
+|---|---|---|
+| L0 | one flush | `seq` — the order it arrived in |
+| L1 | an hour | `ts` |
+| L2 | a day | `(level, ts)`, or `--cluster-by` |
+
+Sort order is the point, not the file count. Sorting by time makes range
+pruning exact at row-group granularity rather than merely likely, and a
+low-cardinality leading column turns `level>=ERROR` over a day into a
+row-group skip instead of a scan. Compaction is also where a messy population
+of schemas becomes one clean union — types that disagreed get widened,
+always-null columns disappear.
+
+In practice six flushes of a small stream merge from 24KB to 5KB.
+
+A merge either publishes its output and retires its inputs, or changes
+nothing. Retired files stay on disk for a grace period, so a query that
+started before the merge still has its files. `--compact-interval 0` turns the
+whole thing off.
+
+**Retention** is per-server, and all of it happens during compaction:
+
+    $ rtail-server --data ./logs \
+        --retention 30d \
+        --retention-raw 7d \
+        --downsample-after 14d --downsample-level WARN
+
+`--retention` deletes whole files once their newest record is past the
+horizon; a file straddling the boundary survives until all of it has expired,
+because rewriting a file to drop a few rows costs far more than keeping them.
+`--retention-raw` drops the original line while keeping every promoted column,
+which roughly halves the footprint — the cost is that keys which were never
+promoted stop being queryable, since `raw` was their fallback.
+`--downsample-after` discards anything below `--downsample-level` once it is
+old enough.
+
+Durations take `d` and `w` as well as Go's own units, because `--retention
+720h` is nobody's idea of clear.
 
 ## Search
 
