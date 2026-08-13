@@ -1,37 +1,33 @@
 // **
 // design system
 //
-// Four rules, enforced everywhere:
+// The reference is Google Cloud's Logs Explorer, and this follows it closely:
+// a light, dense, Material-flavoured console. Four rules:
 //
-//   1. Surfaces are layered, not flat. The page, the panels that sit on it and
-//      the things that float above those are three different colours, and
-//      depth comes from that plus a hairline plus a shadow — never from one of
-//      the three alone.
-//   2. Everything is rounded. --radius is the unit; nothing invents its own.
-//   3. Every length is a token, from the 4px scale or the fixed sizes below.
-//   4. Greyscale, almost entirely. The interface is black and a ladder of
-//      greys; white is the interactive accent. The only chromatic colour is
-//      severity and the live indicator, so when something *is* coloured it
-//      means something. A log line already carries plenty of colour of its
-//      own (ANSI codes, JSON syntax) and the chrome should not compete.
+//   1. Light by default. Cloud Logging is a white interface and reads as one;
+//      dark is a supported override, not the primary design.
+//   2. One blue does all the interactive work — selection, links, focus, the
+//      histogram. Severity gets red and amber. Nothing else is coloured.
+//   3. Density over air. Rows are 28px and separated by hairlines, because the
+//      job is reading thousands of lines rather than admiring twelve.
+//   4. Every length is a token, from the 4px scale or the fixed sizes below.
 //
-// The palette follows shadcn's naming (background/foreground, card, muted,
-// popover, primary, border, input, ring) so it swaps from one block, and the
-// scale is close to its dark theme — which is in turn close to Vercel's.
+// Names follow shadcn's convention (background/foreground, card, muted,
+// popover, primary, border, input, ring) so the palette swaps from one block.
 //
-// Dark is the default and lives on :root, so the app paints correctly on the
-// first frame, before the bundle runs and stamps the persisted theme onto
-// <body>. `.light` is a pure override layer.
+// Light lives on :root so the app paints correctly on the first frame, before
+// the bundle runs and stamps the persisted theme onto <body>. `.dark` is a
+// pure override layer.
 // **
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  // ** radius **
-  --radius: 10px;       // cards, panels, popovers
-  --radius-md: 8px;     // inputs, buttons, menu items
-  --radius-sm: 6px;     // rows, chips, small hit targets
-  --radius-xs: 4px;     // bar caps, tiny marks
+  // ** radius — Material's, which is tighter than a marketing site's **
+  --radius: 8px;        // cards, panels, popovers
+  --radius-md: 4px;     // inputs, buttons
+  --radius-sm: 4px;     // rows, chips
+  --radius-xs: 2px;     // bar caps, tiny marks
 
   // ** spacing — 4px scale **
   --space-1: 4px;
@@ -43,175 +39,166 @@
   --space-8: 32px;
 
   // ** sizes **
-  --bar-h: 52px;        // the top bar
-  --row-h: 30px;        // list rows in panels
+  --bar-h: 48px;        // the top bar
+  --row-h: 28px;        // list rows in panels
   --control-h: 32px;    // buttons, small inputs
-  --command-h: 40px;    // the command bar — the hero control
-  --hit: 30px;          // icon button hit area
-  --icon: 16px;
-  --icon-sm: 13px;
-  --dot: 6px;
-  --line-h: 24px;       // one log row
-  --chart-h: 88px;
-  --gutter-w: 96px;     // timestamp column
-  --sidebar-w: 248px;
-  --marker-w: 2px;
+  --command-h: 36px;    // the query box
+  --hit: 32px;          // icon button hit area
+  --icon: 18px;
+  --icon-sm: 14px;
+  --dot: 8px;
+  --line-h: 28px;       // one log row — dense, like the real thing
+  --chart-h: 72px;
+  --gutter-w: 132px;    // timestamp column
+  --sidebar-w: 264px;
+  --marker-w: 3px;
   --hairline: 1px;
 
-  // ** type **
-  --sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  // ** type — Google Sans/Roboto if present, otherwise the system sans **
+  --sans: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --text-xs: 11px;
   --text-sm: 12px;
   --text-md: 13px;
   --text-lg: 15px;
-  --mono-size: 12.5px;
+  --mono-size: 12px;
 
-  // Tightened tracking on UI text, the way Inter and SF are meant to be set.
-  --tracking-tight: -0.011em;
-  --tracking-wide: 0.04em;
+  --tracking-tight: 0;
+  --tracking-wide: 0.08em;
 
-  // ** surfaces — true black, then a short ladder of greys **
-  --background: #000000;   // the page behind everything
-  --card: #0c0c0c;         // panels sitting on it
-  --elevated: #171717;     // popovers and menus above those
-  --foreground: #f2f2f2;
-
-  --popover: var(--elevated);
-  --popover-foreground: var(--foreground);
-
-  --muted: #111111;
-  --muted-foreground: #a1a1a1;
-  --faint-foreground: #6b6b6b;
-
-  --subtle: #0f0f0f;
-  --subtle-strong: #1a1a1a;
-
-  // ** hairlines — flat greys rather than alpha **
-  //
-  // On true black an alpha hairline is a grey anyway, and a solid value is
-  // predictable when panels overlap: two stacked translucent borders read
-  // darker than one, which is exactly where a card edge should not change.
-  --border: #262626;
-  --border-strong: #383838;
-  --input: #2e2e2e;
-
-  // ** elevation **
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
-  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.35), 0 16px 48px rgba(0, 0, 0, 0.55);
-
-  // ** severity — one of only two chromatic colours in the interface **
-  //
-  // Kept out of the ANSI palette on purpose: those are *content* colours a log
-  // line chose for itself, and severity is ours. Sharing them would mean a line
-  // that printed red text was indistinguishable from one that was an error.
-  // Desaturated against a black ground, where a vivid red vibrates.
-  --level-error: #e5484d;
-  --level-error-wash: rgba(229, 72, 77, 0.045);
-  --level-warn: #d99b3a;
-  --level-info: #7d7d7d;
-  --level-debug: #4d4d4d;
-
-  // ** the accent is white **
-  //
-  // Emphasis on a black interface is best spent on brightness rather than hue:
-  // white reads as "this one" without claiming a meaning, which leaves red and
-  // amber free to mean something. A coloured accent also has to be checked
-  // against severity every time it moves — the previous one landed on almost
-  // exactly the error hue, so "focused" and "on fire" looked identical.
-  --primary: #f2f2f2;
-  --primary-hover: #ffffff;
-  --primary-foreground: #0a0a0a;
-  --primary-subtle: rgba(255, 255, 255, 0.08);
-  --primary-glow: rgba(255, 255, 255, 0.14);
-  --ring: rgba(255, 255, 255, 0.35);
-
-  // ** live — the one place a hue is worth spending **
-  //
-  // rtail has carried this green since 2014, and "is it streaming" is the one
-  // state worth being able to answer from across the room.
-  --live: #10a37f;
-  --live-glow: rgba(16, 163, 127, 0.45);
-
-  // ** ansi palette — the only colour on screen that is not ours **
-  --ansi-black: #52525b;
-  --ansi-black-bright: #7c7c88;
-  --ansi-red: #ff6b6b;
-  --ansi-red-bright: #ff9a9a;
-  --ansi-green: #4ade80;
-  --ansi-green-bright: #86efac;
-  --ansi-yellow: #fbbf24;
-  --ansi-yellow-bright: #fcd34d;
-  --ansi-blue: #60a5fa;
-  --ansi-blue-bright: #93c5fd;
-  --ansi-magenta: #c084fc;
-  --ansi-magenta-bright: #d8b4fe;
-  --ansi-cyan: #22d3ee;
-  --ansi-cyan-bright: #67e8f9;
-  --ansi-white: #d4d4d8;
-  --ansi-white-bright: #fafafa;
-}
-
-.light {
-  color-scheme: light;
-
-  --background: #fafafa;
+  // ** surfaces **
+  --background: #ffffff;
   --card: #ffffff;
   --elevated: #ffffff;
-  --foreground: #0a0a0a;
+  --foreground: #202124;        // grey 900
 
   --popover: var(--elevated);
   --popover-foreground: var(--foreground);
 
-  --muted: #f4f4f4;
-  --muted-foreground: #6e6e6e;
-  --faint-foreground: #9b9b9b;
+  --muted: #f1f3f4;             // grey 100 — panel headers, chips
+  --muted-foreground: #5f6368;  // grey 700 — secondary text
+  --faint-foreground: #80868b;  // grey 600 — timestamps, counts
 
-  --subtle: #f7f7f7;
-  --subtle-strong: #efefef;
+  --subtle: #f8f9fa;            // grey 50 — row hover
+  --subtle-strong: #f1f3f4;
 
-  --border: #e4e4e4;
-  --border-strong: #d0d0d0;
-  --input: #d9d9d9;
+  // ** hairlines **
+  --border: #dadce0;            // grey 300 — the Material divider
+  --border-strong: #bdc1c6;
+  --input: #dadce0;
 
-  --shadow-sm: 0 1px 2px rgba(9, 9, 11, 0.06);
-  --shadow-md: 0 2px 4px rgba(9, 9, 11, 0.05), 0 8px 24px rgba(9, 9, 11, 0.08);
-  --shadow-lg: 0 4px 8px rgba(9, 9, 11, 0.06), 0 16px 48px rgba(9, 9, 11, 0.12);
+  // ** elevation — Material's, which is soft and short **
+  --shadow-sm: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  --shadow-md: 0 1px 2px rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
+  --shadow-lg: 0 4px 8px 3px rgba(60, 64, 67, 0.15), 0 1px 3px rgba(60, 64, 67, 0.3);
 
-  --level-error: #cd2b31;
-  --level-error-wash: rgba(205, 43, 49, 0.04);
-  --level-warn: #a15c07;
-  --level-info: #737373;
-  --level-debug: #a3a3a3;
+  // ** severity **
+  //
+  // Cloud Logging's own: red for error, amber for warning, grey for everything
+  // routine. Kept out of the ANSI palette on purpose — those are *content*
+  // colours a log line chose for itself, and severity is ours.
+  --level-error: #d93025;       // red 600
+  --level-error-bg: #fce8e6;
+  --level-error-wash: rgba(217, 48, 37, 0.04);
+  --level-warn: #e37400;        // orange 700
+  --level-warn-bg: #feefe3;
+  --level-info: #5f6368;
+  --level-info-bg: #f1f3f4;
+  --level-debug: #80868b;
 
-  --primary: #0a0a0a;
-  --primary-hover: #000000;
+  // ** the one accent — Google blue **
+  --primary: #1a73e8;
+  --primary-hover: #1765cc;
   --primary-foreground: #ffffff;
-  --primary-subtle: rgba(10, 10, 10, 0.06);
-  --primary-glow: rgba(10, 10, 10, 0.10);
-  --ring: rgba(10, 10, 10, 0.30);
+  --primary-subtle: #e8f0fe;    // blue 50 — selected rows, chips
+  --primary-glow: rgba(26, 115, 232, 0.24);
+  --ring: rgba(26, 115, 232, 0.5);
 
-  --live: #0d8c6d;
-  --live-glow: rgba(13, 140, 109, 0.35);
+  // ** live **
+  --live: #1e8e3e;              // green 700
+  --live-glow: rgba(30, 142, 62, 0.4);
 
-  --ansi-black: #52525b;
-  --ansi-black-bright: #3f3f46;
-  --ansi-red: #dc2626;
-  --ansi-red-bright: #b91c1c;
-  --ansi-green: #16a34a;
-  --ansi-green-bright: #15803d;
-  --ansi-yellow: #ca8a04;
-  --ansi-yellow-bright: #a16207;
-  --ansi-blue: #2563eb;
-  --ansi-blue-bright: #1d4ed8;
-  --ansi-magenta: #9333ea;
-  --ansi-magenta-bright: #7e22ce;
-  --ansi-cyan: #0891b2;
-  --ansi-cyan-bright: #0e7490;
-  --ansi-white: #52525b;
-  --ansi-white-bright: #27272a;
+  // ** ansi palette — the only colour that is not ours **
+  --ansi-black: #5f6368;
+  --ansi-black-bright: #3c4043;
+  --ansi-red: #d93025;
+  --ansi-red-bright: #a50e0e;
+  --ansi-green: #188038;
+  --ansi-green-bright: #0d652d;
+  --ansi-yellow: #b06000;
+  --ansi-yellow-bright: #8a4600;
+  --ansi-blue: #1967d2;
+  --ansi-blue-bright: #174ea6;
+  --ansi-magenta: #a142f4;
+  --ansi-magenta-bright: #8430ce;
+  --ansi-cyan: #007b83;
+  --ansi-cyan-bright: #00565c;
+  --ansi-white: #5f6368;
+  --ansi-white-bright: #202124;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: #202124;        // Google's own dark surface
+  --card: #292a2d;
+  --elevated: #35363a;
+  --foreground: #e8eaed;
+
+  --popover: var(--elevated);
+  --popover-foreground: var(--foreground);
+
+  --muted: #35363a;
+  --muted-foreground: #9aa0a6;
+  --faint-foreground: #80868b;
+
+  --subtle: #28292c;
+  --subtle-strong: #35363a;
+
+  --border: #3c4043;
+  --border-strong: #5f6368;
+  --input: #5f6368;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 4px 8px 3px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.3);
+
+  --level-error: #f28b82;
+  --level-error-bg: #3d2b29;
+  --level-error-wash: rgba(242, 139, 130, 0.05);
+  --level-warn: #fdd663;
+  --level-warn-bg: #3d3423;
+  --level-info: #9aa0a6;
+  --level-info-bg: #35363a;
+  --level-debug: #80868b;
+
+  --primary: #8ab4f8;
+  --primary-hover: #aecbfa;
+  --primary-foreground: #202124;
+  --primary-subtle: #283142;
+  --primary-glow: rgba(138, 180, 248, 0.24);
+  --ring: rgba(138, 180, 248, 0.5);
+
+  --live: #81c995;
+  --live-glow: rgba(129, 201, 149, 0.4);
+
+  --ansi-black: #9aa0a6;
+  --ansi-black-bright: #bdc1c6;
+  --ansi-red: #f28b82;
+  --ansi-red-bright: #f6aea9;
+  --ansi-green: #81c995;
+  --ansi-green-bright: #a8dab5;
+  --ansi-yellow: #fdd663;
+  --ansi-yellow-bright: #fde293;
+  --ansi-blue: #8ab4f8;
+  --ansi-blue-bright: #aecbfa;
+  --ansi-magenta: #d7aefb;
+  --ansi-magenta-bright: #e9d2fd;
+  --ansi-cyan: #78d9ec;
+  --ansi-cyan-bright: #a1e4f2;
+  --ansi-white: #e8eaed;
+  --ansi-white-bright: #f8f9fa;
 }
 
 // **
@@ -237,11 +224,7 @@
   mask-size: $size;
 }
 
-// A panel: the card surface and a hairline. No shadow — a drop shadow on true
-// black is invisible, and faking depth with one only adds grey haze around
-// every edge. The surface delta and the border are what separate a panel from
-// the page; shadows are kept for things that genuinely float (popovers,
-// menus), where there is a lit surface behind them to cast onto.
+// A panel: the card surface and a hairline.
 @mixin panel($radius: var(--radius)) {
   background: var(--card);
   border: var(--hairline) solid var(--border);

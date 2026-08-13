@@ -146,6 +146,20 @@ export function Results({
 
   return (
     <div class="results">
+      {/*
+        A sticky column header, as Cloud Logging has. It is not decoration: a
+        dense table of timestamps and text needs its columns named once, and
+        the header is also what makes the caret column read as a control rather
+        than as stray punctuation.
+      */}
+      <div class="results-header">
+        <span class="results-col-caret" />
+        {/* Abbreviated: the column is one chip wide, and "Severity" is not. */}
+        <span class="results-col-level" title="Severity">Sev</span>
+        <span class="results-col-time">Timestamp</span>
+        <span class="results-col-summary">Summary</span>
+      </div>
+
       <div class="results-scroll" ref={virtual.scrollRef}>
         <div class="results-spacer" style={{ height: `${virtual.total}px` }}>
           {lines.slice(virtual.start, virtual.end).map((line, index) => (

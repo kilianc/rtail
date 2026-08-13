@@ -39,8 +39,17 @@ interface Props {
   onContext: () => void
 }
 
-/** Severities worth naming in the row. Below this the dot is enough. */
-const NAMED = new Set(['WARN', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY', 'FATAL'])
+/*!
+ * Severity chips, as Cloud Logging draws them.
+ *
+ * A short glyph in a tinted pill rather than a dot: the point of the column is
+ * to be scannable down a thousand rows, and a letter survives that better than
+ * a colour alone does. Unknown severities fall through to their initial.
+ */
+const CHIPS: Record<string, string> = {
+  EMERGENCY: 'E', ALERT: 'A', CRITICAL: 'C', FATAL: 'F',
+  ERROR: 'E', WARN: 'W', NOTICE: 'N', INFO: 'I', DEBUG: 'D', TRACE: 'T'
+}
 
 export function LogRow({ line, expanded, selected, active, onToggle, onFilter, onContext }: Props) {
   const level = (line.level ?? '').toUpperCase()
@@ -52,27 +61,22 @@ export function LogRow({ line, expanded, selected, active, onToggle, onFilter, o
       onClick={onToggle}
     >
       <div class="row-head">
+        {/*
+          The disclosure caret is drawn rather than iconised — two rules and a
+          rotation, so it inherits colour and stays crisp at any zoom.
+        */}
+        <i class="row-caret" aria-hidden="true" />
+
+        <span class="row-level" title={level || undefined}>
+          <i class="row-chip" aria-hidden="true">{CHIPS[level] ?? level.slice(0, 1)}</i>
+          <span class="sr-only">{level || 'no severity'}</span>
+        </span>
+
         <time class="row-time" dateTime={new Date(line.timestamp).toISOString()}>
           {clock.date && <span class="row-date">{clock.date}</span>}
           {clock.time}
           <span class="row-ms">.{clock.ms}</span>
         </time>
-
-        {/*
-          The dot always, the word only when it is worth reading.
-
-          A page of logs is mostly INFO, and spelling that out on every row is
-          forty repetitions of the least surprising thing on screen — it buries
-          the two lines that say WARN. The dot still carries the severity for
-          every row, and the colour is never the only signal where it matters.
-          The column keeps its width either way, so the message edge stays
-          straight.
-        */}
-        <span class="row-level" title={level || undefined}>
-          <i class="row-dot" aria-hidden="true" />
-          {NAMED.has(level) && level}
-          <span class="sr-only">{level}</span>
-        </span>
 
         <span class="row-message" dangerouslySetInnerHTML={{ __html: line.html }} />
       </div>

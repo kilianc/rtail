@@ -60,6 +60,8 @@ export function FieldExplorer({ fields, params, active, onFilter }: Props) {
 
   return (
     <aside class="explorer">
+      <div class="explorer-title">Log fields</div>
+
       <div class="explorer-search">
         <input
           type="text"

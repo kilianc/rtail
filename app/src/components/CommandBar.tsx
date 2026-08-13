@@ -169,6 +169,20 @@ export function CommandBar({ value, fields, error, busy, onChange, onSubmit }: P
         )}
       </div>
 
+      {/*
+        An explicit Run query button beside the box, which Cloud Logging has and
+        which matters more than it looks: Enter already runs the query, but a
+        visible control is what tells a first-time reader that the box is not a
+        live filter and that nothing has been searched yet.
+      */}
+      <button
+        class="command-run"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={onSubmit}
+      >
+        Run query
+      </button>
+
       {open && suggestions.items.length > 0 && (
         <ul class="command-menu" role="listbox">
           {suggestions.items.map((item, index) => (
