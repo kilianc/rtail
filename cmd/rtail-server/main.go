@@ -59,13 +59,34 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if "" != cfg.DataDir {
-		// P1 turns this into the durable store. Failing loudly beats accepting
-		// the flag and silently keeping everything in memory.
-		return fmt.Errorf("--data is not implemented yet: P0 is memory-only, see docs/proposal-logging-system.md")
+	/*!
+	 * Storage.
+	 *
+	 * Without --data the store is the in-memory ring, which is v1's behaviour
+	 * and stays the zero-configuration mode: one command, nothing to manage,
+	 * nothing left behind. With it, records are durable — the WAL is replayed
+	 * before this returns, so the server never starts serving with unrecovered
+	 * data still on disk.
+	 */
+	var store logstore.Store
+
+	if "" == cfg.DataDir {
+		store = logstore.NewMemory(cfg.Backlog)
+		log.Info("running in memory; pass --data to keep logs across restarts")
+	} else {
+		durable, err := logstore.OpenDurable(ctx, cfg.DataDir, logstore.DurableOptions{
+			Backlog: cfg.Backlog,
+			KeepRaw: true,
+			Log:     log,
+		})
+		if nil != err {
+			return fmt.Errorf("opening the data directory: %w", err)
+		}
+
+		store = durable
+		log.Info("storing logs as parquet", "data", cfg.DataDir)
 	}
 
-	store := logstore.NewMemory(cfg.Backlog)
 	defer store.Close()
 
 	udp, err := ingest.ListenUDP(cfg.UDPHost, cfg.UDPPort, store, log)

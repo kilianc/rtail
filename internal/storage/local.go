@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -87,7 +86,7 @@ func (l *Local) Create(_ context.Context, name string) (Writer, error) {
 	return &localWriter{file: temp, final: path}, nil
 }
 
-func (l *Local) Open(_ context.Context, name string) (io.ReadSeekCloser, error) {
+func (l *Local) Open(_ context.Context, name string) (Reader, error) {
 	path, err := l.resolve(name)
 	if nil != err {
 		return nil, err

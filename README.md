@@ -19,8 +19,9 @@
 > already have installed works against a v2 server unchanged. Everything else
 > on this branch is subject to change until 2.0.0 ships.
 >
-> **Not yet durable.** P0 is the Go port at parity: history is still an
-> in-memory ring per stream. Persistence lands in P1.
+> **Where it is:** P0 (Go port at parity) and P1 (durable Parquet storage) are
+> done — `--data` keeps your logs across restarts, as plain Parquet files any
+> tool can read. SQL search over them is P2, and is not here yet.
 
 `rtail` is a command line utility that grabs every line in `stdin` and broadcasts it over **UDP**. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using `rtail` broadcasting to an `rtail-server` – See multiple streams in the browser, in realtime.
 
@@ -76,7 +77,49 @@ There are many log aggregation tools out there, but few of them are realtime. **
 * broadcast every line using UDP
 * `rtail-server`, **if listening**, will dispatch the stream into your browser, using [server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events).
 
-`rtail` is a realtime debugging and monitoring tool, which can display multiple aggregate streams via a modern web interface. **As of this branch there is still no persistent layer** — history is a bounded in-memory ring per stream. Durable Parquet-backed storage and SQL search are the next milestones; see [the proposal](docs/proposal-logging-system.md).
+`rtail` is a realtime debugging and monitoring tool, which can display multiple aggregate streams via a modern web interface. **With `--data` it now keeps them too** — see [Storage](#storage) below. SQL search over that history is the next milestone; see [the proposal](docs/proposal-logging-system.md).
+
+## Storage
+
+    $ rtail-server --data ./logs
+
+Point `--data` at a directory and every line is written to Parquet. Without it,
+rTail is what it always was: an in-memory ring, nothing on disk, nothing to
+clean up.
+
+**There is no schema to define.** The envelope — timestamp, stream, level,
+message, host, sequence, and the original line — is always there. Everything
+else is whatever your logs happened to contain: each root-level JSON key
+becomes its own typed column, and nested objects are kept as JSON you can
+path into. Two files written a week apart with completely different keys
+reconcile by name at read time.
+
+**Your logs are just files.** The layout is plain and browsable:
+
+    logs/
+      catalog.sqlite
+      wal/
+      streams/api.example.com/2026/08/11/L0-…parquet
+
+which means any tool reads them, with rTail uninstalled and nothing exported:
+
+    $ duckdb -c "
+        SELECT a_service, count(*)
+        FROM read_parquet('logs/streams/**/*.parquet', union_by_name := true)
+        WHERE level = 'ERROR' AND a_latency_ms > 500
+        GROUP BY 1"
+
+That is the point, and it is covered by a test rather than merely claimed.
+
+**Durability.** Lines land in a write-ahead log before anything else, and are
+batched into Parquet from there. The WAL is fsynced every 100ms, so an
+unclean shutdown costs at most that; a clean one costs nothing. Recovery
+replays whatever the previous process did not finish, and is idempotent —
+crashing midway through a flush and restarting produces the same files, not
+duplicates.
+
+Compaction is not implemented yet, so files currently accumulate at one per
+flush per stream. Retention and the L0→L1→L2 merge are P3.
 
 ## Examples
 
@@ -174,8 +217,9 @@ Every option can also be set as an environment variable, prefixed with
 `RTAIL_` — `RTAIL_WEB_PORT=8080`, `RTAIL_BACKLOG=500`, and so on. This is how
 the container image is configured.
 
-`--data` is accepted but not yet implemented; it fails loudly rather than
-silently keeping everything in memory. It turns on in P1.
+Note that `--backlog` is about the *live view* — how many recent lines a
+freshly opened browser tab is handed. It has nothing to do with how much is
+kept on disk, which is everything until retention exists.
 
 ## API
 

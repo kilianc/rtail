@@ -31,6 +31,21 @@ type ObjectInfo struct {
 }
 
 /*!
+ * Reader is a readable object.
+ *
+ * ReaderAt is part of the contract rather than a type assertion at the call
+ * site because Parquet is fundamentally a random-access format — a reader
+ * seeks to the footer before it reads anything else, then jumps between column
+ * chunks. A backend that can only stream cannot serve Parquet without buffering
+ * whole files into memory, so it is better to say so in the interface. S3
+ * implements this with ranged GETs.
+ */
+type Reader interface {
+	io.ReaderAt
+	io.ReadSeekCloser
+}
+
+/*!
  * Writer is an in-progress object.
  *
  * Commit and Abort rather than Close: `defer w.Abort()` alongside an explicit
@@ -55,9 +70,8 @@ type Backend interface {
 	// Create begins writing an object. It is not visible until Commit.
 	Create(ctx context.Context, name string) (Writer, error)
 
-	// Open reads an existing object. Seeking is required: Parquet readers seek
-	// to the footer before reading anything else.
-	Open(ctx context.Context, name string) (io.ReadSeekCloser, error)
+	// Open reads an existing object.
+	Open(ctx context.Context, name string) (Reader, error)
 
 	// Remove deletes an object. Removing a missing object is not an error —
 	// the GC pass in §5 is expected to be retried.
