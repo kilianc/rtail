@@ -44,4 +44,6 @@ export interface Prefs {
   /** 1-based index into the font sizes in _fonts.scss. */
   fontSize: number
   favorites: string[]
+  /** Whether the timeline is expanded. Tucked away by default. */
+  timeline: boolean
 }

@@ -2,10 +2,11 @@
 // design system
 //
 // The reference is Google Cloud's Logs Explorer, and this follows it closely:
-// a light, dense, Material-flavoured console. Four rules:
+// a dark, dense, Material-flavoured console. Four rules:
 //
-//   1. Light by default. Cloud Logging is a white interface and reads as one;
-//      dark is a supported override, not the primary design.
+//   1. Dark by default, because that is how the reference is actually run —
+//      checked against a real Logs Explorer rather than assumed from its
+//      screenshots. Light is a supported override.
 //   2. One blue does all the interactive work — selection, links, focus, the
 //      histogram. Severity gets red and amber. Nothing else is coloured.
 //   3. Density over air. Rows are 28px and separated by hairlines, because the
@@ -15,13 +16,13 @@
 // Names follow shadcn's convention (background/foreground, card, muted,
 // popover, primary, border, input, ring) so the palette swaps from one block.
 //
-// Light lives on :root so the app paints correctly on the first frame, before
-// the bundle runs and stamps the persisted theme onto <body>. `.dark` is a
+// Dark lives on :root so the app paints correctly on the first frame, before
+// the bundle runs and stamps the persisted theme onto <body>. `.light` is a
 // pure override layer.
 // **
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
   // ** radius — Material's, which is tighter than a marketing site's **
   --radius: 8px;        // cards, panels, popovers
@@ -51,6 +52,7 @@
   --chart-h: 72px;
   --gutter-w: 148px;    // timestamp column, wide enough for a full date
   --sev-w: 44px;        // severity column — one badge, and the word "Sev"
+  --caret-w: 20px;      // disclosure column
   --sidebar-w: 264px;
   --marker-w: 3px;
   --hairline: 1px;
@@ -147,7 +149,7 @@
 .light {
   color-scheme: light;
 
-    --background: #ffffff;
+  --background: #ffffff;
   --card: #ffffff;
   --elevated: #ffffff;
   --foreground: #202124;
@@ -235,6 +237,24 @@
   mask-size: $size;
 }
 
+/*!
+ * A disclosure chevron.
+ *
+ * Two strokes rotated, not a filled triangle. A solid triangle is heavier than
+ * anything else on the row and reads as a play button; a chevron is the same
+ * weight as the text it sits beside. Rotating 45° → 135° turns › into ⌄, and
+ * because it is a rotation rather than a swapped glyph it animates.
+ */
+@mixin chevron($size: 6px, $stroke: 1.5px) {
+  block-size: $size;
+  border-block-end: $stroke solid currentcolor;
+  border-inline-end: $stroke solid currentcolor;
+  content: '';
+  inline-size: $size;
+  transform: rotate(-45deg);
+  transition: transform .15s ease;
+}
+
 // A panel: the card surface and a hairline.
 @mixin panel($radius: var(--radius)) {
   background: var(--card);
@@ -279,7 +299,9 @@
 }
 
 @mixin field-focus {
+  // Two pixels, not a recoloured hairline: the underline has to be visible
+  // from the far side of the screen or it is decoration rather than a state.
+  box-shadow: inset 0 -2px 0 var(--primary);
   border-block-end-color: var(--primary);
-  outline: 0;
 }
 

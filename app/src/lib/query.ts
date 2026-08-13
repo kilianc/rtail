@@ -281,3 +281,82 @@ export function complete(
 
   return { from: start, to: cursor, items }
 }
+
+/*!
+ * The substrings a query is looking for, for highlighting in the results.
+ *
+ * Free text and `k:substring` terms only. An `=` is an exact match on a whole
+ * field and marking it inside a message would highlight a coincidence rather
+ * than the reason the row matched; a negated term is why a row is *not* here,
+ * so marking it would be actively misleading.
+ */
+export function highlightTerms(query: string): string[] {
+  const out: string[] = []
+
+  for (const term of terms(query)) {
+    if (term.negated) continue
+
+    if (undefined === term.field) {
+      const text = unquote(term.text)
+      if (text && !/^(AND|OR|NOT)$/i.test(text) && !text.startsWith('(')) out.push(text)
+      continue
+    }
+
+    if (':' === term.op && term.value) out.push(term.value)
+  }
+
+  return out.filter((term) => term.length > 1)
+}
+
+const HTML_ESCAPE = /[&<>"]/
+
+/*!
+ * Wraps matches in <mark>, without touching markup.
+ *
+ * The row body is already HTML — ANSI colouring produces spans — so a naive
+ * replace would happily rewrite the inside of a tag and corrupt it. This walks
+ * the string and only substitutes in the runs between tags.
+ *
+ * Matching is over the escaped text, so a term containing one of & < > " will
+ * not match the entity it became. That is rare in a search box and the failure
+ * is a missing highlight rather than broken markup, which is the right way
+ * round.
+ */
+export function highlight(html: string, needles: string[]): string {
+  if (0 === needles.length) return html
+
+  const usable = needles.filter((needle) => !HTML_ESCAPE.test(needle))
+  if (0 === usable.length) return html
+
+  const pattern = new RegExp(
+    usable.map((needle) => needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
+    'gi'
+  )
+
+  const mark = (text: string) => text.replace(pattern, '<mark>$&</mark>')
+
+  let out = ''
+  let at = 0
+
+  while (at < html.length) {
+    const open = html.indexOf('<', at)
+
+    if (open < 0) {
+      out += mark(html.slice(at))
+      break
+    }
+
+    out += mark(html.slice(at, open))
+
+    const close = html.indexOf('>', open)
+    if (close < 0) {
+      out += html.slice(open)
+      break
+    }
+
+    out += html.slice(open, close + 1)
+    at = close + 1
+  }
+
+  return out
+}

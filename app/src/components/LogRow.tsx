@@ -9,6 +9,7 @@
  */
 
 import { formatClock } from '../lib/format.js'
+import { highlight } from '../lib/query.js'
 import type { Line } from '../lib/types.js'
 
 /**
@@ -34,6 +35,8 @@ interface Props {
   selected: boolean
   /** Fields the current query already mentions, shown as active. */
   active: string[]
+  /** Substrings the query is looking for, marked in the message. */
+  needles: string[]
   onToggle: () => void
   onFilter: (action: FilterAction) => void
   onContext: () => void
@@ -53,7 +56,7 @@ const GLYPHS: Record<string, string> = {
   NOTICE: 'i', INFO: 'i', DEBUG: 'i', TRACE: 'i'
 }
 
-export function LogRow({ line, expanded, selected, active, onToggle, onFilter, onContext }: Props) {
+export function LogRow({ line, expanded, selected, active, needles, onToggle, onFilter, onContext }: Props) {
   const level = (line.level ?? '').toUpperCase()
   const clock = formatClock(line.timestamp)
 
@@ -80,7 +83,7 @@ export function LogRow({ line, expanded, selected, active, onToggle, onFilter, o
           <span class="row-ms">.{clock.ms}</span>
         </time>
 
-        <span class="row-message" dangerouslySetInnerHTML={{ __html: line.html }} />
+        <span class="row-message" dangerouslySetInnerHTML={{ __html: highlight(line.html, needles) }} />
       </div>
 
       {expanded && (

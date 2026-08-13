@@ -22,12 +22,21 @@ interface Props {
   loading: boolean
   /** Fields the current query mentions. */
   active: string[]
+  /** Substrings to mark in each message. */
+  needles: string[]
   /** More history exists beyond what is loaded. */
   hasMore: boolean
+  /** The feed is held; new records are counted rather than shown. */
+  paused: boolean
+  /** How many arrived while it was held. */
+  pending: number
   emptyHint?: string
   onFilter: (action: FilterAction) => void
   onLoadMore: () => void
   onContext: (line: Line) => void
+  /** Hold the feed — opening a row does this. */
+  onPause: () => void
+  onResume: () => void
 }
 
 /** One collapsed row, matching --line-h. */
@@ -38,11 +47,16 @@ export function Results({
   live,
   loading,
   active,
+  needles,
   hasMore,
+  paused,
+  pending,
   emptyHint,
   onFilter,
   onLoadMore,
-  onContext
+  onContext,
+  onPause,
+  onResume
 }: Props) {
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set())
   const [selected, setSelected] = useState(-1)
@@ -51,14 +65,28 @@ export function Results({
   const virtual = useVirtual(lines.length, ROW_ESTIMATE)
   const previous = useRef(lines.length)
 
+  /*!
+   * Opening a row holds the feed.
+   *
+   * Expanding something is a statement that you want to read it, and a live
+   * tail will have pushed it off the screen before you have. Closing it does
+   * not resume on its own — you may have opened a row to compare against one
+   * further up — so resuming stays an explicit act.
+   */
   const toggle = useCallback((key: number) => {
     setExpanded((current) => {
       const next = new Set(current)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
+
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+        onPause()
+      }
+
       return next
     })
-  }, [])
+  }, [onPause])
 
   /*!
    * Follow the tail while streaming, but only while the user is already at the
@@ -66,7 +94,7 @@ export function Results({
    * the single most irritating thing a live log view can do.
    */
   useLayoutEffect(() => {
-    if (!live || !following) return
+    if (!live || !following || paused) return
     if (lines.length === previous.current) return
 
     previous.current = lines.length
@@ -174,6 +202,7 @@ export function Results({
                 expanded={expanded.has(line.key)}
                 selected={virtual.start + index === selected}
                 active={active}
+                needles={needles}
                 onToggle={() => {
                   setSelected(virtual.start + index)
                   toggle(line.key)
@@ -192,15 +221,17 @@ export function Results({
         )}
       </div>
 
-      {live && !following && (
+      {live && (paused || !following) && (
         <button
           class="results-follow"
           onClick={() => {
             setFollowing(true)
+            onResume()
             virtual.scrollToEnd()
           }}
         >
-          Jump to latest
+          {paused ? 'Resume' : 'Jump to latest'}
+          {pending > 0 && <span class="results-pending">{pending.toLocaleString()}</span>}
         </button>
       )}
     </div>

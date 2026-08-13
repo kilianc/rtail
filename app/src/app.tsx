@@ -23,7 +23,7 @@ import { api, QueryError, type Bucket, type Field, type Params } from './lib/api
 import { connect, type Connection } from './lib/connection.js'
 import { formatLine } from './lib/format.js'
 import { loadPrefs, savePrefs } from './lib/prefs.js'
-import { fieldsUsed, toggleTerm } from './lib/query.js'
+import { fieldsUsed, highlightTerms, toggleTerm } from './lib/query.js'
 import { absolute, isRelative, resolve, type Range } from './lib/timerange.js'
 import type { Line, Prefs } from './lib/types.js'
 import { onChange, read, write, type ViewState } from './lib/urlstate.js'
@@ -51,6 +51,19 @@ export function App() {
   const [error, setError] = useState<{ message: string; position?: number } | null>(null)
   const [scanned, setScanned] = useState<string>('')
 
+  /*!
+   * Holding the feed.
+   *
+   * Records keep arriving over the socket while held — dropping the
+   * subscription would leave a gap nothing could fill afterwards — but they
+   * are counted instead of rendered, so the list under a reader's eyes stops
+   * moving. The ref shadows the state because the socket handler is created
+   * once and would otherwise close over the initial value forever.
+   */
+  const [held, setHeld] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
+  const heldRef = useRef(false)
+
   const socket = useRef<Connection | null>(null)
   const pending = useRef<AbortController | null>(null)
 
@@ -66,6 +79,7 @@ export function App() {
   )
 
   const active = useMemo(() => fieldsUsed(view.query), [view.query])
+  const needles = useMemo(() => highlightTerms(view.query), [view.query])
   const resolved = useMemo(() => resolve(view.range), [view.range])
 
   useEffect(() => write(view), [view])
@@ -121,6 +135,11 @@ export function App() {
     })
 
     connection.on('line', (wire) => {
+      if (heldRef.current) {
+        setPendingCount((n) => n + 1)
+        return
+      }
+
       setLines((current) => {
         const next = current.length >= LIVE_BUFFER ? current.slice(1) : current.slice()
         next.push(formatLine(wire))
@@ -129,6 +148,10 @@ export function App() {
     })
 
     connection.on('error', (message, position) => setError({ message, position }))
+
+    heldRef.current = false
+    setHeld(false)
+    setPendingCount(0)
 
     connection.subscribe(view.stream, view.query)
 
@@ -274,6 +297,26 @@ export function App() {
     }))
   }, [])
 
+  const hold = useCallback(() => {
+    heldRef.current = true
+    setHeld(true)
+  }, [])
+
+  /*!
+   * Resuming reconnects rather than draining a buffer.
+   *
+   * Whatever arrived while held was counted, not kept — keeping it would mean
+   * an unbounded buffer for a tab somebody left open over lunch. Re-opening
+   * the feed replays the server's backlog, which is the same bounded window a
+   * fresh tab would get.
+   */
+  const resume = useCallback(() => {
+    heldRef.current = false
+    setHeld(false)
+    setPendingCount(0)
+    socket.current?.reconnect()
+  }, [])
+
   const toggleLive = useCallback(() => {
     setView((current) => {
       const live = !current.live
@@ -333,6 +376,8 @@ export function App() {
       </div>
 
       <Histogram
+        collapsed={!prefs.timeline}
+        onToggle={() => setPrefs((current) => ({ ...current, timeline: !current.timeline }))}
         buckets={buckets}
         intervalMs={interval}
         range={resolved}
@@ -353,7 +398,10 @@ export function App() {
           live={view.live}
           loading={loading}
           active={active}
+          needles={needles}
           hasMore={!!cursor}
+          paused={held}
+          pending={pendingCount}
           emptyHint={
             view.live
               ? 'Waiting for events — pipe something into rtail'
@@ -362,6 +410,8 @@ export function App() {
           onFilter={(action) => applyFilter(action.field, action.op, action.value, action.negated)}
           onLoadMore={() => runSearch(true)}
           onContext={showContext}
+          onPause={hold}
+          onResume={resume}
         />
       </div>
     </>

@@ -15,6 +15,8 @@ import type { Bucket } from '../lib/api.js'
 import { absolute, formatStamp, type Range } from '../lib/timerange.js'
 
 interface Props {
+  collapsed: boolean
+  onToggle: () => void
   buckets: Bucket[]
   intervalMs: number
   range: { from: Date; to: Date }
@@ -33,7 +35,7 @@ function levelClass(level: string): string {
   return level.toLowerCase()
 }
 
-export function Histogram({ buckets, intervalMs, range, loading, onSelect }: Props) {
+export function Histogram({ collapsed, onToggle, buckets, intervalMs, range, loading, onSelect }: Props) {
   const surface = useRef<HTMLDivElement>(null)
   const dragging = useRef<{ from: number; to: number } | null>(null)
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null)
@@ -144,8 +146,27 @@ export function Histogram({ buckets, intervalMs, range, loading, onSelect }: Pro
 
   const hovered = null !== hover ? bars.find((bar) => hover * 100 >= bar.left && hover * 100 < bar.left + bar.width) : undefined
 
+  /*!
+   * Collapsed to its header by default, as the reference is.
+   *
+   * The chart is the best way to find a spike and the worst use of eighty
+   * pixels when you already know what you are looking for — which is most
+   * visits. Tucking it into a header keeps it one click away without spending
+   * a tenth of the window on it, and the count stays on the bar so the header
+   * still answers "how much matched".
+   */
   return (
-    <div class={`histogram ${loading ? 'loading' : ''}`}>
+    <div class={`histogram ${collapsed ? 'collapsed' : ''} ${loading ? 'loading' : ''}`}>
+      <button class="histogram-header" aria-expanded={!collapsed} onClick={onToggle}>
+        <i class="histogram-caret" aria-hidden="true" />
+        <span class="histogram-title">Timeline</span>
+        <span class="histogram-summary">
+          {total.toLocaleString()} {1 === total ? 'event' : 'events'}
+        </span>
+      </button>
+
+      {!collapsed && (
+      <div class="histogram-body">
       {/*
         A scale, so the chart says how big the spike actually is. Three rules
         and one number is the least that turns a row of bars into something you
@@ -203,10 +224,12 @@ export function Histogram({ buckets, intervalMs, range, loading, onSelect }: Pro
       <div class="histogram-axis">
         <span>{formatStamp(range.from)}</span>
         <span class="histogram-count">
-          {total.toLocaleString()} {1 === total ? 'event' : 'events'}
+          {Math.round(intervalMs / 1000)}s buckets
         </span>
         <span>{formatStamp(range.to)}</span>
       </div>
+      </div>
+      )}
     </div>
   )
 }

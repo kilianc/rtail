@@ -73,11 +73,27 @@
     opacity: .4;
   }
 
-  // Keyboard users get a ring; mouse users don't. Drawn inside the element so
-  // it never nudges anything off the grid.
-  :where(a, button, input, [tabindex]):focus-visible {
-    outline: 0;
-    box-shadow: 0 0 0 1px var(--background), 0 0 0 3px var(--ring);
+  /*!
+   * Keyboard users get a ring; mouse users do not.
+   *
+   * `outline` with a negative offset, not a spread box-shadow. The shadow
+   * version drew *outside* the element, and every focusable thing here lives
+   * inside a scroller — the results list, the fields panel, the popovers — so
+   * the ring was being clipped to nothing exactly where it mattered. An inset
+   * outline is painted within the element's own box and cannot be cropped, and
+   * it never nudges anything off the grid either.
+   */
+  :where(a, button, input, [tabindex]) {
+    // Pointer focus gets nothing; keyboard focus gets the ring below. Declared
+    // here and nowhere else — an `outline: 0` inside a component rule lives in
+    // a later cascade layer and silently wins, which is how the ring came to
+    // be missing on every input on the page.
+    &:focus { outline: 0; }
+
+    &:focus-visible {
+      outline: 2px solid var(--ring);
+      outline-offset: -2px;
+    }
   }
 }
 
@@ -165,12 +181,18 @@
 // **
 
 @layer layout {
-  // The bar sits flush; everything below it floats in a padded region. The
-  // gaps are what let the panels read as separate objects.
+  /*!
+   * Four children, four tracks: bar, query, histogram, results.
+   *
+   * With only three declared the histogram took the 1fr and the results were
+   * dropped into an implicit auto row — so the chart filled the window and the
+   * logs got whatever was left. A track per child, and the count is checked by
+   * the fact that the last one is the only flexible one.
+   */
   #root {
     block-size: 100%;
     display: grid;
-    grid-template-rows: var(--bar-h) auto 1fr;
+    grid-template-rows: var(--bar-h) auto auto 1fr;
     min-block-size: 0;
   }
 
@@ -421,7 +443,6 @@
       font-family: var(--mono);
       font-size: var(--mono-size);
       min-inline-size: 0;
-      outline: 0;
 
       // Italic, like the reference's empty state: it reads as a prompt rather
       // than as text somebody left in the box.
@@ -664,10 +685,16 @@
     }
   }
 
+  // Flex-centred rather than relying on the inherited line-height, which was
+  // taller than the button and pushed the label out of its own box.
   .timerange-apply,
   .timerange-reset {
+    align-items: center;
     background: var(--primary);
     block-size: var(--control-h);
+    display: flex;
+    justify-content: center;
+    line-height: 1;
     border-radius: var(--radius-sm);
     color: var(--primary-foreground);
     font-size: var(--text-md);
@@ -752,6 +779,44 @@
 
   // Two columns: a narrow scale, then the plot. Both rows of the axis line up
   // under the plot rather than under the whole panel.
+  /*!
+   * The timeline header — the whole panel when collapsed.
+   */
+  .histogram-header {
+    align-items: center;
+    color: var(--foreground);
+    display: flex;
+    font-size: var(--text-md);
+    gap: var(--space-2);
+    inline-size: 100%;
+    min-block-size: var(--row-h);
+    padding-inline: var(--space-4);
+
+    &:hover { background: var(--subtle); }
+  }
+
+  .histogram-caret {
+    color: var(--faint-foreground);
+    display: flex;
+
+    &::after { @include chevron; }
+  }
+
+  .histogram:not(.collapsed) .histogram-caret::after { transform: rotate(45deg); }
+
+  .histogram-summary {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    margin-inline-start: auto;
+  }
+
+  .histogram-body {
+    display: grid;
+    gap: var(--space-2);
+    padding: 0 var(--space-4) var(--space-3);
+  }
+
   .histogram {
     background: var(--card);
     border-block-end: var(--hairline) solid var(--border);
@@ -951,19 +1016,17 @@
 
     &:hover { background: var(--subtle); }
 
-    // The disclosure caret, matching the one on a log row.
+    // The same chevron the log rows use, in its own fixed cell so the labels
+    // beside it start on one line whether a section is open or shut.
     &::before {
-      block-size: 0;
-      border-block: 4px solid transparent;
-      border-inline-start: 5px solid var(--faint-foreground);
-      content: '';
+      @include chevron;
+      color: var(--faint-foreground);
       flex-shrink: 0;
-      inline-size: 5px;
-      transition: transform .12s ease;
+      margin-inline-end: var(--space-1);
     }
   }
 
-  .explorer-field.open .explorer-head::before { transform: rotate(90deg); }
+  .explorer-field.open .explorer-head::before { transform: rotate(45deg); }
 
   .explorer-name {
     color: var(--foreground);
@@ -1064,18 +1127,32 @@
 
   // The sticky column header. Same grid as a row, so the columns line up
   // without either side hard-coding a width.
+  /*!
+   * The header and every row declare the *same* grid template.
+   *
+   * They were two flex rows with independently chosen widths, gaps and
+   * paddings before this, which meant "TIMESTAMP" and the timestamps under it
+   * only lined up by coincidence — and stopped whenever either side was
+   * touched. Sharing one template makes the alignment structural rather than
+   * something kept true by hand.
+   */
+  .results-header,
+  .row-head {
+    display: grid;
+    gap: var(--space-2);
+    grid-template-columns: var(--caret-w) var(--sev-w) var(--gutter-w) 1fr;
+    padding-inline: var(--space-3);
+  }
+
   .results-header {
     align-items: center;
     background: var(--muted);
     border-block-end: var(--hairline) solid var(--border);
     color: var(--muted-foreground);
-    display: flex;
     font-size: var(--text-xs);
     font-weight: 500;
-    gap: var(--space-3);
     letter-spacing: var(--tracking-wide);
     min-block-size: var(--row-h);
-    padding-inline: var(--space-3);
     text-transform: uppercase;
   }
 
@@ -1088,18 +1165,14 @@
     white-space: nowrap;
   }
 
-  .results-col-caret { flex-shrink: 0; inline-size: var(--space-4); }
-  .results-col-level { flex-shrink: 0; inline-size: var(--sev-w); }
-  .results-col-time { flex-shrink: 0; inline-size: var(--gutter-w); }
-  .results-col-summary { flex: 1; }
-
   // Vertical rules between the header cells, which is how the real table
   // separates its columns — and the reason its dense rows still parse as a
-  // grid rather than as three streams of text.
+  // grid rather than as three streams of text. The rule is drawn in the gap,
+  // so it costs the cell no width and cannot push the columns out of step.
   .results-col-level,
   .results-col-time,
   .results-col-summary {
-    border-inline-start: var(--hairline) solid var(--border);
+    box-shadow: inset var(--hairline) 0 0 var(--border);
     padding-inline-start: var(--space-2);
   }
 
@@ -1128,6 +1201,25 @@
       background: var(--subtle);
       color: var(--foreground);
     }
+  }
+
+  // Matched text, marked in the summary the way the reference does it.
+  mark {
+    background: var(--primary-subtle);
+    border-radius: var(--radius-xs);
+    box-shadow: inset 0 -1px 0 var(--primary);
+    color: inherit;
+    padding: 0 1px;
+  }
+
+  // The count of what arrived while the feed was held.
+  .results-pending {
+    background: var(--primary-foreground);
+    border-radius: var(--radius-xs);
+    color: var(--primary);
+    font-variant-numeric: tabular-nums;
+    margin-inline-start: var(--space-2);
+    padding: 0 var(--space-1);
   }
 
   .results-follow {
@@ -1197,35 +1289,34 @@
     &.expanded {
       background: var(--subtle);
 
-      .row-caret { transform: rotate(90deg); }
+      .row-caret::after { transform: rotate(45deg); }
     }
   }
 
   .row-head {
     align-items: baseline;
-    display: flex;
-    gap: var(--space-2);
     min-block-size: var(--line-h);
-    padding-inline: var(--space-3);
   }
 
   // A disclosure triangle, drawn from two rules so it inherits colour and
   // stays crisp at any zoom.
+  // The disclosure column: a chevron centred in its own cell.
   .row-caret {
-    block-size: 0;
-    border-block: 4px solid transparent;
-    border-inline-start: 5px solid var(--faint-foreground);
-    flex-shrink: 0;
-    inline-size: var(--space-4);
-    margin-block-start: 5px;
-    transition: transform .12s ease;
+    align-items: center;
+    align-self: start;
+    color: var(--faint-foreground);
+    display: flex;
+    block-size: var(--line-h);
+    justify-content: center;
+
+    &::after { @include chevron; }
   }
+
+  .row:hover .row-caret { color: var(--muted-foreground); }
 
   .row-level {
     align-items: baseline;
     display: flex;
-    flex-shrink: 0;
-    inline-size: var(--sev-w);
     justify-content: center;
   }
 
@@ -1262,8 +1353,8 @@
 
   .row-message {
     color: var(--foreground);
-    flex: 1;
     min-inline-size: 0;
+    padding-inline-start: var(--space-2);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: pre-wrap;
