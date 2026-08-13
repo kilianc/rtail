@@ -19,11 +19,9 @@
 > already have installed works against a v2 server unchanged. Everything else
 > on this branch is subject to change until 2.0.0 ships.
 >
-> **Where it is:** P0–P4 are done. `--data` keeps your logs across restarts as
-> plain Parquet, compacts them in the background, expires them on a schedule,
-> and the explorer searches them with a filter bar, a brushable histogram and
-> a field sidebar. What is left before 2.0.0 is the other ingest protocols
-> (OTLP, HTTP, syslog) and the operational edges.
+> **Where it is:** P0–P5 are done — storage, search, compaction, the explorer
+> and the ingest protocols. What is left before 2.0.0 is the operational edges:
+> authentication, TLS, and a release pipeline for the three cgo platforms.
 
 `rtail` is a command line utility that grabs every line in `stdin` and broadcasts it over **UDP**. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using `rtail` broadcasting to an `rtail-server` – See multiple streams in the browser, in realtime.
 
@@ -106,6 +104,68 @@ in the URL.
 
 Keyboard: `/` or `⌘K` focuses the filter, `⏎` runs it, `j`/`k` move between
 events, `⎋` collapses everything.
+
+## Getting logs in
+
+Four ways, and every one of them lands in the same envelope — a record is
+indistinguishable once stored, whichever door it came through.
+
+**UNIX pipes**, the original, frozen forever:
+
+    $ node server.js 2>&1 | rtail --id api.example.com
+
+**HTTP**, for anything that would mind losing a line. UDP is at-most-once and
+capped at one datagram; this acknowledges, so a 200 means the records are in
+the write-ahead log and anything else is safe to retry:
+
+    $ curl -XPOST localhost:8888/v1/ingest?stream=api --data-binary @- <<'JSON'
+    {"level":"error","msg":"upstream timeout","service":"api","latency_ms":30004}
+    a plain line works too
+    JSON
+
+Newline-delimited JSON or plain text — the content type is not consulted,
+because the normalizer already decides per line what it is looking at. `gzip`
+and `zstd` bodies are decoded.
+
+**OpenTelemetry**, protobuf or JSON, at `/v1/logs`. Point any collector at it
+with a config line and no code change:
+
+    exporters:
+      otlphttp:
+        logs_endpoint: http://rtail:8888/v1/logs
+
+`service.name` becomes the stream, log and resource attributes become fields,
+and `trace_id`/`span_id` are promoted so correlation actually works.
+
+**Syslog**, RFC5424 and RFC3164, UDP and TCP on the same port:
+
+    $ rtail-server --data ./logs --syslog-port 5140
+
+    # rsyslog.conf
+    *.* @@rtail-host:5140;RSYSLOG_SyslogProtocol23Format
+
+APP-NAME becomes the stream, the priority becomes a real severity — so
+`level>=ERROR` works on syslog without anyone writing a parser — and RFC5424
+structured data is promoted to fields.
+
+Anything that can write NDJSON to an HTTP endpoint works without a plugin:
+
+    # vector.toml
+    [sinks.rtail]
+    type = "http"
+    inputs = ["my_source"]
+    uri = "http://rtail:8888/v1/ingest?stream=vector"
+    encoding.codec = "json"
+    framing.method = "newline_delimited"
+
+    # fluent-bit.conf
+    [OUTPUT]
+        Name   http
+        Match  *
+        Host   rtail
+        Port   8888
+        URI    /v1/ingest?stream=fluentbit
+        Format json_lines
 
 ## Rationale
 
@@ -352,7 +412,9 @@ The webapp is a client of a small documented API, so anything else can be too:
 | `GET /v1/fields?field=<name>` | the most common values of a field, within the current filter |
 | `GET /v1/schema` | every key ever seen, with its type — what autocomplete completes against |
 | `POST /v1/sql` | read-only SQL over a `logs` view |
-| `GET /healthz` | version, stream count, UDP ingest counters |
+| `POST /v1/ingest` | NDJSON or plain lines, optionally gzip/zstd |
+| `POST /v1/logs` | OTLP logs, protobuf or JSON |
+| `GET /healthz` | version, stream count, per-receiver ingest counters |
 
 The search endpoints share their parameters: `q` (filter), `stream`, `from` and
 `to` (RFC3339, epoch millis, or a relative `-6h`), `limit`, `cursor`, `order`.

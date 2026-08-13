@@ -36,8 +36,10 @@ type Options struct {
 	Engine  *query.Engine
 	Catalog *catalog.Catalog
 
-	// UDP, when set, is reported by /healthz.
-	UDP *ingest.UDPStats
+	// Ingest receivers, when set, are mounted and reported by /healthz.
+	UDP    *ingest.UDPStats
+	HTTPIn *ingest.HTTP
+	Syslog *ingest.SyslogStats
 
 	// WebRoot serves the webapp from disk instead of the embedded copy. The
 	// asset watcher rewrites bundle.js in place during development, and a
@@ -83,6 +85,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/schema", s.schema)
 	mux.HandleFunc("POST /v1/sql", s.sql)
 
+	if nil != s.opts.HTTPIn {
+		mux.HandleFunc("POST /v1/ingest", s.opts.HTTPIn.Lines)
+		// The path OTLP exporters default to, and our own alias for it.
+		mux.HandleFunc("POST /v1/logs", s.opts.HTTPIn.OTLP)
+		mux.HandleFunc("POST /v1/otlp/v1/logs", s.opts.HTTPIn.OTLP)
+	}
+
 	// Anything else is the webapp. Registered on the bare pattern so the
 	// explicit routes above always win.
 	if "" != s.opts.WebRoot {
@@ -113,6 +122,24 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 			"received": s.opts.UDP.Received.Load(),
 			"invalid":  s.opts.UDP.Invalid.Load(),
 			"bytes":    s.opts.UDP.Bytes.Load(),
+		}
+	}
+
+	if nil != s.opts.HTTPIn {
+		stats := s.opts.HTTPIn.Stats()
+		payload["http_ingest"] = map[string]uint64{
+			"requests": stats.Requests.Load(),
+			"received": stats.Received.Load(),
+			"rejected": stats.Rejected.Load(),
+			"bytes":    stats.Bytes.Load(),
+		}
+	}
+
+	if nil != s.opts.Syslog {
+		payload["syslog"] = map[string]uint64{
+			"received": s.opts.Syslog.Received.Load(),
+			"invalid":  s.opts.Syslog.Invalid.Load(),
+			"bytes":    s.opts.Syslog.Bytes.Load(),
 		}
 	}
 

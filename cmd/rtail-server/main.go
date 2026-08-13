@@ -136,6 +136,48 @@ func run() error {
 	}
 	defer udp.Close()
 
+	/*!
+	 * The v2 receivers.
+	 *
+	 * HTTP ingest and OTLP are always mounted — they cost nothing when unused
+	 * and being available is the point. Syslog binds real ports, so it is
+	 * opt-in: nobody should discover a listener they did not ask for.
+	 */
+	httpIn := ingest.NewHTTP(ingest.HTTPOptions{
+		Store:   store,
+		Log:     log,
+		MaxBody: int64(cfg.MaxBody) << 20,
+		Default: cfg.IngestStream,
+	})
+
+	var syslogStats *ingest.SyslogStats
+
+	if cfg.SyslogPort > 0 {
+		host := cfg.SyslogHost
+		if "" == host {
+			host = cfg.UDPHost
+		}
+
+		sys, err := ingest.ListenSyslog(host, cfg.SyslogPort, ingest.SyslogOptions{
+			Store: store,
+			Log:   log,
+		})
+		if nil != err {
+			return fmt.Errorf("binding syslog: %w", err)
+		}
+		defer sys.Close()
+
+		syslogStats = sys.Stats()
+
+		go func() {
+			if err := sys.Serve(ctx); nil != err {
+				log.Error("syslog receiver stopped", "err", err)
+			}
+		}()
+
+		log.Info("syslog listening", "udp", sys.Addr().String(), "tcp", sys.TCPAddr().String())
+	}
+
 	server := api.New(api.Options{
 		Store:   store,
 		Log:     log,
@@ -143,6 +185,8 @@ func run() error {
 		Engine:  engine,
 		Catalog: cat,
 		UDP:     udp.Stats(),
+		HTTPIn:  httpIn,
+		Syslog:  syslogStats,
 		WebRoot: cfg.WebRoot,
 	})
 

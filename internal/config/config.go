@@ -46,6 +46,17 @@ type Config struct {
 	DownsampleAfter time.Duration
 	DownsampleLevel string
 
+	// Syslog listens on this port over both UDP and TCP. 0 disables it —
+	// the default, because 514 needs root and nobody should be surprised by a
+	// listener they did not ask for.
+	SyslogPort int
+	SyslogHost string
+
+	// IngestStream names records that arrive over HTTP without one.
+	IngestStream string
+	// MaxBody bounds one ingest request.
+	MaxBody int
+
 	Verbose bool
 }
 
@@ -103,6 +114,11 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 	dur(&cfg.RetentionRaw, 0, "retention-raw", "drop the original line after this, keeping the columns")
 	dur(&cfg.DownsampleAfter, 0, "downsample-after", "discard low-severity records older than this")
 	str(&cfg.DownsampleLevel, "WARN", "downsample-level", "", "lowest severity kept by --downsample-after")
+
+	num(&cfg.SyslogPort, 0, "syslog-port", "", "listen for syslog on this port, UDP and TCP; 0 disables it")
+	str(&cfg.SyslogHost, "", "syslog-host", "", "syslog listen address (defaults to --udp-host)")
+	str(&cfg.IngestStream, "http", "ingest-stream", "", "stream for HTTP records that name none")
+	num(&cfg.MaxBody, 32, "max-body-mb", "", "largest accepted ingest request, in megabytes")
 
 	set.BoolVar(&cfg.Verbose, "verbose", envBool("verbose", false), "log at debug level")
 	set.BoolVar(&showVersion, "version", false, "print the version and exit")
