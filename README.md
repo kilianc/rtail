@@ -9,6 +9,19 @@
 
 ## Terminal output to the browser in seconds, using UNIX pipes.
 
+> **v2 — private preview.** This branch is the rewrite described in
+> [`docs/proposal-logging-system.md`](docs/proposal-logging-system.md): rTail is
+> growing into a durable, searchable log store backed by Parquet and SQL. The
+> server is now a single Go binary with the webapp embedded, and the npm
+> package carries only the client pipe.
+>
+> The `cmd | rtail` wire format is frozen and always will be — the client you
+> already have installed works against a v2 server unchanged. Everything else
+> on this branch is subject to change until 2.0.0 ships.
+>
+> **Not yet durable.** P0 is the Go port at parity: history is still an
+> in-memory ring per stream. Persistence lands in P1.
+
 `rtail` is a command line utility that grabs every line in `stdin` and broadcasts it over **UDP**. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using `rtail` broadcasting to an `rtail-server` – See multiple streams in the browser, in realtime.
 
 ## Running the server
@@ -41,8 +54,8 @@ not in the container. It needs Node.js 20 or newer:
 
     $ npm install -g rtail
 
-`npm install -g rtail` also gives you `rtail-server`, if you would rather run
-the server without Docker.
+That is all npm ships in v2. The server is a Go binary — run the container
+above, or build it yourself with `make release`.
 
 ## Web app
 
@@ -61,9 +74,9 @@ There are many log aggregation tools out there, but few of them are realtime. **
 **The `rtail` approach is very simple:**
 * pipe something into `rtail` using [UNIX I/O redirection](http://www.westwind.com/reference/os-x/commandline/pipes.html) [[2]](http://www.codecoffee.com/tipsforlinux/articles2/042.html)
 * broadcast every line using UDP
-* `rtail-server`, **if listening**, will dispatch the stream into your browser, using [socket.io](http://socket.io/).
+* `rtail-server`, **if listening**, will dispatch the stream into your browser, using [server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events).
 
-`rtail` is a realtime debugging and monitoring tool, which can display multiple aggregate streams via a modern web interface. **There is no persistent layer, nor does the tool store any data**. If you need a persistent layer, use something like [loggly](https://www.loggly.com/).
+`rtail` is a realtime debugging and monitoring tool, which can display multiple aggregate streams via a modern web interface. **As of this branch there is still no persistent layer** — history is a bounded in-memory ring per stream. Durable Parquet-backed storage and SQL search are the next milestones; see [the proposal](docs/proposal-logging-system.md).
 
 ## Examples
 
@@ -118,7 +131,7 @@ For fun and debugging:
 
 ## `rtail-server(1)`
 
-`rtail-server` receives all messages broadcast from every `rtail` client, displaying all incoming log streams in a realtime web view. **Under the hood, the server uses [socket.io](http://socket.io) to pipe every incoming UDP message to the browser.**
+`rtail-server` receives all messages broadcast from every `rtail` client, displaying all incoming log streams in a realtime web view. **Under the hood it is a single static Go binary with the webapp embedded, pushing every incoming UDP message to the browser over server-sent events.**
 
 There is little to no configuration – The default UDP/HTTP ports can be changed, but that's it.
 
@@ -128,17 +141,13 @@ Use default values:
 
     $ rtail-server
 
-Always use latest, stable webapp:
-
-    $ rtail-server --web-version stable
-
 Use custom ports:
 
     $ rtail-server --web-port 8080 --udp-port 9090
 
 Set debugging on:
 
-    $ DEBUG=rtail:* rtail-server
+    $ rtail-server --verbose
 
 Open your browser and start tailing logs!
 
@@ -147,26 +156,36 @@ Open your browser and start tailing logs!
     $ rtail-server --help
     Usage: rtail-server [OPTIONS]
 
-    Options:
-    --udp-host, --uh  The listening UDP hostname            [default: "127.0.0.1"]
-    --udp-port, --up  The listening UDP port                       [default: 9999]
-    --web-host, --wh  The listening HTTP hostname           [default: "127.0.0.1"]
-    --web-port, --wp  The listening HTTP port                      [default: 8888]
-    --web-version     Define web app version to serve                     [string]
-    --backlog, -b     Lines of history kept per stream    [number] [default: 100]
-    --help, -h        Show help                                          [boolean]
-    --version, -v     Show version number                                [boolean]
+    Every option is also settable as RTAIL_*, e.g. RTAIL_WEB_PORT.
+
+      -udp-host string   the listening UDP hostname     (default "127.0.0.1")
+      -udp-port int      the listening UDP port         (default 9999)
+      -web-host string   the listening HTTP hostname    (default "127.0.0.1")
+      -web-port int      the listening HTTP port        (default 8888)
+      -backlog int       lines of history kept per stream (default 100)
+      -data string       directory for durable storage  (unset: memory only)
+      -web-root string   serve the webapp from this directory instead of the binary
+      -verbose           log at debug level
+      -version           print the version and exit
+
+The v1 short aliases still work: `--uh`, `--up`, `--wh`, `--wp`, `-b`.
 
 Every option can also be set as an environment variable, prefixed with
 `RTAIL_` — `RTAIL_WEB_PORT=8080`, `RTAIL_BACKLOG=500`, and so on. This is how
 the container image is configured.
 
-    Examples:
-    rtail-server --web-port 8080         Use custom HTTP port
-    rtail-server --udp-port 8080         Use custom UDP port
-    rtail-server --web-version stable    Always uses latest stable webapp
-    rtail-server --web-version unstable  Always uses latest develop webapp
-    rtail-server --web-version 0.1.3     Use webapp v0.1.3
+`--data` is accepted but not yet implemented; it fails loudly rather than
+silently keeping everything in memory. It turns on in P1.
+
+## API
+
+The webapp is a client of a small documented API, so anything else can be too:
+
+| endpoint | what it does |
+|---|---|
+| `GET /v1/streams` | every known stream |
+| `GET /v1/tail?stream=<name>` | SSE feed: `streams`, `backlog`, then `line` events. Omit `stream` to watch the stream list only |
+| `GET /healthz` | version, stream count, UDP ingest counters |
 
 ## UDP Broadcasting
 
@@ -184,14 +203,17 @@ Note there are two images, and they are not the same thing:
 which mounts your checkout.
 
 The toolchain lives in a container ([`tools/Dockerfile`](tools/Dockerfile)), so Docker is
-the only thing you need installed — no Node.js, no npm, no global CLIs.
+the only thing you need installed — no Node.js, no Go, no npm, no global CLIs.
+v2 needs both toolchains: Node builds the webapp, Go builds the server that
+embeds it, and the image carries pinned versions of each.
 
     $ make dev
 
-That builds the assets, starts `rtail-server`, feeds it three live demo
-streams, and serves the webapp. It prints the URL — `make url` prints it
-again. Stylesheets recompile on save; reload the browser to pick them up.
-`Ctrl-C` stops everything.
+That builds the assets and the server binary, starts `rtail-server`, feeds it
+three live demo streams, and serves the webapp. It prints the URL — `make url`
+prints it again. Stylesheets and the bundle recompile on save; reload the
+browser to pick them up. Go changes need a `make dev` restart, because the
+binary is rebuilt at startup. `Ctrl-C` stops everything.
 
 The first run also builds the toolchain image and installs dependencies, so it
 takes a minute; subsequent runs start immediately.
@@ -204,12 +226,16 @@ To leave it running in the background instead:
 
 Other targets:
 
-    $ make build      # build the webapp into app/
-    $ make dist       # build the minified webapp into dist/
-    $ make test       # run the test suite
+    $ make server     # build bin/rtail-server
+    $ make release    # build the self-contained server, webapp embedded
+    $ make build      # build the webapp into app/ (development)
+    $ make dist       # build the minified webapp into web/dist
+    $ make test       # run the Go and Node test suites
+    $ make vet        # go vet
+    $ make fmt        # gofmt the Go sources
     $ make typecheck  # type-check the webapp
     $ make shell      # open a shell inside the toolchain container
-    $ make clean      # remove generated assets and dependencies
+    $ make clean      # remove generated assets, binaries and dependencies
 
 ### Ports
 

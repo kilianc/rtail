@@ -9,8 +9,9 @@ import { fileURLToPath } from 'node:url'
 
 const root = new URL('../', import.meta.url)
 
+// The server moved to Go in v2 and is covered by `go test ./...`; npm now
+// carries only the client pipe.
 export const CLIENT = fileURLToPath(new URL('cli/rtail-client.js', root))
-export const SERVER = fileURLToPath(new URL('cli/rtail-server.js', root))
 
 /** Binds a UDP socket and collects every decoded rtail message it receives. */
 export async function listen(port, host = '127.0.0.1') {
@@ -55,39 +56,6 @@ export function runClient(args, input) {
     child.once('error', reject)
     child.once('close', (code) => resolve({ code, stdout }))
   })
-}
-
-/** Starts the server and resolves once its HTTP port answers. */
-export async function startServer(args, { webPort } = {}) {
-  const child = spawn(process.execPath, [SERVER, ...args], { stdio: 'ignore' })
-
-  if (webPort) await waitForHttp(`http://127.0.0.1:${webPort}/`)
-  else await delay(500)
-
-  return {
-    child,
-    stop: () =>
-      new Promise((resolve) => {
-        child.once('close', resolve)
-        child.kill('SIGTERM')
-      })
-  }
-}
-
-/** Polls a URL until it answers, so tests never race a fixed sleep. */
-export async function waitForHttp(url, timeoutMs = 10_000) {
-  const deadline = Date.now() + timeoutMs
-
-  while (Date.now() < deadline) {
-    try {
-      await fetch(url)
-      return
-    } catch {
-      await delay(100)
-    }
-  }
-
-  throw new Error(`timed out waiting for ${url}`)
 }
 
 /** Polls `predicate` until it returns true. */

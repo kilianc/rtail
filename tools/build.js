@@ -3,7 +3,7 @@
  *
  *   node tools/build.js            build into app/ for local development
  *   node tools/build.js --watch    ... and rebuild on change
- *   node tools/build.js --dist     minified, self-contained, into dist/
+ *   node tools/build.js --dist     minified, into web/dist/ for the Go binary
  *
  * Replaces the gulp pipeline (gulp 3 cannot run on Node >= 12) with the
  * esbuild and dart-sass APIs directly.
@@ -22,7 +22,10 @@ const args = new Set(process.argv.slice(2))
 const isDist = args.has('--dist')
 const isWatch = args.has('--watch')
 
-const outDir = isDist ? path('dist') : path('app')
+// The distribution build lands in web/dist because that is what the Go binary
+// embeds — see web/web.go. Development builds stay in app/, which the server
+// serves straight from disk via --web-root.
+const outDir = isDist ? path('web/dist') : path('app')
 const pkg = JSON.parse(await readFile(path('package.json'), 'utf8'))
 
 /**
@@ -64,6 +67,11 @@ const jsOptions = {
 async function buildStatic() {
   await cp(path('app/index.html'), `${outDir}/index.html`)
   await cp(path('app/images'), `${outDir}/images`, { recursive: true })
+
+  // web/dist is wiped on every dist build, but the directory itself has to
+  // survive in git: `go:embed all:dist` fails to compile if it is missing, and
+  // a Go build must not depend on having run the Node toolchain first.
+  await writeFile(`${outDir}/.gitkeep`, '')
 }
 
 if (isDist) {
@@ -75,7 +83,7 @@ await esbuild.build(jsOptions)
 
 if (isDist) {
   await buildStatic()
-  console.log('built dist/')
+  console.log('built web/dist/ — rebuild the server to embed it')
 } else {
   console.log('built app/bundle.js and app/css/main.css')
 }

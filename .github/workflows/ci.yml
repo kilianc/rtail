@@ -6,7 +6,39 @@ on:
   pull_request:
 
 jobs:
-  build:
+  # The server. v2 moved it from Node to Go; the webapp is embedded into the
+  # binary, so the Go build needs the assets built first.
+  server:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l cmd internal web)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt needed on:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Build
+        run: CGO_ENABLED=0 go build -trimpath -o /tmp/rtail-server ./cmd/rtail-server
+
+  # The webapp and the client pipe, which is all npm still ships.
+  webapp:
     runs-on: ubuntu-latest
 
     strategy:
@@ -31,8 +63,37 @@ jobs:
       - name: Build the webapp
         run: npm run build
 
-      - name: Build the distributable webapp
+      - name: Build the embedded webapp
         run: npm run dist
 
-      - name: Test
+      - name: Test the client
         run: npm test
+
+  # The whole thing, exactly as it ships.
+  image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: rtail:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke-test the image
+        run: |
+          docker run -d --name rtail -p 8888:8888 -p 9999:9999/udp rtail:ci
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8888/healthz && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8888/healthz | tee /dev/stderr | grep -q '"status":"ok"'
+          curl -sf http://127.0.0.1:8888/ | grep -qi '<title'
+          docker rm -f rtail

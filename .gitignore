@@ -1,5 +1,15 @@
 node_modules
-dist
 app/css
 app/bundle.js
 app/bundle.js.map
+
+# The Go server binary and the toolchain caches (kept in-tree so the container
+# writes them as the invoking user — see tools/Dockerfile).
+bin
+.gocache
+.gomodcache
+
+# The built webapp, which the Go binary embeds. The directory itself must stay
+# in git or `go:embed all:dist` fails to compile on a fresh clone.
+web/dist/*
+!web/dist/.gitkeep

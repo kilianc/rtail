@@ -12,8 +12,10 @@
 # Not to be confused with tools/Dockerfile, which is the development toolchain
 # and mounts your checkout.
 
+ARG VERSION=2.0.0-dev
+
 # ---- build the webapp ------------------------------------------------------
-FROM node:22.12.0-bookworm-slim AS build
+FROM node:22.12.0-bookworm-slim AS webapp
 
 WORKDIR /src
 
@@ -21,26 +23,39 @@ WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
-COPY . .
+COPY app ./app
+COPY tools ./tools
 RUN npm run dist
 
+# ---- build the server ------------------------------------------------------
+FROM golang:1.26.3-bookworm AS build
+
+ARG VERSION
+
+WORKDIR /src
+
+COPY go.mod ./
+RUN go mod download
+
+COPY cmd ./cmd
+COPY internal ./internal
+COPY web ./web
+
+# The webapp is embedded into the binary, so it has to land before the build.
+COPY --from=webapp /src/web/dist ./web/dist
+
+# P0 has no cgo dependencies, so the result is a fully static binary and the
+# runtime image can be distroless. That changes in P2: DuckDB is cgo, and this
+# will need a glibc base and a per-platform build.
+RUN CGO_ENABLED=0 go build \
+      -trimpath \
+      -ldflags "-s -w -X main.version=${VERSION}" \
+      -o /rtail-server ./cmd/rtail-server
+
 # ---- runtime ---------------------------------------------------------------
-FROM node:22.12.0-bookworm-slim AS runtime
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 
-# update-notifier phones npm on startup and prints a banner nobody can act on
-# from inside a container image.
-ENV NODE_ENV=production \
-    NO_UPDATE_NOTIFIER=1 \
-    NPM_CONFIG_UPDATE_NOTIFIER=false
-
-WORKDIR /app
-
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund \
- && npm cache clean --force
-
-COPY --from=build /src/cli ./cli
-COPY --from=build /src/dist ./dist
+COPY --from=build /rtail-server /rtail-server
 
 # A container's loopback is its own; binding 127.0.0.1 would make the published
 # ports unreachable. Set as env rather than in CMD so that `docker run rtail
@@ -53,9 +68,8 @@ ENV RTAIL_WEB_HOST=0.0.0.0 \
 EXPOSE 8888/tcp
 EXPOSE 9999/udp
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.RTAIL_WEB_PORT||8888)+'/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+# No HEALTHCHECK: a distroless image has no shell and no curl to run one with.
+# Point your orchestrator at GET /healthz instead — it reports the version,
+# the stream count and the UDP ingest counters.
 
-USER node
-
-ENTRYPOINT ["node", "cli/rtail-server.js"]
+ENTRYPOINT ["/rtail-server"]

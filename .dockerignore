@@ -2,10 +2,16 @@
 .github
 .claude
 node_modules
-dist
+bin
+.gocache
+.gomodcache
 app/css
 app/bundle.js
 app/bundle.js.map
+web/dist
+docs
+test
+test-results
 *.log
 Makefile
 README.md

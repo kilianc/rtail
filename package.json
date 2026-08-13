@@ -1,6 +1,6 @@
 {
   "name": "rtail",
-  "version": "0.2.1",
+  "version": "2.0.0-dev",
   "description": "Terminal output to the browser in seconds, using UNIX pipes.",
   "keywords": [
     "log",
@@ -14,13 +14,12 @@
   "engines": {
     "node": ">=20"
   },
+  "//": "v2 ships the server as a Go binary with the webapp embedded; npm now carries only the client pipe. See docs/proposal-logging-system.md.",
   "bin": {
-    "rtail": "./cli/rtail-client.js",
-    "rtail-server": "./cli/rtail-server.js"
+    "rtail": "./cli/rtail-client.js"
   },
   "files": [
-    "cli",
-    "dist"
+    "cli"
   ],
   "repository": {
     "type": "git",
@@ -28,10 +27,7 @@
   },
   "dependencies": {
     "chrono-node": "^2.7.7",
-    "debug": "^4.4.0",
-    "express": "^4.21.2",
     "json5": "^2.2.3",
-    "socket.io": "^4.8.1",
     "strip-ansi": "^7.1.0",
     "update-notifier": "^7.3.1",
     "yargs": "^17.7.2"
@@ -43,7 +39,6 @@
     "highlight.js": "^11.11.1",
     "preact": "^10.25.4",
     "sass": "^1.83.0",
-    "socket.io-client": "^4.8.1",
     "typescript": "^5.7.3"
   },
   "scripts": {
@@ -51,8 +46,7 @@
     "build": "node tools/build.js",
     "dist": "node tools/build.js --dist",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/*.test.js",
-    "prepack": "node tools/build.js --dist"
+    "test": "node --test test/*.test.js"
   },
   "browserslist": [
     "last 2 versions",

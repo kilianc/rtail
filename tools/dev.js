@@ -1,8 +1,12 @@
 /*!
  * dev.js — everything you need to look at the app locally.
  *
- * Builds and watches the webapp, runs the real rtail-server, and feeds it a
- * few demo streams so there is something to render.
+ * Builds and watches the webapp, runs the Go rtail-server against those files
+ * on disk, and feeds it a few demo streams so there is something to render.
+ *
+ * The server binary is built by the Makefile before this runs; asset changes
+ * are picked up live because --web-root serves app/ from disk rather than the
+ * copy embedded in the binary. Go changes need a restart.
  */
 
 import { spawn } from 'node:child_process'
@@ -16,6 +20,8 @@ const PORT = process.env.WEB_PORT || '8888'
 // The UDP listener needs its own per-worktree port too: two checkouts both
 // binding 9999 would fight, and whichever lost would silently receive no logs.
 const UDP_PORT = process.env.UDP_PORT || '9999'
+
+const SERVER = process.env.RTAIL_SERVER_BIN || path('bin/rtail-server')
 
 const DEMO_STREAMS = ['api-gateway', 'worker-billing', 'nginx-access']
 
@@ -39,14 +45,22 @@ console.log('==> building and watching assets')
 run('node', [path('tools/build.js'), '--watch'], { stdio: 'inherit' })
 
 console.log(`==> starting rtail-server on 0.0.0.0:${PORT} (udp ${UDP_PORT})`)
+
 // 0.0.0.0 so the port is reachable from the host through Docker's NAT.
-run('node', [
-  path('cli/rtail-server.js'),
-  '--web-version', 'development',
+const server = run(SERVER, [
+  '--web-root', path('app'),
   '--web-host', '0.0.0.0',
   '--web-port', PORT,
+  '--udp-host', '0.0.0.0',
   '--udp-port', UDP_PORT
 ], { stdio: 'inherit' })
+
+server.on('error', (err) => {
+  if ('ENOENT' === err.code) {
+    console.error(`\n  ${SERVER} is missing. Build it first:\n\n    make server\n`)
+    shutdown()
+  }
+})
 
 // Give the UDP listener a moment before the producers start talking to it.
 setTimeout(() => {
@@ -65,7 +79,7 @@ setTimeout(() => {
   }
 
   console.log('')
-  console.log(`  rTail is up:  http://localhost:${PORT}/app`)
+  console.log(`  rTail is up:  http://localhost:${PORT}/`)
   console.log('  Ctrl-C to stop.')
   console.log('')
 }, 1000)
