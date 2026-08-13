@@ -40,15 +40,17 @@ interface Props {
 }
 
 /*!
- * Severity chips, as Cloud Logging draws them.
+ * Severity glyphs, copied off a real Logs Explorer.
  *
- * A short glyph in a tinted pill rather than a dot: the point of the column is
- * to be scannable down a thousand rows, and a letter survives that better than
- * a colour alone does. Unknown severities fall through to their initial.
+ * A round badge with a symbol rather than a lettered square: `i` for the
+ * routine levels, `!` once something is wrong and `!!` when it is worse. The
+ * shape carries as much as the colour, which is what keeps the column
+ * readable at 22px and for anyone who cannot separate the reds from the greys.
  */
-const CHIPS: Record<string, string> = {
-  EMERGENCY: 'E', ALERT: 'A', CRITICAL: 'C', FATAL: 'F',
-  ERROR: 'E', WARN: 'W', NOTICE: 'N', INFO: 'I', DEBUG: 'D', TRACE: 'T'
+const GLYPHS: Record<string, string> = {
+  EMERGENCY: '!!', ALERT: '!!', CRITICAL: '!!', FATAL: '!!',
+  ERROR: '!', WARN: '!',
+  NOTICE: 'i', INFO: 'i', DEBUG: 'i', TRACE: 'i'
 }
 
 export function LogRow({ line, expanded, selected, active, onToggle, onFilter, onContext }: Props) {
@@ -68,7 +70,7 @@ export function LogRow({ line, expanded, selected, active, onToggle, onFilter, o
         <i class="row-caret" aria-hidden="true" />
 
         <span class="row-level" title={level || undefined}>
-          <i class="row-chip" aria-hidden="true">{CHIPS[level] ?? level.slice(0, 1)}</i>
+          <i class="row-chip" aria-hidden="true">{GLYPHS[level] ?? 'i'}</i>
           <span class="sr-only">{level || 'no severity'}</span>
         </span>
 

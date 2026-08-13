@@ -133,8 +133,29 @@ function FieldGroup({ field, params, open, active, onToggle, onFilter }: GroupPr
     <section class={`explorer-field ${open ? 'open' : ''} ${active ? 'active' : ''}`}>
       <button class="explorer-head" aria-expanded={open} onClick={onToggle}>
         <span class="explorer-name">{field.name}</span>
-        <span class={`explorer-kind kind-${field.kind}`}>
-          {field.polymorphic ? 'mixed' : field.kind}
+
+        {/*
+          The count, not the type — which is what the real panel shows, and it
+          is the more useful of the two here: the type is already in the
+          autocomplete, whereas "how much of this is there" is the question the
+          panel exists to answer. The type stays available on hover.
+        */}
+        {/*
+          Envelope fields carry no occurrence count — they are on every record
+          by construction, so the catalog does not tally them. Falling back to
+          the kind keeps the column from being blank for half the list, which
+          reads as data failing to load rather than as a count that does not
+          apply.
+        */}
+        <span
+          class={`explorer-kind kind-${field.kind}`}
+          title={
+            field.occurrences
+              ? `${field.occurrences.toLocaleString()} records, all time · ${field.kind}`
+              : `on every record · ${field.kind}`
+          }
+        >
+          {field.occurrences ? field.occurrences.toLocaleString() : field.kind}
         </span>
       </button>
 

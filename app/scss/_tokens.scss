@@ -47,9 +47,10 @@
   --icon: 18px;
   --icon-sm: 14px;
   --dot: 8px;
-  --line-h: 28px;       // one log row — dense, like the real thing
+  --line-h: 22px;       // one log row — measured off the real thing
   --chart-h: 72px;
-  --gutter-w: 132px;    // timestamp column
+  --gutter-w: 148px;    // timestamp column, wide enough for a full date
+  --sev-w: 44px;        // severity column — one badge, and the word "Sev"
   --sidebar-w: 264px;
   --marker-w: 3px;
   --hairline: 1px;
@@ -67,121 +68,47 @@
   --tracking-tight: 0;
   --tracking-wide: 0.08em;
 
-  // ** surfaces **
-  --background: #ffffff;
-  --card: #ffffff;
-  --elevated: #ffffff;
-  --foreground: #202124;        // grey 900
-
-  --popover: var(--elevated);
-  --popover-foreground: var(--foreground);
-
-  --muted: #f1f3f4;             // grey 100 — panel headers, chips
-  --muted-foreground: #5f6368;  // grey 700 — secondary text
-  --faint-foreground: #80868b;  // grey 600 — timestamps, counts
-
-  --subtle: #f8f9fa;            // grey 50 — row hover
-  --subtle-strong: #f1f3f4;
-
-  // ** hairlines **
-  --border: #dadce0;            // grey 300 — the Material divider
-  --border-strong: #bdc1c6;
-  --input: #dadce0;
-
-  // ** elevation — Material's, which is soft and short **
-  --shadow-sm: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
-  --shadow-md: 0 1px 2px rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
-  --shadow-lg: 0 4px 8px 3px rgba(60, 64, 67, 0.15), 0 1px 3px rgba(60, 64, 67, 0.3);
-
-  // ** severity **
-  //
-  // Cloud Logging's own: red for error, amber for warning, grey for everything
-  // routine. Kept out of the ANSI palette on purpose — those are *content*
-  // colours a log line chose for itself, and severity is ours.
-  --level-error: #d93025;       // red 600
-  --level-error-bg: #fce8e6;
-  --level-error-wash: rgba(217, 48, 37, 0.04);
-  --level-warn: #e37400;        // orange 700
-  --level-warn-bg: #feefe3;
-  --level-info: #5f6368;
-  --level-info-bg: #f1f3f4;
-  --level-debug: #80868b;
-
-  // ** the one accent — Google blue **
-  --primary: #1a73e8;
-  --primary-hover: #1765cc;
-  --primary-foreground: #ffffff;
-  --primary-subtle: #e8f0fe;    // blue 50 — selected rows, chips
-  --primary-glow: rgba(26, 115, 232, 0.24);
-  --ring: rgba(26, 115, 232, 0.5);
-
-  // ** live **
-  --live: #1e8e3e;              // green 700
-  --live-glow: rgba(30, 142, 62, 0.4);
-
-  // ** the histogram **
-  //
-  // Routine volume is a lighter blue than the accent. At full --primary the
-  // bars fuse into one saturated slab and stop reading as a chart — the eye
-  // needs the common case to sit back so the spikes can come forward.
-  --chart-bar: #8ab4f8;         // blue 300
-  --chart-bar-hover: #669df6;
-  --chart-grid: #f1f3f4;
-
-  // ** ansi palette — the only colour that is not ours **
-  --ansi-black: #5f6368;
-  --ansi-black-bright: #3c4043;
-  --ansi-red: #d93025;
-  --ansi-red-bright: #a50e0e;
-  --ansi-green: #188038;
-  --ansi-green-bright: #0d652d;
-  --ansi-yellow: #b06000;
-  --ansi-yellow-bright: #8a4600;
-  --ansi-blue: #1967d2;
-  --ansi-blue-bright: #174ea6;
-  --ansi-magenta: #a142f4;
-  --ansi-magenta-bright: #8430ce;
-  --ansi-cyan: #007b83;
-  --ansi-cyan-bright: #00565c;
-  --ansi-white: #5f6368;
-  --ansi-white-bright: #202124;
-}
-
-.dark {
-  color-scheme: dark;
-
-  --background: #202124;        // Google's own dark surface
-  --card: #292a2d;
-  --elevated: #35363a;
+  // ** surfaces — Google's own dark console greys **
+  --background: #1f1f1f;
+  --card: #1f1f1f;
+  --elevated: #2d2e30;
   --foreground: #e8eaed;
 
   --popover: var(--elevated);
   --popover-foreground: var(--foreground);
 
-  --muted: #35363a;
+  --muted: #292a2d;
   --muted-foreground: #9aa0a6;
   --faint-foreground: #80868b;
 
-  --subtle: #28292c;
+  --subtle: #292a2d;
   --subtle-strong: #35363a;
 
+  // ** hairlines **
   --border: #3c4043;
   --border-strong: #5f6368;
   --input: #5f6368;
 
+  // ** elevation **
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
   --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
   --shadow-lg: 0 4px 8px 3px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.3);
 
+  // ** severity **
+  //
+  // Cloud Logging's dark palette: these are the colours its severity icons
+  // actually use, not a guess at them.
   --level-error: #f28b82;
-  --level-error-bg: #3d2b29;
+  --level-error-bg: #3f2a28;
   --level-error-wash: rgba(242, 139, 130, 0.05);
   --level-warn: #fdd663;
   --level-warn-bg: #3d3423;
-  --level-info: #9aa0a6;
-  --level-info-bg: #35363a;
-  --level-debug: #80868b;
+  --level-info: #8ab4f8;
+  --level-info-bg: #283142;
+  --level-debug: #9aa0a6;
+  --level-debug-bg: #35363a;
 
+  // ** the one accent — Google blue, dark-mode variant **
   --primary: #8ab4f8;
   --primary-hover: #aecbfa;
   --primary-foreground: #202124;
@@ -189,13 +116,16 @@
   --primary-glow: rgba(138, 180, 248, 0.24);
   --ring: rgba(138, 180, 248, 0.5);
 
+  // ** live **
   --live: #81c995;
   --live-glow: rgba(129, 201, 149, 0.4);
 
+  // ** the histogram **
   --chart-bar: #4a6da8;
   --chart-bar-hover: #5c84c4;
   --chart-grid: #35363a;
 
+  // ** ansi palette — the only colour that is not ours **
   --ansi-black: #9aa0a6;
   --ansi-black-bright: #bdc1c6;
   --ansi-red: #f28b82;
@@ -212,6 +142,74 @@
   --ansi-cyan-bright: #a1e4f2;
   --ansi-white: #e8eaed;
   --ansi-white-bright: #f8f9fa;
+}
+
+.light {
+  color-scheme: light;
+
+    --background: #ffffff;
+  --card: #ffffff;
+  --elevated: #ffffff;
+  --foreground: #202124;
+
+  --popover: var(--elevated);
+  --popover-foreground: var(--foreground);
+
+  --muted: #f1f3f4;
+  --muted-foreground: #5f6368;
+  --faint-foreground: #80868b;
+
+  --subtle: #f8f9fa;
+  --subtle-strong: #f1f3f4;
+
+  --border: #dadce0;
+  --border-strong: #bdc1c6;
+  --input: #dadce0;
+
+  --shadow-sm: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  --shadow-md: 0 1px 2px rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
+  --shadow-lg: 0 4px 8px 3px rgba(60, 64, 67, 0.15), 0 1px 3px rgba(60, 64, 67, 0.3);
+
+  --level-error: #d93025;
+  --level-error-bg: #fce8e6;
+  --level-error-wash: rgba(217, 48, 37, 0.04);
+  --level-warn: #e37400;
+  --level-warn-bg: #feefe3;
+  --level-info: #1a73e8;
+  --level-info-bg: #e8f0fe;
+  --level-debug: #5f6368;
+  --level-debug-bg: #f1f3f4;
+
+  --primary: #1a73e8;
+  --primary-hover: #1765cc;
+  --primary-foreground: #ffffff;
+  --primary-subtle: #e8f0fe;
+  --primary-glow: rgba(26, 115, 232, 0.24);
+  --ring: rgba(26, 115, 232, 0.5);
+
+  --live: #1e8e3e;
+  --live-glow: rgba(30, 142, 62, 0.4);
+
+  --chart-bar: #8ab4f8;
+  --chart-bar-hover: #669df6;
+  --chart-grid: #f1f3f4;
+
+  --ansi-black: #5f6368;
+  --ansi-black-bright: #3c4043;
+  --ansi-red: #d93025;
+  --ansi-red-bright: #a50e0e;
+  --ansi-green: #188038;
+  --ansi-green-bright: #0d652d;
+  --ansi-yellow: #b06000;
+  --ansi-yellow-bright: #8a4600;
+  --ansi-blue: #1967d2;
+  --ansi-blue-bright: #174ea6;
+  --ansi-magenta: #a142f4;
+  --ansi-magenta-bright: #8430ce;
+  --ansi-cyan: #007b83;
+  --ansi-cyan-bright: #00565c;
+  --ansi-white: #5f6368;
+  --ansi-white-bright: #202124;
 }
 
 // **

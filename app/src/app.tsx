@@ -323,7 +323,13 @@ export function App() {
           onSubmit={commit}
         />
 
-        <TimeRange range={view.range} onChange={setRange} />
+        <div class="query-actions">
+          <button class="command-run" onClick={commit}>
+            Run query
+          </button>
+
+          <TimeRange range={view.range} onChange={setRange} />
+        </div>
       </div>
 
       <Histogram

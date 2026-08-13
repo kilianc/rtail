@@ -16,7 +16,7 @@ export const FONT_SIZE_MAX = 7
 export const FONT_FAMILY_COUNT = 6
 
 const DEFAULTS: Prefs = {
-  theme: 'light',
+  theme: 'dark',
   fontFamily: 1,
   fontSize: 4,
   favorites: []
@@ -40,7 +40,7 @@ export function loadPrefs(): Prefs {
   }
 
   return {
-    theme: 'dark' === stored.theme ? 'dark' : 'light',
+    theme: 'light' === stored.theme ? 'light' : 'dark',
     fontFamily: clamp(Number(stored.fontFamily) || DEFAULTS.fontFamily, 1, FONT_FAMILY_COUNT),
     fontSize: clamp(Number(stored.fontSize) || DEFAULTS.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX),
     favorites: Array.isArray(stored.favorites) ? stored.favorites.filter(isString) : []
