@@ -23,14 +23,16 @@ ansi.use_classes = true
 // controlled (they are whatever a piped process printed).
 ansi.escape_html = true
 
-const timestampFormat = new Intl.DateTimeFormat(undefined, {
-  year: '2-digit',
-  month: '2-digit',
-  day: '2-digit',
+const clockFormat = new Intl.DateTimeFormat(undefined, {
   hour: '2-digit',
   minute: '2-digit',
   second: '2-digit',
   hour12: false
+})
+
+const dateFormat = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: '2-digit'
 })
 
 let nextKey = 0
@@ -82,10 +84,28 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
-export function formatTimestamp(timestamp: number): string {
-  // Intl joins the date and time parts with a locale separator (", " in most
-  // locales); a log gutter reads better without it.
-  return timestampFormat.format(new Date(timestamp)).replace(',', '')
+/*!
+ * Splits a timestamp into the parts the gutter renders separately.
+ *
+ * The date is dropped for today, which is nearly every row nearly always:
+ * forty repetitions of the same `08/13/26` is the loudest thing on screen and
+ * carries no information. Milliseconds come back on their own so they can be
+ * dimmed — they matter when two lines share a second and are noise otherwise.
+ */
+export function formatClock(timestamp: number): { date: string | null; time: string; ms: string } {
+  const at = new Date(timestamp)
+  const now = new Date()
+
+  const sameDay =
+    at.getFullYear() === now.getFullYear() &&
+    at.getMonth() === now.getMonth() &&
+    at.getDate() === now.getDate()
+
+  return {
+    date: sameDay ? null : dateFormat.format(at),
+    time: clockFormat.format(at),
+    ms: String(at.getMilliseconds()).padStart(3, '0')
+  }
 }
 
 /**

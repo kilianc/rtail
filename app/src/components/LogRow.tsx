@@ -8,8 +8,18 @@
  * you built by clicking is something you could have typed.
  */
 
-import { formatTimestamp } from '../lib/format.js'
+import { formatClock } from '../lib/format.js'
 import type { Line } from '../lib/types.js'
+
+/**
+ * Keys the normalizer lifts into the envelope, and which are therefore already
+ * rendered above the promoted fields.
+ */
+const LIFTED = new Set([
+  'level', 'severity', 'severity_text', 'severitytext', 'lvl', 'loglevel', 'log_level', '@l',
+  'message', 'msg', 'text', 'short_message', '@m',
+  'timestamp', 'ts', 'time', '@timestamp', 'eventtime', 'datetime'
+])
 
 export interface FilterAction {
   field: string
@@ -31,6 +41,7 @@ interface Props {
 
 export function LogRow({ line, expanded, selected, active, onToggle, onFilter, onContext }: Props) {
   const level = (line.level ?? '').toUpperCase()
+  const clock = formatClock(line.timestamp)
 
   return (
     <div
@@ -39,10 +50,21 @@ export function LogRow({ line, expanded, selected, active, onToggle, onFilter, o
     >
       <div class="row-head">
         <time class="row-time" dateTime={new Date(line.timestamp).toISOString()}>
-          {formatTimestamp(line.timestamp)}
+          {clock.date && <span class="row-date">{clock.date}</span>}
+          {clock.time}
+          <span class="row-ms">.{clock.ms}</span>
         </time>
 
-        {level && <span class="row-level">{level}</span>}
+        {/*
+          A dot carries the severity and the word confirms it. The dot is what
+          you actually scan — colour at a glance, at a size that survives forty
+          rows of it — and the label is there so the colour is never the only
+          thing saying so.
+        */}
+        <span class="row-level">
+          <i class="row-dot" aria-hidden="true" />
+          {level}
+        </span>
 
         <span class="row-message" dangerouslySetInnerHTML={{ __html: line.html }} />
       </div>
@@ -65,16 +87,27 @@ export function LogRow({ line, expanded, selected, active, onToggle, onFilter, o
 
             {line.host && <Leaf label="host" value={line.host} field="host" active={active} onFilter={onFilter} />}
 
-            {Object.entries(line.fields ?? {}).map(([key, value]) => (
-              <Leaf
-                key={key}
-                label={key}
-                field={key}
-                value={value}
-                active={active}
-                onFilter={onFilter}
-              />
-            ))}
+            {/*
+              Promoted keys the envelope already carries are skipped. A payload
+              with its own `level` would otherwise list it twice — once
+              normalized to ERROR and once as whatever it literally said — which
+              reads as a bug in the data rather than as two views of one value.
+              The envelope's is the one a query resolves to, so it is the one
+              shown.
+            */}
+            {Object.entries(line.fields ?? {})
+              .filter(([key]) => !LIFTED.has(key))
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([key, value]) => (
+                <Leaf
+                  key={key}
+                  label={key}
+                  field={key}
+                  value={value}
+                  active={active}
+                  onFilter={onFilter}
+                />
+              ))}
           </dl>
 
           <div class="row-actions">

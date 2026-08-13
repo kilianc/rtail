@@ -35,11 +35,14 @@
   --bar-h: 40px;        // the single top bar
   --row-h: 28px;        // sidebar rows
   --control-h: 28px;    // inputs, buttons
+  --command-h: 36px;    // the command bar — taller, because it is the hero
   --hit: 28px;          // icon button hit area
   --icon: 16px;         // icon glyph
   --icon-sm: 12px;      // inline icon glyph
-  --line-h: 20px;       // one log row, exactly
-  --gutter-w: 160px;    // timestamp column — fixed, so the rule is dead straight
+  --dot: 6px;           // severity dot
+  --line-h: 22px;       // one log row, exactly
+  --chart-h: 76px;      // the histogram
+  --gutter-w: 92px;     // timestamp column — time only, so it can be narrow
   --sidebar-w: 240px;   // default; App keeps this in sync while resizing
   --marker-w: 2px;      // active-row accent marker
   --hairline: 1px;
@@ -57,8 +60,12 @@
   --popover: #101013;
   --popover-foreground: #fafafa;
 
-  --muted: #17171a;
-  --muted-foreground: #8b8b94;
+  --muted: #131316;
+  // Chrome is deliberately quiet. The old value sat close enough to the
+  // content that everything on screen mumbled at the same volume; the whole
+  // interface reads better when labels recede and log lines do not.
+  --muted-foreground: #6b6b78;
+  --faint-foreground: #4a4a55;
 
   --subtle: rgba(255, 255, 255, 0.035);
   --subtle-strong: rgba(255, 255, 255, 0.065);
@@ -68,12 +75,33 @@
   --border-strong: #303036;
   --input: #232327;
 
+  // ** severity — the only semantic colour, and the reason it earns its place **
+  //
+  // Kept out of the ANSI palette on purpose: those are *content* colours a log
+  // line chose for itself, and severity is ours. Sharing them would mean a line
+  // that printed red text was indistinguishable from one that was an error.
+  --level-error: #ff5f56;
+  --level-error-wash: rgba(255, 95, 86, 0.055);
+  --level-warn: #ffb224;
+  --level-info: #7e7e8c;
+  --level-debug: #4a4a55;
+
   // ** the one accent **
-  --primary: #ff7a5c;
-  --primary-hover: #ff8f75;
-  --primary-foreground: #180d09;
-  --primary-subtle: rgba(255, 122, 92, 0.10);
-  --ring: #ff7a5c;
+  //
+  // Mint, not the old salmon. Two reasons, and the first is not taste: the
+  // accent sat at almost exactly the hue of --level-error, so "focused",
+  // "live" and "this is on fire" were the same colour and the interface had
+  // no way to raise its voice. Putting the accent on the other side of the
+  // wheel means severity owns red and amber outright.
+  //
+  // The hue is rtail's own — the project has carried #04cd7e since 2014 —
+  // brightened here to hold up against a near-black background.
+  --primary: #2ae89b;
+  --primary-hover: #5cf2b8;
+  --primary-foreground: #04180f;
+  --primary-subtle: rgba(42, 232, 155, 0.10);
+  --primary-glow: rgba(42, 232, 155, 0.20);
+  --ring: #2ae89b;
 
   // ** ansi palette — the only colour on screen **
   --ansi-black: #52525b;
@@ -104,7 +132,14 @@
   --popover-foreground: #09090b;
 
   --muted: #f4f4f5;
-  --muted-foreground: #71717a;
+  --muted-foreground: #7c7c88;
+  --faint-foreground: #a1a1ac;
+
+  --level-error: #dc2626;
+  --level-error-wash: rgba(220, 38, 38, 0.05);
+  --level-warn: #b45309;
+  --level-info: #71717a;
+  --level-debug: #a1a1aa;
 
   --subtle: rgba(9, 9, 11, 0.035);
   --subtle-strong: rgba(9, 9, 11, 0.065);
@@ -113,11 +148,12 @@
   --border-strong: #d4d4d8;
   --input: #e4e4e7;
 
-  --primary: #e2553a;
-  --primary-hover: #cc4830;
+  --primary: #06a86a;
+  --primary-hover: #04845a;
   --primary-foreground: #ffffff;
-  --primary-subtle: rgba(226, 85, 58, 0.09);
-  --ring: #e2553a;
+  --primary-subtle: rgba(6, 168, 106, 0.10);
+  --primary-glow: rgba(6, 168, 106, 0.18);
+  --ring: #06a86a;
 
   --ansi-black: #3f3f46;
   --ansi-black-bright: #71717a;

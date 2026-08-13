@@ -35,6 +35,7 @@ function levelClass(level: string): string {
 
 export function Histogram({ buckets, intervalMs, range, loading, onSelect }: Props) {
   const surface = useRef<HTMLDivElement>(null)
+  const dragging = useRef<{ from: number; to: number } | null>(null)
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null)
   const [hover, setHover] = useState<number | null>(null)
 
@@ -82,30 +83,60 @@ export function Histogram({ buckets, intervalMs, range, loading, onSelect }: Pro
 
   const timeAt = (fraction: number) => new Date(range.from.getTime() + fraction * span)
 
+  /*!
+   * The drag is tracked in a ref, and only mirrored into state for drawing.
+   *
+   * Reading it from state instead looks equivalent and is not: handlers close
+   * over the value from their render, so any two mouse events arriving before
+   * a re-render both see the *old* drag — and a fast drag, or one synthesised
+   * by a test, silently does nothing. A ref is always current, which makes the
+   * behaviour independent of when Preact happens to re-render.
+   *
+   * The move and release listeners go on the window rather than the surface,
+   * because overshooting the chart while selecting is normal and the drag
+   * should survive it.
+   */
   const onMouseDown = (event: MouseEvent) => {
     if (0 !== event.button) return
+
+    event.preventDefault()
+
     const at = positionOf(event)
+    dragging.current = { from: at, to: at }
     setDrag({ from: at, to: at })
+
+    const move = (moved: MouseEvent) => {
+      if (!dragging.current) return
+
+      const to = positionOf(moved)
+      dragging.current = { ...dragging.current, to }
+      setDrag({ ...dragging.current })
+    }
+
+    const release = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', release)
+
+      const current = dragging.current
+      dragging.current = null
+      setDrag(null)
+
+      if (!current) return
+
+      const [lo, hi] = [Math.min(current.from, current.to), Math.max(current.from, current.to)]
+
+      // A click is not a zoom. Below about a percent of travel the user was
+      // pointing at something, not selecting a window.
+      if (hi - lo < 0.01) return
+
+      onSelect(absolute(timeAt(lo), timeAt(hi)))
+    }
+
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', release)
   }
 
-  const onMouseMove = (event: MouseEvent) => {
-    const at = positionOf(event)
-    setHover(at)
-    if (drag) setDrag({ ...drag, to: at })
-  }
-
-  const onMouseUp = () => {
-    if (!drag) return
-
-    const [lo, hi] = [Math.min(drag.from, drag.to), Math.max(drag.from, drag.to)]
-    setDrag(null)
-
-    // A click is not a zoom. Below a couple of pixels of travel the user was
-    // pointing at something, not selecting a window.
-    if (hi - lo < 0.01) return
-
-    onSelect(absolute(timeAt(lo), timeAt(hi)))
-  }
+  const onMouseMove = (event: MouseEvent) => setHover(positionOf(event))
 
   const selection = drag
     ? { left: Math.min(drag.from, drag.to) * 100, width: Math.abs(drag.to - drag.from) * 100 }
@@ -120,11 +151,7 @@ export function Histogram({ buckets, intervalMs, range, loading, onSelect }: Pro
         ref={surface}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={() => {
-          setDrag(null)
-          setHover(null)
-        }}
+        onMouseLeave={() => setHover(null)}
       >
         {bars.map((bar) => (
           <div

@@ -31,7 +31,25 @@ export function FieldExplorer({ fields, params, active, onFilter }: Props) {
   )
   const [filter, setFilter] = useState('')
 
-  const ranked = [...fields]
+  /*!
+   * Deduplicated by name, envelope first.
+   *
+   * A payload with its own `level` key produces two catalog entries: the
+   * envelope column the normalizer lifted it into, and the promoted field.
+   * Both are the same data and a query resolves the name to the envelope, so
+   * listing both offers a choice that does not exist — and the two would show
+   * different value distributions whenever the normalizer canonicalised
+   * something, which reads as a bug in the data.
+   */
+  const unique = new Map<string, Field>()
+  for (const field of fields) {
+    const existing = unique.get(field.name)
+    if (!existing || ('envelope' === field.kind && 'envelope' !== existing.kind)) {
+      unique.set(field.name, field)
+    }
+  }
+
+  const ranked = [...unique.values()]
     .filter((field) => 'envelope' !== field.kind || ['level', 'stream', 'host'].includes(field.name))
     .filter((field) => field.name.toLowerCase().includes(filter.toLowerCase()))
     .sort((a, b) => {

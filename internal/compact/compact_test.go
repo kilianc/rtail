@@ -19,6 +19,20 @@ import (
 )
 
 /*!
+ * hourBase is a clean hour boundary a few hours back.
+ *
+ * Tests add minute offsets to it and then assert on the number of L1 files.
+ * Anchoring to `now - 3h` instead makes that assertion depend on the time of
+ * day: compaction groups L1 by hour, so a base of 15:35 puts +10m and +20m in
+ * one hour and +30m in the next, and the test passes or fails according to
+ * when it happens to run. Truncating removes the ambiguity rather than hiding
+ * it behind a retry.
+ */
+func hourBase() time.Time {
+	return time.Now().UTC().Truncate(time.Hour).Add(-3 * time.Hour)
+}
+
+/*!
  * The harness writes through the real flush path, so what compaction reads is
  * what the server actually produces.
  */
@@ -164,7 +178,7 @@ func TestMergePreservesEveryRecord(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	base := time.Now().UTC().Add(-3 * time.Hour)
+	base := hourBase()
 
 	var written []*model.Record
 	for batch := range 6 {
@@ -222,7 +236,7 @@ func TestOutputIsSortedByTime(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	base := time.Now().UTC().Add(-3 * time.Hour)
+	base := hourBase()
 
 	// Flush in an order that is not time order, so a pass-through would fail.
 	h.flush(t, "api", base.Add(30*time.Minute), lines("late", 4))
@@ -258,7 +272,7 @@ func TestSchemasAreUnionedAndWidened(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	base := time.Now().UTC().Add(-3 * time.Hour)
+	base := hourBase()
 
 	h.flush(t, "api", base, []string{`{"msg":"a","code":200,"only_old":"x"}`})
 	h.flush(t, "api", base.Add(time.Minute), []string{`{"msg":"b","code":"oops","only_new":1}`})
@@ -326,7 +340,7 @@ func TestReplaceIsAtomicAndIdempotent(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	base := time.Now().UTC().Add(-3 * time.Hour)
+	base := hourBase()
 
 	for batch := range 3 {
 		h.flush(t, "api", base.Add(time.Duration(batch)*time.Minute), lines("b", 4))
@@ -392,7 +406,7 @@ func TestRollupSurvivesCompaction(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	base := time.Now().UTC().Add(-3 * time.Hour)
+	base := hourBase()
 
 	total := 0
 	for batch := range 5 {
@@ -431,7 +445,7 @@ func TestSchemaKeyOccurrencesAreNotInflated(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	base := time.Now().UTC().Add(-3 * time.Hour)
+	base := hourBase()
 
 	for batch := range 4 {
 		h.flush(t, "api", base.Add(time.Duration(batch)*time.Minute), lines("b", 5))
@@ -472,7 +486,7 @@ func TestInputsSurviveUntilTheGracePeriodElapses(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true, Grace: time.Hour})
-	base := time.Now().UTC().Add(-3 * time.Hour)
+	base := hourBase()
 
 	for batch := range 3 {
 		h.flush(t, "api", base.Add(time.Duration(batch)*time.Minute), lines("b", 4))
@@ -792,7 +806,7 @@ func TestStreamsAreCompactedIndependently(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	base := time.Now().UTC().Add(-3 * time.Hour)
+	base := hourBase()
 
 	for batch := range 3 {
 		h.flush(t, "api", base.Add(time.Duration(batch)*time.Minute), lines("a", 3))
@@ -878,7 +892,7 @@ func TestRepeatedPassesConverge(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	base := time.Now().UTC().Add(-3 * time.Hour)
+	base := hourBase()
 
 	for batch := range 4 {
 		h.flush(t, "api", base.Add(time.Duration(batch)*time.Minute), lines("b", 4))
