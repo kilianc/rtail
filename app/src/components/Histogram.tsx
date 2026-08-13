@@ -146,6 +146,18 @@ export function Histogram({ buckets, intervalMs, range, loading, onSelect }: Pro
 
   return (
     <div class={`histogram ${loading ? 'loading' : ''}`}>
+      {/*
+        A scale, so the chart says how big the spike actually is. Three rules
+        and one number is the least that turns a row of bars into something you
+        can read a quantity off — without it the tallest bar means "the most",
+        and nothing more.
+      */}
+      <div class="histogram-scale" aria-hidden="true">
+        <span>{peak.toLocaleString()}</span>
+        <span>{Math.round(peak / 2).toLocaleString()}</span>
+        <span>0</span>
+      </div>
+
       <div
         class="histogram-surface"
         ref={surface}
@@ -153,6 +165,10 @@ export function Histogram({ buckets, intervalMs, range, loading, onSelect }: Pro
         onMouseMove={onMouseMove}
         onMouseLeave={() => setHover(null)}
       >
+        <div class="histogram-grid" aria-hidden="true">
+          <i /><i /><i />
+        </div>
+
         {bars.map((bar) => (
           <div
             key={bar.bucket.ts}

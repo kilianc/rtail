@@ -119,6 +119,15 @@
   --live: #1e8e3e;              // green 700
   --live-glow: rgba(30, 142, 62, 0.4);
 
+  // ** the histogram **
+  //
+  // Routine volume is a lighter blue than the accent. At full --primary the
+  // bars fuse into one saturated slab and stop reading as a chart — the eye
+  // needs the common case to sit back so the spikes can come forward.
+  --chart-bar: #8ab4f8;         // blue 300
+  --chart-bar-hover: #669df6;
+  --chart-grid: #f1f3f4;
+
   // ** ansi palette — the only colour that is not ours **
   --ansi-black: #5f6368;
   --ansi-black-bright: #3c4043;
@@ -183,6 +192,10 @@
   --live: #81c995;
   --live-glow: rgba(129, 201, 149, 0.4);
 
+  --chart-bar: #4a6da8;
+  --chart-bar-hover: #5c84c4;
+  --chart-grid: #35363a;
+
   --ansi-black: #9aa0a6;
   --ansi-black-bright: #bdc1c6;
   --ansi-red: #f28b82;
@@ -230,3 +243,45 @@
   border: var(--hairline) solid var(--border);
   border-radius: $radius;
 }
+
+// **
+// One input, everywhere — flat.
+//
+// There were four treatments before this: a bordered query box, two full-bleed
+// borderless strips, and bordered date pickers. Four ways of drawing "type
+// here" on one screen reads as four different products.
+//
+// The one that won is the flat one. No box, no fill, no outline — the field is
+// just text on the surface it sits on, and separation comes from the container
+// it lives in. The only mark it ever draws is a bottom rule, transparent at
+// rest and the accent when focused: enough to say where the caret is without
+// putting a frame around every input on the page.
+//
+// `field` is the box and `field-focus` the focused state, split because the
+// query box is a div wrapping an input (it carries an icon and buttons) while
+// the rest are bare inputs — they need the same paint at different levels of
+// the tree.
+// **
+
+@mixin field($height: var(--control-h)) {
+  background: none;
+  block-size: $height;
+  border: 0;
+  // Reserved at rest so focusing never shifts the layout by a pixel.
+  border-block-end: 2px solid transparent;
+  border-radius: 0;
+  color: var(--foreground);
+  font-family: var(--sans);
+  font-size: var(--text-md);
+  transition: border-color .14s ease;
+
+  &::placeholder {
+    color: var(--faint-foreground);
+  }
+}
+
+@mixin field-focus {
+  border-block-end-color: var(--primary);
+  outline: 0;
+}
+
