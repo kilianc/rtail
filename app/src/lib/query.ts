@@ -1,3 +1,5 @@
+import type { WireLine } from './types.js'
+
 /*!
  * Editing rQL from the UI.
  *
@@ -359,4 +361,60 @@ export function highlight(html: string, needles: string[]): string {
   }
 
   return out
+}
+
+/*!
+ * Reads a field off a record for display in a column.
+ *
+ * Envelope first, then promoted root keys, then a dotted path into a nested
+ * one — the same precedence the server's resolver and its live predicate use,
+ * so a column shows the value the query would have matched on rather than a
+ * different one that happens to share a name.
+ */
+export function columnValue(line: WireLine, field: string): string {
+  switch (field) {
+    case 'level':
+    case 'severity':
+      return line.level ?? ''
+    case 'msg':
+    case 'message':
+      return line.msg ?? ''
+    case 'stream':
+      return line.streamid
+    case 'host':
+      return line.host
+    case 'seq':
+      return String(line.seq)
+  }
+
+  const fields = line.fields ?? {}
+
+  if (field in fields) return scalar(fields[field])
+
+  const [head, ...rest] = field.split('.')
+  if (0 === rest.length || !(head in fields)) return ''
+
+  let current: unknown = fields[head]
+
+  // A promoted nested object arrives as JSON text, not as an object.
+  if ('string' === typeof current) {
+    try {
+      current = JSON.parse(current)
+    } catch {
+      return ''
+    }
+  }
+
+  for (const segment of rest) {
+    if (null === current || 'object' !== typeof current) return ''
+    current = (current as Record<string, unknown>)[segment]
+  }
+
+  return scalar(current)
+}
+
+function scalar(value: unknown): string {
+  if (null === value || undefined === value) return ''
+  if ('object' === typeof value) return JSON.stringify(value)
+  return String(value)
 }

@@ -80,6 +80,22 @@ export function App() {
 
   const active = useMemo(() => fieldsUsed(view.query), [view.query])
   const needles = useMemo(() => highlightTerms(view.query), [view.query])
+
+  /*!
+   * Promoting a field to a column.
+   *
+   * Toggling rather than adding: the same control that put a column there
+   * takes it away, so there is no hunting for a second affordance. Order is
+   * insertion order, which is the only order the user chose.
+   */
+  const toggleColumn = useCallback((field: string) => {
+    setView((current) => ({
+      ...current,
+      columns: current.columns.includes(field)
+        ? current.columns.filter((name) => name !== field)
+        : [...current.columns, field]
+    }))
+  }, [])
   const resolved = useMemo(() => resolve(view.range), [view.range])
 
   useEffect(() => write(view), [view])
@@ -390,7 +406,9 @@ export function App() {
           fields={fields}
           params={params}
           active={active}
+          columns={view.columns}
           onFilter={(field, value, negated) => applyFilter(field, '=', value, negated)}
+          onToggleColumn={toggleColumn}
         />
 
         <Results
@@ -399,6 +417,7 @@ export function App() {
           loading={loading}
           active={active}
           needles={needles}
+          columns={view.columns}
           hasMore={!!cursor}
           paused={held}
           pending={pendingCount}
@@ -412,6 +431,7 @@ export function App() {
           onContext={showContext}
           onPause={hold}
           onResume={resume}
+          onDropColumn={toggleColumn}
         />
       </div>
     </>

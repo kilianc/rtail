@@ -1001,6 +1001,32 @@
   }
 
   // A section header: a caret, the name, and the total on the right.
+  // The column toggle, revealed on hover so the list stays quiet at rest.
+  .explorer-column {
+    align-items: center;
+    block-size: var(--row-h);
+    color: var(--faint-foreground);
+    display: flex;
+    inline-size: var(--space-5);
+    justify-content: center;
+    opacity: 0;
+    transition: opacity .12s ease, color .12s ease;
+
+    &:hover { color: var(--foreground); }
+
+    &.on {
+      color: var(--primary);
+      opacity: 1;
+    }
+  }
+
+  .explorer-field:hover .explorer-column,
+  .explorer-column:focus-visible { opacity: 1; }
+
+  // The header and its toggle share a row.
+  .explorer-field { display: grid; grid-template-columns: var(--space-5) 1fr; }
+  .explorer-values { grid-column: 1 / -1; }
+
   .explorer-head {
     align-items: center;
     block-size: var(--row-h);
@@ -1010,7 +1036,7 @@
     font-size: var(--text-md);
     gap: var(--space-2);
     inline-size: 100%;
-    padding-inline: var(--space-4);
+    padding-inline: 0 var(--space-4);
     text-align: start;
     transition: background-color .12s ease;
 
@@ -1140,7 +1166,8 @@
   .row-head {
     display: grid;
     gap: var(--space-2);
-    grid-template-columns: var(--caret-w) var(--sev-w) var(--gutter-w) 1fr;
+    // Set on .results, so both read one value and cannot fall out of step.
+    grid-template-columns: var(--row-template, var(--caret-w) var(--sev-w) var(--gutter-w) 1fr);
     padding-inline: var(--space-3);
   }
 
@@ -1171,9 +1198,50 @@
   // so it costs the cell no width and cannot push the columns out of step.
   .results-col-level,
   .results-col-time,
+  .results-col-added,
   .results-col-summary {
     box-shadow: inset var(--hairline) 0 0 var(--border);
     padding-inline-start: var(--space-2);
+  }
+
+  // An added column header: the field name, and the way to take it away.
+  .results-col-added {
+    align-items: center;
+    display: flex;
+    gap: var(--space-1);
+    min-inline-size: 0;
+    text-transform: none;
+
+    &:hover .results-col-drop { opacity: 1; }
+  }
+
+  .results-col-name {
+    font-family: var(--mono);
+    letter-spacing: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .results-col-drop {
+    color: var(--faint-foreground);
+    flex-shrink: 0;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity .12s ease, color .12s ease;
+
+    &:hover { color: var(--level-error); }
+  }
+
+  // A promoted value. Monospace and truncating, because these are identifiers
+  // and a wrapped one would break the row rhythm the whole table depends on.
+  .row-cell {
+    color: var(--muted-foreground);
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    padding-inline-start: var(--space-2);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .results-scroll {

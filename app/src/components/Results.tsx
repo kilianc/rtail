@@ -24,6 +24,9 @@ interface Props {
   active: string[]
   /** Substrings to mark in each message. */
   needles: string[]
+  /** Fields promoted into columns of their own. */
+  columns: string[]
+  onDropColumn: (field: string) => void
   /** More history exists beyond what is loaded. */
   hasMore: boolean
   /** The feed is held; new records are counted rather than shown. */
@@ -48,6 +51,7 @@ export function Results({
   loading,
   active,
   needles,
+  columns,
   hasMore,
   paused,
   pending,
@@ -56,7 +60,8 @@ export function Results({
   onLoadMore,
   onContext,
   onPause,
-  onResume
+  onResume,
+  onDropColumn
 }: Props) {
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set())
   const [selected, setSelected] = useState(-1)
@@ -155,9 +160,26 @@ export function Results({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [lines, selected, toggle, virtual])
 
+  /*!
+   * The grid template lives on the panel, not on the header and the rows.
+   *
+   * Both read the same custom property, so adding a column widens the header
+   * and the rows in one step and they cannot drift — which is exactly the bug
+   * that existed before the two shared a template at all. Added columns are
+   * given a sensible band rather than a fixed width: wide enough for a service
+   * name, capped so one long value cannot squeeze the summary out.
+   */
+  const template = [
+    'var(--caret-w)',
+    'var(--sev-w)',
+    'var(--gutter-w)',
+    ...columns.map(() => 'minmax(5rem, 10rem)'),
+    '1fr'
+  ].join(' ')
+
   if (0 === lines.length) {
     return (
-      <div class="results">
+      <div class="results" style={{ '--row-template': template } as never}>
         <div class="results-empty">
           {loading ? (
             <p>Searching…</p>
@@ -173,7 +195,7 @@ export function Results({
   }
 
   return (
-    <div class="results">
+    <div class="results" style={{ '--row-template': template } as never}>
       {/*
         A sticky column header, as Cloud Logging has. It is not decoration: a
         dense table of timestamps and text needs its columns named once, and
@@ -185,6 +207,20 @@ export function Results({
         {/* Abbreviated: the column is one chip wide, and "Severity" is not. */}
         <span class="results-col-level" title="Severity">Sev</span>
         <span class="results-col-time">Timestamp</span>
+
+        {columns.map((field) => (
+          <span key={field} class="results-col-added" title={field}>
+            <span class="results-col-name">{field}</span>
+            <button
+              class="results-col-drop"
+              aria-label={`Remove the ${field} column`}
+              onClick={() => onDropColumn(field)}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+
         <span class="results-col-summary">Summary</span>
       </div>
 
@@ -203,6 +239,7 @@ export function Results({
                 selected={virtual.start + index === selected}
                 active={active}
                 needles={needles}
+                columns={columns}
                 onToggle={() => {
                   setSelected(virtual.start + index)
                   toggle(line.key)

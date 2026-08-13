@@ -19,13 +19,16 @@ export interface ViewState {
   range: Range
   /** Streaming, as opposed to looking at history. */
   live: boolean
+  /** Fields promoted out of the summary into columns of their own. */
+  columns: string[]
 }
 
 export const DEFAULT_STATE: ViewState = {
   stream: null,
   query: '',
   range: DEFAULT_RANGE,
-  live: true
+  live: true,
+  columns: []
 }
 
 export function read(): ViewState {
@@ -46,7 +49,10 @@ export function read(): ViewState {
       from: params.get('from') || DEFAULT_RANGE.from,
       to: params.get('to') ?? ''
     },
-    live: 'false' !== params.get('live')
+    live: 'false' !== params.get('live'),
+    // Comma-separated, because a field name cannot contain one and the URL
+    // stays readable — `cols=service,latency_ms` says what it is at a glance.
+    columns: (params.get('cols') ?? '').split(',').map((name) => name.trim()).filter(Boolean)
   }
 }
 
@@ -58,6 +64,7 @@ export function write(state: ViewState): void {
   if (state.range.from !== DEFAULT_RANGE.from) params.set('from', state.range.from)
   if (state.range.to) params.set('to', state.range.to)
   if (!state.live) params.set('live', 'false')
+  if (state.columns.length) params.set('cols', state.columns.join(','))
 
   const next = `#/${params}`
 

@@ -19,13 +19,16 @@ interface Props {
   params: Params
   /** Fields the current query mentions. */
   active: string[]
+  /** Fields already promoted to columns. */
+  columns: string[]
   onFilter: (field: string, value: string, negated: boolean) => void
+  onToggleColumn: (field: string) => void
 }
 
 /** Fields worth opening first — the ones a person almost always wants. */
 const FAVOURED = ['level', 'service', 'stream', 'host', 'status', 'env', 'region']
 
-export function FieldExplorer({ fields, params, active, onFilter }: Props) {
+export function FieldExplorer({ fields, params, active, columns, onFilter, onToggleColumn }: Props) {
   const [open, setOpen] = useState<string[]>(() =>
     fields.filter((field) => FAVOURED.includes(field.name)).slice(0, 3).map((field) => field.name)
   )
@@ -82,6 +85,8 @@ export function FieldExplorer({ fields, params, active, onFilter }: Props) {
             params={params}
             open={open.includes(field.name)}
             active={active.includes(field.name)}
+            column={columns.includes(field.name)}
+            onToggleColumn={() => onToggleColumn(field.name)}
             onToggle={() =>
               setOpen((current) =>
                 current.includes(field.name)
@@ -102,11 +107,13 @@ interface GroupProps {
   params: Params
   open: boolean
   active: boolean
+  column: boolean
   onToggle: () => void
+  onToggleColumn: () => void
   onFilter: (field: string, value: string, negated: boolean) => void
 }
 
-function FieldGroup({ field, params, open, active, onToggle, onFilter }: GroupProps) {
+function FieldGroup({ field, params, open, active, column, onToggle, onToggleColumn, onFilter }: GroupProps) {
   const [values, setValues] = useState<FieldValue[] | null>(null)
   const [error, setError] = useState(false)
 
@@ -131,6 +138,20 @@ function FieldGroup({ field, params, open, active, onToggle, onFilter }: GroupPr
 
   return (
     <section class={`explorer-field ${open ? 'open' : ''} ${active ? 'active' : ''}`}>
+      {/*
+        The column toggle rides on the section header rather than hiding in a
+        menu: promoting a field is a thing you do while scanning the list of
+        fields, which is exactly when you are already looking at this row.
+      */}
+      <button
+        class={`explorer-column ${column ? 'on' : ''}`}
+        title={column ? `Remove the ${field.name} column` : `Show ${field.name} as a column`}
+        aria-pressed={column}
+        onClick={onToggleColumn}
+      >
+        ⊞
+      </button>
+
       <button class="explorer-head" aria-expanded={open} onClick={onToggle}>
         <span class="explorer-name">{field.name}</span>
 

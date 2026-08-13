@@ -9,7 +9,7 @@
  */
 
 import { formatClock } from '../lib/format.js'
-import { highlight } from '../lib/query.js'
+import { columnValue, highlight } from '../lib/query.js'
 import type { Line } from '../lib/types.js'
 
 /**
@@ -37,6 +37,8 @@ interface Props {
   active: string[]
   /** Substrings the query is looking for, marked in the message. */
   needles: string[]
+  /** Fields promoted into columns of their own. */
+  columns: string[]
   onToggle: () => void
   onFilter: (action: FilterAction) => void
   onContext: () => void
@@ -56,7 +58,7 @@ const GLYPHS: Record<string, string> = {
   NOTICE: 'i', INFO: 'i', DEBUG: 'i', TRACE: 'i'
 }
 
-export function LogRow({ line, expanded, selected, active, needles, onToggle, onFilter, onContext }: Props) {
+export function LogRow({ line, expanded, selected, active, needles, columns, onToggle, onFilter, onContext }: Props) {
   const level = (line.level ?? '').toUpperCase()
   const clock = formatClock(line.timestamp)
 
@@ -82,6 +84,19 @@ export function LogRow({ line, expanded, selected, active, needles, onToggle, on
           {clock.time}
           <span class="row-ms">.{clock.ms}</span>
         </time>
+
+        {/*
+          Promoted columns sit between the timestamp and the summary, in the
+          same grid tracks the header declares. An empty cell is left empty
+          rather than filled with a dash: a column of dashes reads as data, and
+          "this record does not have that field" is worth seeing at a glance
+          in a store with no fixed schema.
+        */}
+        {columns.map((field) => (
+          <span key={field} class="row-cell" title={columnValue(line, field)}>
+            {columnValue(line, field)}
+          </span>
+        ))}
 
         <span class="row-message" dangerouslySetInnerHTML={{ __html: highlight(line.html, needles) }} />
       </div>
