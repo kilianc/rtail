@@ -44,15 +44,15 @@
   // Tightened a second time against the reference. A console is judged on how
   // many lines fit on the screen, and every one of these was a few pixels
   // looser than the thing it was copied from.
-  --bar-h: 40px;        // the top bar
-  --row-h: 24px;        // list rows in panels
-  --control-h: 28px;    // buttons, small inputs
-  --command-h: 32px;    // the query box
-  --hit: 26px;          // icon button hit area
-  --icon: 16px;
-  --icon-sm: 13px;
-  --dot: 7px;
-  --line-h: 20px;       // one log row
+  --bar-h: 32px;        // the top bar
+  --row-h: 20px;        // list rows in panels
+  --control-h: 22px;    // buttons, small inputs
+  --command-h: 26px;    // the query box, and everything beside it
+  --hit: 22px;          // icon button hit area
+  --icon: 15px;
+  --icon-sm: 12px;
+  --dot: 6px;
+  --line-h: 19px;       // one log row
   --chart-h: 72px;
   --gutter-w: 136px;    // timestamp column, wide enough for a full date
   --sev-w: 44px;        // severity column — one badge, and the word "Sev"

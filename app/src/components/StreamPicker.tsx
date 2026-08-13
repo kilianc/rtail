@@ -48,7 +48,9 @@ export function StreamPicker({ streams, active, favorites, onSelect, onToggleFav
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <i class="stream-picker-icon" aria-hidden="true" />
+        <i class="stream-picker-icon" aria-hidden="true">
+          <span />
+        </i>
         <span class="stream-picker-name">{active ?? 'All streams'}</span>
         <span class="stream-picker-count">{streams.length}</span>
       </button>
