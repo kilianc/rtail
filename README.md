@@ -4,7 +4,7 @@
 [![NPM version](https://img.shields.io/npm/v/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
 [![NPM downloads](https://img.shields.io/npm/dm/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
 [![GitHub Stars](https://img.shields.io/github/stars/kilianc/rtail.svg?style=flat-square)](https://github.com/kilianc/rtail)
-[![License](https://img.shields.io/npm/l/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-04cd7e.svg?style=flat-square)](LICENSE)
 [![Gitter](https://img.shields.io/badge/≡_gitter-join_chat_➝-04cd7e.svg?style=flat-square)](https://gitter.im/kilianc/rtail?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 ## Terminal output to the browser in seconds, using UNIX pipes.
@@ -327,27 +327,14 @@ Dropped, and why:
 
 ## License
 
-_This software is released under the MIT license cited below_.
+rTail **v2 and later** is licensed under the **GNU Affero General Public
+License v3** — see [`LICENSE`](LICENSE) and [`COPYRIGHT.md`](COPYRIGHT.md).
 
-    Copyright (c) 2014 Kilian Ciuffolo, me@nailik.org. All Rights Reserved.
+**Self-hosting is free and unrestricted**, commercially and at any scale. The
+only obligation AGPL adds is that if you offer a *modified* rTail to others
+over a network as a service, you make those modifications available to its
+users. If that is a problem for what you want to build, get in touch — a
+commercial licence is available.
 
-    Permission is hereby granted, free of charge, to any person
-    obtaining a copy of this software and associated documentation
-    files (the 'Software'), to deal in the Software without
-    restriction, including without limitation the rights to use,
-    copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the
-    Software is furnished to do so, subject to the following
-    conditions:
-
-    The above copyright notice and this permission notice shall be
-    included in all copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,
-    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-    OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-    NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-    OTHER DEALINGS IN THE SOFTWARE.
+rTail **v1.x remains under the MIT licence** it was released with. That does
+not change retroactively; if you are on v1, the terms you accepted still apply.
