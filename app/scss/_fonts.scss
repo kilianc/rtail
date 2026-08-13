@@ -23,7 +23,9 @@ $font-sizes: (11px, 12px, 13px, 14px, 15px, 16px, 17px);
 @each $font-family in $font-families {
   $i: list.index($font-families, $font-family);
 
-  .font-family-#{$i} .stream-line,
+  // .row, not .stream-line: the viewport was rebuilt in v2 and the old
+  // selector matched nothing, so the font preference silently did nothing.
+  .font-family-#{$i} .row,
   .btn-font-#{$i} {
     font-family: $font-family, $mono-fallback;
   }
@@ -32,7 +34,7 @@ $font-sizes: (11px, 12px, 13px, 14px, 15px, 16px, 17px);
 @each $font-size in $font-sizes {
   $i: list.index($font-sizes, $font-size);
 
-  .font-size-#{$i} .stream-line {
+  .font-size-#{$i} .row {
     font-size: $font-size;
   }
 }

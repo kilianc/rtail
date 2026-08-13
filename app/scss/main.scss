@@ -1,13 +1,15 @@
 // **
 // rTail webapp styles
 //
-// Square corners, one top bar, and every length taken from the token scale in
-// _tokens.scss — no arbitrary pixel values below this line.
+// The shell is a page with three panels floating on it: the histogram, the
+// field explorer and the results. Depth is layered surfaces plus a hairline
+// plus a shadow, never one of the three on its own, and every length comes
+// from the token scale in _tokens.scss.
 //
-// Layout is CSS grid. The top bar and the pane below it declare the *same*
-// two-track template (`var(--sidebar-w) 1fr`), so the vertical hairline runs
-// unbroken down the window: the alignment is structural rather than two widths
-// that have to be kept equal by hand.
+// Chrome is set in the system sans — SF on a Mac, Inter elsewhere — and only
+// log content is monospace. Setting the whole interface in mono is the single
+// biggest thing that makes a developer tool look like a terminal emulator
+// instead of a product.
 //
 // Cascade is ordered with @layer, so component rules never need to out-specify
 // the reset and nothing depends on source order.
@@ -41,6 +43,18 @@
     list-style: none;
   }
 
+  // Available to a screen reader, invisible to everyone else. Severity is
+  // spelled out here for every row even when the dot is the only visible
+  // marker, so colour is never the sole carrier of meaning.
+  .sr-only {
+    block-size: 1px;
+    clip-path: inset(50%);
+    inline-size: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+  }
+
   pre {
     font-family: inherit;
   }
@@ -50,24 +64,21 @@
     font: inherit;
   }
 
-  button:not(:disabled) {
+  :where(button) {
     cursor: pointer;
+    text-align: inherit;
   }
 
-  button:disabled {
-    cursor: not-allowed;
-    opacity: .35;
+  :where(button:disabled) {
+    cursor: default;
+    opacity: .4;
   }
 
   // Keyboard users get a ring; mouse users don't. Drawn inside the element so
   // it never nudges anything off the grid.
-  :focus {
-    outline: none;
-  }
-
-  :focus-visible {
-    outline: var(--hairline) solid var(--ring);
-    outline-offset: calc(var(--hairline) * -1);
+  :where(a, button, input, [tabindex]):focus-visible {
+    outline: 0;
+    box-shadow: 0 0 0 1px var(--background), 0 0 0 3px var(--ring);
   }
 }
 
@@ -76,23 +87,21 @@
 // **
 
 @layer base {
-  html {
-    // Reserve the scrollbar track so content never shifts when it appears.
-    scrollbar-gutter: stable;
+  html,
+  body {
+    block-size: 100%;
   }
 
   body {
     background: var(--background);
     color: var(--foreground);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-      'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--sans);
     font-size: var(--text-md);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    block-size: 100vh;
-    font-variant-ligatures: none;
-    letter-spacing: -0.006em;
+    letter-spacing: var(--tracking-tight);
     overflow: hidden;
+    text-rendering: optimizeLegibility;
 
     &.resizing {
       cursor: col-resize;
@@ -100,29 +109,20 @@
     }
   }
 
-  // The shell: one fixed-height bar, then everything else.
-  // The shell: the bar, the query row, the histogram, then the results.
-  #root {
-    block-size: 100%;
-    display: grid;
-    grid-template-rows: var(--bar-h) auto auto 1fr;
-    min-block-size: 0;
-  }
-
   ::selection {
     background: var(--primary-subtle);
     color: var(--foreground);
   }
 
-  // ** scrollbars — square, monochrome **
+  // ** scrollbars — thin, monochrome, rounded **
   * {
     scrollbar-color: var(--border-strong) transparent;
     scrollbar-width: thin;
   }
 
   ::-webkit-scrollbar {
-    block-size: var(--space-2);
-    inline-size: var(--space-2);
+    block-size: var(--space-3);
+    inline-size: var(--space-3);
   }
 
   ::-webkit-scrollbar-track {
@@ -131,15 +131,23 @@
 
   ::-webkit-scrollbar-thumb {
     background: var(--border-strong);
+    background-clip: content-box;
+    border: 4px solid transparent;
+    border-radius: var(--radius);
 
     &:hover {
-      background: var(--muted-foreground);
+      background-color: var(--faint-foreground);
     }
   }
 
   @keyframes pulse {
-    from { opacity: .6; }
-    to { opacity: 0; }
+    from { opacity: .55; transform: scale(1); }
+    to   { opacity: 0;   transform: scale(2.6); }
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: none; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -158,67 +166,73 @@
 // **
 
 @layer layout {
-  // Both grids below share this template. That is what keeps the brand cell
-  // and the sidebar edge on exactly the same pixel.
-  .topbar,
-  .split-pane {
+  // The bar sits flush; everything below it floats in a padded region. The
+  // gaps are what let the panels read as separate objects.
+  #root {
+    block-size: 100%;
     display: grid;
-    grid-template-columns: var(--sidebar-w) 1fr;
+    grid-template-rows: var(--bar-h) auto 1fr;
+    min-block-size: 0;
   }
 
   .topbar {
+    align-items: center;
+    // Translucent, so content scrolling underneath is felt rather than seen.
+    backdrop-filter: saturate(180%) blur(20px);
+    background: color-mix(in srgb, var(--background) 72%, transparent);
     border-block-end: var(--hairline) solid var(--border);
-    min-inline-size: 0;
+    display: flex;
+    gap: var(--space-3);
+    padding-inline: var(--space-4);
+    position: relative;
+    z-index: 20;
   }
 
   .topbar-brand {
     align-items: center;
-    border-inline-end: var(--hairline) solid var(--border);
     display: flex;
-    padding-inline: var(--space-4);
+    flex-shrink: 0;
   }
 
   .topbar-main {
     align-items: center;
-    // Queried below, so the bar adapts to its own width rather than the
-    // viewport's — it stays correct at any sidebar width.
-    container-type: inline-size;
     display: flex;
+    flex: 1;
     gap: var(--space-3);
     min-inline-size: 0;
-    padding-inline: var(--space-4) var(--space-2);
   }
 
   // One flexible gap, wherever the right-hand group starts. Two `auto` margins
   // would split the free space between them instead of pushing one group over.
   .topbar-actions {
+    align-items: center;
     display: flex;
-  }
-
-  .topbar-main:has(.filter-box) .filter-box,
-  .topbar-main:not(:has(.filter-box)) .topbar-actions {
+    flex-shrink: 0;
+    gap: var(--space-1);
     margin-inline-start: auto;
   }
 
-  .split-pane {
-    min-block-size: 0;
+  .query-row {
+    align-items: center;
+    display: flex;
+    gap: var(--space-3);
+    min-inline-size: 0;
+    padding: var(--space-4) var(--space-4) var(--space-3);
   }
 
-  .sidebar {
-    border-inline-end: var(--hairline) solid var(--border);
+  .explorer-split {
     display: grid;
-    grid-template-rows: auto 1fr;
+    gap: var(--space-3);
+    grid-template-columns: var(--sidebar-w) 1fr;
     min-block-size: 0;
-    min-inline-size: 0;
-    position: relative;
+    overflow: hidden;
+    padding: 0 var(--space-4) var(--space-4);
   }
 
-  .stream-view {
-    display: grid;
-    grid-template-rows: 1fr;
-    min-block-size: 0;
-    min-inline-size: 0;
-    position: relative;
+  // Below this width the field explorer is the first thing to go.
+  @container (max-width: 760px) {
+    .explorer-split { grid-template-columns: 1fr; }
+    .explorer { display: none; }
   }
 }
 
@@ -227,52 +241,38 @@
 // **
 
 @layer components {
-
-  // ** logo **
-
+  // ** the brand mark **
   .rtail-logo {
     @include icon-common('logo-rtail', contain);
-    block-size: var(--space-4);
-    color: var(--foreground);
-    flex-shrink: 0;
-    inline-size: calc(var(--space-6) * 2 + var(--space-2));
+    block-size: var(--space-5);
+    inline-size: calc(var(--space-6) * 2);
   }
 
   // ** ghost icon button **
-
+  //
   // Scoped to the action cluster, not the whole bar: `.topbar .btn` also
   // matched the buttons inside the settings popover and pinned them to the
   // icon hit size instead of letting them fill their segmented track.
   .topbar-actions .btn {
     align-items: center;
     block-size: var(--hit);
-    color: var(--muted-foreground);
-    display: inline-flex;
-    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+    color: var(--faint-foreground);
+    display: flex;
     inline-size: var(--hit);
     justify-content: center;
     position: relative;
-    transition: background-color .12s ease, color .12s ease;
-
-    &::after {
-      block-size: var(--icon);
-      content: '';
-      inline-size: var(--icon);
-      position: absolute;
-    }
+    transition: background-color .14s ease, color .14s ease;
 
     &:hover {
       background: var(--subtle);
       color: var(--foreground);
     }
 
-    &:active {
-      background: var(--subtle-strong);
-    }
-
-    &[aria-expanded='true'] {
-      background: var(--subtle-strong);
-      color: var(--foreground);
+    &::after {
+      block-size: var(--icon);
+      content: '';
+      inline-size: var(--icon);
     }
 
     &.btn-info::after { @include icon('btn-info'); }
@@ -280,159 +280,35 @@
     &.btn-settings::after { @include icon('btn-settings'); }
   }
 
-  // ** text fields **
-  //
-  // Two contexts, deliberately different. The filter sits among other controls
-  // in the bar, so it is a discrete filled box. The search spans the sidebar
-  // edge to edge, so it is full-bleed and transparent — a filled box inside a
-  // padded, bordered strip was two boxes doing one job.
-
-  :where(.search-box, .filter-box) {
-    align-items: center;
-    display: flex;
-    min-inline-size: 0;
-    position: relative;
-
-    &::before {
-      block-size: var(--icon-sm);
-      color: var(--muted-foreground);
-      content: '';
-      inline-size: var(--icon-sm);
-      pointer-events: none;
-      position: absolute;
-    }
-
-    input {
-      color: var(--foreground);
-      flex: 1;
-      font-size: var(--text-sm);
-      min-inline-size: 0;
-
-      &::placeholder {
-        color: var(--muted-foreground);
-      }
-    }
-  }
-
-  .filter-box {
-    &::before {
-      @include icon-common('icn-filter');
-      inset-inline-start: var(--space-2);
-    }
-
-    input {
-      background: var(--muted);
-      block-size: var(--control-h);
-      // icon inset + icon + gap
-      padding-inline: calc(var(--space-2) * 2 + var(--icon-sm)) var(--space-2);
-      transition: background-color .12s ease, box-shadow .12s ease;
-
-      &:hover {
-        box-shadow: inset 0 0 0 var(--hairline) var(--border);
-      }
-
-      &:focus {
-        background: var(--background);
-        box-shadow: inset 0 0 0 var(--hairline) var(--border-strong);
-      }
-    }
-  }
-
-  // Full-bleed, exactly --bar-h tall so it stays on the 4px grid, with the
-  // icon on the same 16px rail as the section labels and stream rows below.
-  .search-box {
-    block-size: var(--bar-h);
-    border-block-end: var(--hairline) solid var(--border);
-    padding-inline: var(--space-4);
-
-    &::before {
-      @include icon('icn-search');
-      inset-inline-start: var(--space-4);
-    }
-
-    &:focus-within::before {
-      color: var(--foreground);
-    }
-
-    input {
-      block-size: 100%;
-      // Clears the icon on the rail; the trailing space keeps text off the
-      // clear button.
-      padding-inline: calc(var(--icon-sm) + var(--space-2)) var(--space-4);
-    }
-  }
-
-  // Drawn rather than an asset: two 1px rules crossed, so it stays crisp and
-  // inherits colour like every other icon here.
-  .search-clear {
-    block-size: var(--space-4);
-    color: var(--muted-foreground);
-    flex-shrink: 0;
-    inline-size: var(--space-4);
-    position: relative;
-    rotate: 45deg;
-    transition: color .12s ease;
-
-    &::before,
-    &::after {
-      background: currentColor;
-      content: '';
-      inset: 50%;
-      position: absolute;
-      translate: -50% -50%;
-    }
-
-    &::before {
-      block-size: var(--hairline);
-      inline-size: var(--space-2);
-    }
-
-    &::after {
-      block-size: var(--space-2);
-      inline-size: var(--hairline);
-    }
-
-    &:hover {
-      color: var(--foreground);
-    }
-  }
-
-  // Shown when a query matches nothing, so the section header is never left
-  // hanging over an empty list.
-  .stream-sections .no-matches {
-    color: var(--muted-foreground);
-    display: block;
-    font-size: var(--text-sm);
-    min-block-size: var(--row-h);
-    line-height: var(--row-h);
-    padding-inline: var(--space-4);
-  }
-
-  // ** top bar: stream picker, live toggle **
+  // ** top bar: stream picker **
 
   .stream-picker {
     align-items: center;
+    background: var(--muted);
     block-size: var(--control-h);
+    border: var(--hairline) solid var(--border);
+    border-radius: var(--radius-md);
     color: var(--foreground);
     display: flex;
     flex-shrink: 0;
     font-size: var(--text-md);
+    font-weight: 500;
     gap: var(--space-2);
     max-inline-size: calc(var(--space-6) * 10);
     min-inline-size: 0;
-    padding-inline: var(--space-2);
-    margin-inline-start: calc(var(--space-2) * -1);
-    transition: background-color .12s ease;
+    padding-inline: var(--space-3);
+    transition: background-color .14s ease, border-color .14s ease;
 
     &:hover {
-      background: var(--subtle);
+      background: var(--subtle-strong);
+      border-color: var(--border-strong);
     }
   }
 
   .stream-picker-icon {
     @include icon-common('icn-filter', contain);
     block-size: var(--icon-sm);
-    color: var(--muted-foreground);
+    color: var(--faint-foreground);
     flex-shrink: 0;
     inline-size: var(--icon-sm);
   }
@@ -444,44 +320,53 @@
   }
 
   .stream-picker-count {
+    background: var(--muted);
+    border-radius: var(--radius-xs);
     color: var(--muted-foreground);
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
+    padding: 1px var(--space-1);
   }
 
-  // Live / history — the accent doing real work.
+  // ** live / history **
+
   .live-toggle {
     align-items: center;
+    block-size: var(--control-h);
+    border-radius: var(--radius-md);
     color: var(--muted-foreground);
     display: flex;
     flex-shrink: 0;
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
+    font-weight: 500;
     gap: var(--space-2);
-    letter-spacing: .02em;
-    padding-inline: var(--space-2);
-    text-transform: uppercase;
+    padding-inline: var(--space-3);
+    transition: background-color .14s ease, color .14s ease;
+
+    &:hover { background: var(--subtle); }
 
     i {
-      background: var(--muted-foreground);
-      block-size: var(--space-1);
+      background: var(--faint-foreground);
+      block-size: var(--dot);
+      border-radius: 50%;
       display: block;
-      inline-size: var(--space-1);
+      inline-size: var(--dot);
       position: relative;
     }
 
     &.on {
-      color: var(--primary);
+      color: var(--foreground);
 
       i {
-        background: var(--primary);
-        box-shadow: 0 0 var(--space-2) var(--primary);
+        background: var(--live);
 
         // A halo that breathes, so "live" reads at a glance.
         &::after {
-          animation: pulse 1.8s ease-out infinite;
-          background: var(--primary);
+          animation: pulse 2s ease-out infinite;
+          background: var(--live);
+          border-radius: 50%;
           content: '';
-          inset: calc(var(--space-1) * -1);
+          inset: 0;
           position: absolute;
         }
       }
@@ -495,20 +380,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  // ** the query row **
-  //
-  // The command bar is the primary control, so it gets a row of its own rather
-  // than competing for space in the top bar.
-
-  .query-row {
-    align-items: center;
-    box-shadow: inset 0 calc(var(--hairline) * -1) 0 var(--border);
-    display: flex;
-    gap: var(--space-2);
-    min-inline-size: 0;
-    padding-inline: var(--space-4);
-    padding-block: var(--space-3);
-  }
+  // ** the command bar — the hero control, and sized like one **
 
   .command {
     flex: 1;
@@ -516,105 +388,89 @@
     position: relative;
   }
 
-  // The hero control, and sized like one: taller than everything else, with a
-  // focus state that is the brightest thing on screen.
   .command-input {
     align-items: center;
-    background: var(--muted);
+    background: var(--card);
     block-size: var(--command-h);
-    box-shadow: inset 0 0 0 var(--hairline) var(--input);
+    border: var(--hairline) solid var(--input);
+    border-radius: var(--radius-md);
     display: flex;
-    gap: var(--space-2);
+    gap: var(--space-3);
     padding-inline: var(--space-3);
-    transition: box-shadow .16s ease, background-color .16s ease;
+    transition: border-color .16s ease, box-shadow .16s ease;
 
-    &:hover {
-      box-shadow: inset 0 0 0 var(--hairline) var(--border-strong);
-    }
+    &:hover { border-color: var(--border-strong); }
 
-    &:focus-within {
-      background: var(--background);
-      box-shadow:
-        inset 0 0 0 var(--hairline) var(--ring),
-        0 0 0 3px var(--primary-glow);
-    }
+    // Brighter edge, no halo. A glow is the first thing that makes a dark
+    // interface look like a toy.
+    &:focus-within { border-color: var(--border-strong); }
 
     input {
       background: none;
-      border: 0;
       color: var(--foreground);
       flex: 1;
       font-family: var(--mono);
-      font-size: var(--text-md);
-      letter-spacing: -0.01em;
+      font-size: var(--mono-size);
       min-inline-size: 0;
       outline: 0;
 
-      &::placeholder {
-        color: var(--faint-foreground);
-      }
+      &::placeholder { color: var(--faint-foreground); }
     }
   }
 
-  .command.invalid .command-input {
-    box-shadow: inset 0 0 0 var(--hairline) var(--ansi-red);
-  }
+  .command.invalid .command-input { border-color: var(--level-error); }
 
   .command-icon {
     @include icon-common('icn-search', contain);
     block-size: var(--icon-sm);
-    color: var(--muted-foreground);
+    color: var(--faint-foreground);
     flex-shrink: 0;
     inline-size: var(--icon-sm);
   }
 
   .command-busy {
-    animation: pulse 1s ease-in-out infinite alternate;
-    background: var(--primary);
-    block-size: var(--space-1);
+    animation: pulse 1.1s ease-out infinite;
+    background: var(--muted-foreground);
+    block-size: var(--dot);
+    border-radius: 50%;
     flex-shrink: 0;
-    inline-size: var(--space-1);
+    inline-size: var(--dot);
   }
 
   .command-clear {
     @include icon-common('icn-close-date', contain);
     block-size: var(--icon-sm);
-    color: var(--muted-foreground);
+    color: var(--faint-foreground);
     flex-shrink: 0;
     inline-size: var(--icon-sm);
 
-    &:hover {
-      color: var(--foreground);
-    }
+    &:hover { color: var(--foreground); }
   }
 
   .command-menu {
-    background: var(--popover);
-    box-shadow:
-      inset 0 0 0 var(--hairline) var(--border),
-      0 var(--space-2) var(--space-6) rgb(0 0 0 / .45);
-    inset-block-start: calc(var(--control-h) + var(--hairline));
+    animation: rise .12s ease-out;
+    background: var(--elevated);
+    border: var(--hairline) solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    inset-block-start: calc(var(--command-h) + var(--space-2));
     inset-inline: 0;
-    list-style: none;
-    margin: 0;
     max-block-size: calc(var(--row-h) * 9);
     overflow-y: auto;
-    padding: 0;
+    padding: var(--space-1);
     position: absolute;
-    z-index: 10;
+    z-index: 30;
 
     li {
       align-items: center;
       block-size: var(--row-h);
+      border-radius: var(--radius-sm);
       cursor: pointer;
       display: flex;
-      gap: var(--space-2);
+      gap: var(--space-3);
       padding-inline: var(--space-3);
 
-      &.active {
-        background: var(--subtle-strong);
-        box-shadow: inset var(--marker-w) 0 0 var(--primary);
-      }
+      &.active { background: var(--subtle-strong); }
     }
   }
 
@@ -628,14 +484,17 @@
   }
 
   .command-menu-kind {
+    background: var(--subtle-strong);
+    border-radius: var(--radius-xs);
     color: var(--muted-foreground);
     font-size: var(--text-xs);
+    padding: 1px var(--space-1);
 
-    &.kind-envelope { color: var(--primary); }
+    &.kind-envelope { color: var(--foreground); }
   }
 
   .command-menu-detail {
-    color: var(--muted-foreground);
+    color: var(--faint-foreground);
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     margin-inline-start: auto;
@@ -643,18 +502,17 @@
 
   // The parse error, with a caret under the character the parser stopped at.
   .command-error {
-    color: var(--ansi-red);
+    color: var(--level-error);
     font-size: var(--text-xs);
-    padding-block-start: var(--space-1);
-    padding-inline-start: calc(var(--space-2) * 2 + var(--icon-sm));
+    padding-block-start: var(--space-2);
+    padding-inline-start: calc(var(--space-3) * 2 + var(--icon-sm));
     position: relative;
   }
 
   .command-caret {
     // 1ch per character, because the input is monospace — which is most of
     // why it is monospace.
-    color: var(--ansi-red);
-    inset-inline-start: calc(var(--space-2) * 2 + var(--icon-sm) + var(--at) * 1ch);
+    inset-inline-start: calc(var(--space-3) * 2 + var(--icon-sm) + var(--at) * 1ch);
     position: absolute;
   }
 
@@ -662,62 +520,63 @@
 
   .timerange {
     align-items: center;
+    background: var(--card);
     block-size: var(--command-h);
-    box-shadow: inset 0 0 0 var(--hairline) var(--input);
+    border: var(--hairline) solid var(--input);
+    border-radius: var(--radius-md);
     color: var(--foreground);
     display: flex;
     flex-shrink: 0;
-    font-size: var(--text-sm);
+    font-size: var(--text-md);
+    font-weight: 500;
     gap: var(--space-2);
-    padding-inline: var(--space-3);
-    transition: box-shadow .12s ease;
+    padding-inline: var(--space-4);
+    transition: background-color .14s ease, border-color .14s ease;
 
-    &:hover {
-      box-shadow: inset 0 0 0 var(--hairline) var(--border-strong);
-    }
+    &:hover { border-color: var(--border-strong); }
 
-    // An absolute range is pinned, and looks it.
-    &.absolute {
-      box-shadow: inset 0 0 0 var(--hairline) var(--primary);
-      color: var(--primary);
-    }
+    // A pinned range is not the default, and looks it — brighter, not coloured.
+    &.absolute { border-color: var(--border-strong); }
   }
 
   .timerange-icon {
     @include icon-common('icn-resume', contain);
     block-size: var(--icon-sm);
-    color: currentcolor;
     inline-size: var(--icon-sm);
   }
 
   .popover-timerange {
-    gap: var(--space-2);
+    gap: var(--space-3);
     padding: var(--space-3);
 
     h4 {
-      color: var(--muted-foreground);
+      color: var(--faint-foreground);
       font-size: var(--text-xs);
       font-weight: 500;
-      letter-spacing: .04em;
+      letter-spacing: var(--tracking-wide);
       margin: 0;
+      padding-inline: var(--space-2);
       text-transform: uppercase;
     }
   }
 
   .timerange-presets {
     display: grid;
+    gap: 2px;
 
     button {
       block-size: var(--row-h);
+      border-radius: var(--radius-sm);
       color: var(--foreground);
-      font-size: var(--text-sm);
+      font-size: var(--text-md);
       padding-inline: var(--space-2);
       text-align: start;
 
       &:hover { background: var(--subtle); }
+
       &.selected {
-        box-shadow: inset var(--marker-w) 0 0 var(--primary);
-        color: var(--primary);
+        background: var(--subtle-strong);
+        color: var(--foreground);
       }
     }
   }
@@ -736,7 +595,8 @@
     input {
       background: var(--muted);
       block-size: var(--control-h);
-      box-shadow: inset 0 0 0 var(--hairline) var(--input);
+      border: var(--hairline) solid var(--input);
+      border-radius: var(--radius-sm);
       color: var(--foreground);
       font-family: var(--mono);
       font-size: var(--text-sm);
@@ -748,15 +608,18 @@
   .timerange-reset {
     background: var(--primary);
     block-size: var(--control-h);
+    border-radius: var(--radius-sm);
     color: var(--primary-foreground);
-    font-size: var(--text-sm);
+    font-size: var(--text-md);
+    font-weight: 500;
+    transition: background-color .14s ease;
 
     &:hover { background: var(--primary-hover); }
   }
 
   .timerange-reset {
     background: none;
-    box-shadow: inset 0 0 0 var(--hairline) var(--border);
+    border: var(--hairline) solid var(--border);
     color: var(--foreground);
 
     &:hover { background: var(--subtle); }
@@ -770,24 +633,27 @@
     input {
       background: none;
       block-size: var(--bar-h);
-      box-shadow: inset 0 calc(var(--hairline) * -1) 0 var(--border);
+      border-block-end: var(--hairline) solid var(--border);
       color: var(--foreground);
-      font-size: var(--text-sm);
+      font-size: var(--text-md);
       inline-size: 100%;
-      padding-inline: var(--space-3);
+      padding-inline: var(--space-4);
+
+      &::placeholder { color: var(--faint-foreground); }
     }
   }
 
   .stream-list {
-    list-style: none;
-    margin: 0;
     max-block-size: calc(var(--row-h) * 10);
     overflow-y: auto;
-    padding: 0;
+    padding: var(--space-1);
 
     li {
       align-items: center;
+      border-radius: var(--radius-sm);
       display: flex;
+
+      &:hover { background: var(--subtle); }
     }
   }
 
@@ -795,25 +661,20 @@
     block-size: var(--row-h);
     color: var(--foreground);
     flex: 1;
-    font-size: var(--text-sm);
+    font-size: var(--text-md);
     overflow: hidden;
     padding-inline: var(--space-3);
     text-align: start;
     text-overflow: ellipsis;
     white-space: nowrap;
 
-    &:hover { background: var(--subtle); }
-
-    &.selected {
-      box-shadow: inset var(--marker-w) 0 0 var(--primary);
-      color: var(--primary);
-    }
+    &.selected { color: var(--foreground); font-weight: 550; }
   }
 
   .stream-fav {
     @include icon-common('btn-fav-off', contain);
     block-size: var(--icon-sm);
-    color: var(--muted-foreground);
+    color: var(--faint-foreground);
     flex-shrink: 0;
     inline-size: var(--icon-sm);
     margin-inline-end: var(--space-3);
@@ -826,20 +687,18 @@
 
   .stream-empty {
     color: var(--muted-foreground);
-    font-size: var(--text-sm);
+    font-size: var(--text-md);
     padding: var(--space-3);
   }
 
-  // ** histogram **
-  //
-  // The navigation, not decoration: drag across it to zoom the range.
+  // ** histogram — the navigation, not decoration **
 
   .histogram {
-    box-shadow: inset 0 calc(var(--hairline) * -1) 0 var(--border);
+    @include panel;
     display: grid;
-    gap: var(--space-2);
-    padding-block: var(--space-3) var(--space-2);
-    padding-inline: var(--space-4);
+    gap: var(--space-3);
+    margin-inline: var(--space-4);
+    padding: var(--space-4);
     transition: opacity .16s ease;
 
     &.loading { opacity: .45; }
@@ -851,8 +710,8 @@
     position: relative;
     user-select: none;
 
-    // A baseline, so short bars still sit on something and the chart reads as
-    // a chart rather than as debris floating above the results.
+    // A baseline, so short bars sit on something and the chart reads as a
+    // chart rather than as debris floating above the results.
     &::after {
       background: var(--border);
       block-size: var(--hairline);
@@ -864,18 +723,24 @@
   }
 
   .histogram-bar {
-    // Bars are positioned by timestamp, so a gap in the data stays a gap.
+    // Positioned by timestamp, so a gap in the data stays a gap.
+    border-radius: var(--radius-xs) var(--radius-xs) 0 0;
     display: flex;
     flex-direction: column;
     inset-block-end: 0;
     justify-content: flex-end;
-    min-block-size: var(--hairline);
+    min-block-size: 2px;
+    overflow: hidden;
+    padding-inline: 0.5px;
     position: absolute;
+    transition: filter .1s ease;
+
+    &:hover { filter: brightness(1.3); }
   }
 
   .histogram-part {
     inline-size: 100%;
-    min-block-size: var(--hairline);
+    min-block-size: 2px;
 
     &.level-none,
     &.level-other,
@@ -887,42 +752,36 @@
 
     &.level-warn { background: var(--level-warn); }
 
-    // Errors get the full colour and a bloom, so a spike is visible from
-    // across the room — which is the entire job of this chart.
+    // Errors are the only saturated thing in the chart, which is enough to
+    // make a spike visible from across the room without a bloom around it.
     &.level-error,
     &.level-critical,
     &.level-alert,
     &.level-emergency,
-    &.level-fatal {
-      background: var(--level-error);
-      box-shadow: 0 0 var(--space-2) rgb(255 95 86 / .35);
-    }
-  }
-
-  .histogram-bar:hover .histogram-part {
-    filter: brightness(1.35);
+    &.level-fatal { background: var(--level-error); }
   }
 
   .histogram-selection {
     background: var(--primary-subtle);
-    box-shadow:
-      inset var(--hairline) 0 0 var(--primary),
-      inset calc(var(--hairline) * -1) 0 0 var(--primary),
-      0 0 var(--space-4) var(--primary-glow);
+    border-inline: var(--hairline) solid var(--border-strong);
+    border-radius: var(--radius-xs);
     inset-block: 0;
     pointer-events: none;
     position: absolute;
   }
 
   .histogram-tip {
-    background: var(--popover);
-    box-shadow: inset 0 0 0 var(--hairline) var(--border);
+    animation: rise .1s ease-out;
+    background: var(--elevated);
+    border: var(--hairline) solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
     display: grid;
     font-size: var(--text-xs);
-    gap: var(--space-1);
+    gap: 2px;
     inset-block-start: 0;
     justify-items: center;
-    padding: var(--space-1) var(--space-2);
+    padding: var(--space-2) var(--space-3);
     pointer-events: none;
     position: absolute;
     transform: translateX(-50%);
@@ -930,7 +789,7 @@
     z-index: 5;
 
     span { color: var(--muted-foreground); }
-    strong { font-variant-numeric: tabular-nums; }
+    strong { font-size: var(--text-md); font-variant-numeric: tabular-nums; }
   }
 
   .histogram-axis {
@@ -939,51 +798,41 @@
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     justify-content: space-between;
-    letter-spacing: .02em;
   }
 
-  .histogram-count {
-    color: var(--muted-foreground);
+  .histogram-count { color: var(--muted-foreground); }
 
-    strong, b { color: var(--foreground); }
-  }
-
-  // ** the split: field explorer beside the results **
-
-  .explorer-split {
-    display: grid;
-    grid-template-columns: var(--sidebar-w) 1fr;
-    min-block-size: 0;
-    overflow: hidden;
-  }
+  // ** field explorer **
 
   .explorer {
-    box-shadow: inset calc(var(--hairline) * -1) 0 0 var(--border);
+    @include panel;
     display: grid;
-    grid-template-rows: var(--bar-h) 1fr;
+    grid-template-rows: auto 1fr;
     min-block-size: 0;
+    overflow: hidden;
   }
 
   .explorer-search input {
     background: none;
     block-size: var(--bar-h);
-    box-shadow: inset 0 calc(var(--hairline) * -1) 0 var(--border);
+    border-block-end: var(--hairline) solid var(--border);
     color: var(--foreground);
-    font-size: var(--text-sm);
+    font-size: var(--text-md);
     inline-size: 100%;
-    padding-inline: var(--space-3);
+    padding-inline: var(--space-4);
 
-    &::placeholder { color: var(--muted-foreground); }
+    &::placeholder { color: var(--faint-foreground); }
   }
 
   .explorer-list {
     min-block-size: 0;
     overflow-y: auto;
+    padding: var(--space-2);
   }
 
   .explorer-empty,
   .explorer-note {
-    color: var(--muted-foreground);
+    color: var(--faint-foreground);
     font-size: var(--text-xs);
     padding: var(--space-2) var(--space-3);
   }
@@ -991,17 +840,15 @@
   .explorer-head {
     align-items: center;
     block-size: var(--row-h);
+    border-radius: var(--radius-sm);
     display: flex;
     gap: var(--space-2);
     inline-size: 100%;
     padding-inline: var(--space-3);
     text-align: start;
+    transition: background-color .12s ease;
 
     &:hover { background: var(--subtle); }
-  }
-
-  .explorer-field.active .explorer-head {
-    box-shadow: inset var(--marker-w) 0 0 var(--primary);
   }
 
   .explorer-name {
@@ -1013,22 +860,22 @@
     white-space: nowrap;
   }
 
+  .explorer-field.active .explorer-name { color: var(--foreground); font-weight: 550; }
+
   .explorer-kind {
     color: var(--faint-foreground);
     font-size: var(--text-xs);
-    letter-spacing: .02em;
     margin-inline-start: auto;
   }
 
-  .explorer-field.active .explorer-name { color: var(--primary); }
-
   .explorer-values {
-    padding-block-end: var(--space-2);
+    padding-block: var(--space-1) var(--space-3);
   }
 
   .explorer-value {
     align-items: center;
     display: flex;
+    gap: 2px;
 
     &:hover .explorer-exclude { opacity: 1; }
   }
@@ -1036,10 +883,12 @@
   .explorer-value-main {
     align-items: center;
     block-size: var(--row-h);
+    border-radius: var(--radius-sm);
     display: flex;
     flex: 1;
     gap: var(--space-2);
     min-inline-size: 0;
+    overflow: hidden;
     padding-inline: var(--space-3);
     position: relative;
     text-align: start;
@@ -1047,25 +896,18 @@
     &:hover { background: var(--subtle); }
   }
 
-  // The share bar sits behind the label: the sidebar is narrow, and a value
-  // that needs the width should get it.
-  // Behind the label rather than beside it: the sidebar is narrow, and a value
-  // that needs the width should get it.
+  // A filled bar behind the label, not a rule beside it: the sidebar is
+  // narrow, and a value that needs the width should get it.
   .explorer-share {
-    // A filled bar, not a rule. An edge line alone reads as a text cursor
-    // sitting in the middle of the label; the fill is what makes it a
-    // proportion you can compare down the column at a glance.
-    background: var(--primary-glow);
-    inset-block: 2px;
+    background: var(--subtle-strong);
+    border-radius: var(--radius-xs);
+    inset-block: 3px;
     inset-inline-start: 0;
     position: absolute;
     transition: background-color .12s ease;
   }
 
-  .explorer-value-main:hover .explorer-share {
-    background: var(--primary-subtle);
-    box-shadow: inset calc(var(--marker-w) * -1) 0 0 var(--primary);
-  }
+  .explorer-value-main:hover .explorer-share { background: var(--primary-subtle); }
 
   .explorer-label {
     color: var(--foreground);
@@ -1085,30 +927,38 @@
   }
 
   .explorer-exclude {
+    align-items: center;
     block-size: var(--hit);
-    color: var(--muted-foreground);
-    inline-size: var(--hit);
+    border-radius: var(--radius-sm);
+    color: var(--faint-foreground);
+    display: flex;
+    inline-size: var(--space-6);
+    justify-content: center;
     opacity: 0;
-    transition: opacity .12s ease, color .12s ease;
+    transition: opacity .12s ease, color .12s ease, background-color .12s ease;
 
-    &:hover { color: var(--ansi-red); }
+    &:hover {
+      background: var(--subtle);
+      color: var(--level-error);
+    }
   }
 
   // ** results **
 
   .results {
+    @include panel;
     min-block-size: 0;
+    overflow: hidden;
     position: relative;
   }
 
   .results-scroll {
     block-size: 100%;
     overflow-y: auto;
+    padding: var(--space-2);
   }
 
-  .results-spacer {
-    position: relative;
-  }
+  .results-spacer { position: relative; }
 
   .results-row {
     inline-size: 100%;
@@ -1118,8 +968,9 @@
 
   .results-more {
     block-size: var(--bar-h);
+    border-radius: var(--radius-sm);
     color: var(--muted-foreground);
-    font-size: var(--text-sm);
+    font-size: var(--text-md);
     inline-size: 100%;
 
     &:hover:not(:disabled) {
@@ -1129,13 +980,17 @@
   }
 
   .results-follow {
+    animation: rise .14s ease-out;
     background: var(--primary);
     block-size: var(--control-h);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
     color: var(--primary-foreground);
     font-size: var(--text-sm);
+    font-weight: 500;
     inset-block-end: var(--space-4);
-    inset-inline-end: var(--space-4);
-    padding-inline: var(--space-3);
+    inset-inline-end: var(--space-5);
+    padding-inline: var(--space-4);
     position: absolute;
     z-index: 5;
 
@@ -1146,13 +1001,12 @@
     align-content: center;
     block-size: 100%;
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-4);
     justify-items: center;
 
     p {
       color: var(--muted-foreground);
-      font-size: var(--text-sm);
-      margin: 0;
+      font-size: var(--text-md);
     }
   }
 
@@ -1165,12 +1019,12 @@
     &::before,
     &::after {
       background: var(--border-strong);
+      block-size: var(--hairline);
       content: '';
+      inline-size: 100%;
       inset-block-start: 50%;
       inset-inline-start: 0;
       position: absolute;
-      inline-size: 100%;
-      block-size: var(--hairline);
     }
 
     &::before { transform: rotate(45deg); }
@@ -1180,9 +1034,11 @@
   // ** one row **
 
   .row {
+    border-radius: var(--radius-sm);
     cursor: pointer;
     font-family: var(--mono);
     font-size: var(--mono-size);
+    letter-spacing: 0;
     transition: background-color .1s ease;
 
     &:hover {
@@ -1192,14 +1048,12 @@
 
     &.selected {
       background: var(--subtle-strong);
-      box-shadow: inset var(--marker-w) 0 0 var(--primary);
+      box-shadow: inset var(--marker-w) 0 0 var(--foreground);
     }
 
     &.expanded {
       background: var(--muted);
-      box-shadow:
-        inset 0 var(--hairline) 0 var(--border-strong),
-        inset 0 calc(var(--hairline) * -1) 0 var(--border-strong);
+      box-shadow: 0 0 0 var(--hairline) var(--border);
     }
   }
 
@@ -1208,7 +1062,7 @@
     display: flex;
     gap: var(--space-3);
     min-block-size: var(--line-h);
-    padding-inline: var(--space-4);
+    padding-inline: var(--space-3);
   }
 
   // The gutter recedes until you look at it. Repeated forty times down the
@@ -1223,12 +1077,8 @@
     transition: color .1s ease;
   }
 
-  .row-date {
-    color: var(--faint-foreground);
-    margin-inline-end: var(--space-1);
-  }
-
-  .row-ms { opacity: .55; }
+  .row-date { margin-inline-end: var(--space-1); }
+  .row-ms { opacity: .5; }
 
   // A dot you scan, a word that confirms it.
   .row-level {
@@ -1236,10 +1086,12 @@
     color: var(--level-info);
     display: flex;
     flex-shrink: 0;
+    font-family: var(--sans);
     font-size: var(--text-xs);
+    font-weight: 550;
     gap: var(--space-2);
     inline-size: calc(var(--space-6) * 2 + var(--space-2));
-    letter-spacing: .04em;
+    letter-spacing: var(--tracking-wide);
   }
 
   .row-dot {
@@ -1265,9 +1117,7 @@
 
   .row-raw { color: var(--muted-foreground); }
 
-  .row.level-warn {
-    .row-level { color: var(--level-warn); }
-  }
+  .row.level-warn .row-level { color: var(--level-warn); }
 
   // Errors wash the whole row, faintly. A screen full of them should look
   // wrong before you have read a word of it.
@@ -1290,37 +1140,38 @@
     .row-level { color: var(--level-debug); }
   }
 
-  .row.level-none .row-dot { opacity: .35; }
+  .row.level-none .row-dot { opacity: .3; }
 
   // ** the expanded row **
 
   .row-detail {
     cursor: default;
     display: grid;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3) var(--space-3);
-    padding-inline-start: calc(var(--space-3) + var(--gutter-w) + var(--space-2));
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4) var(--space-4);
+    padding-inline-start: calc(var(--space-3) + var(--gutter-w) + var(--space-3));
   }
 
-  .row-fields {
-    display: grid;
-    gap: var(--hairline);
-    margin: 0;
-  }
+  .row-fields { display: grid; }
 
   .leaf {
+    border-radius: var(--radius-sm);
     display: grid;
-    gap: var(--space-2);
+    gap: var(--space-3);
     grid-template-columns: calc(var(--space-6) * 6) 1fr;
     min-block-size: var(--line-h);
+    padding-inline: var(--space-2);
 
-    &:hover .leaf-actions { opacity: 1; }
+    &:hover {
+      background: var(--subtle);
+      .leaf-actions { opacity: 1; }
+    }
 
-    &.active .leaf-key { color: var(--primary); }
+    &.active .leaf-key { color: var(--foreground); }
   }
 
   .leaf-key {
-    color: var(--muted-foreground);
+    color: var(--faint-foreground);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1330,7 +1181,6 @@
     align-items: baseline;
     display: flex;
     gap: var(--space-2);
-    margin: 0;
     min-inline-size: 0;
   }
 
@@ -1343,8 +1193,7 @@
   }
 
   .leaf-json {
-    color: var(--foreground);
-    margin: 0;
+    color: var(--muted-foreground);
     max-block-size: calc(var(--line-h) * 12);
     overflow: auto;
     white-space: pre;
@@ -1359,73 +1208,36 @@
   }
 
   .leaf-filter {
-    color: var(--muted-foreground);
+    border-radius: var(--radius-xs);
+    color: var(--faint-foreground);
     font-size: var(--text-md);
     line-height: 1;
+    padding: 0 2px;
 
-    &:hover { color: var(--primary); }
+    &:hover { color: var(--foreground); }
   }
 
   .row-actions {
     display: flex;
     gap: var(--space-2);
+    padding-inline: var(--space-2);
   }
 
   .row-action {
+    background: var(--card);
     block-size: var(--control-h);
-    box-shadow: inset 0 0 0 var(--hairline) var(--border);
+    border: var(--hairline) solid var(--border);
+    border-radius: var(--radius-sm);
     color: var(--muted-foreground);
-    font-size: var(--text-xs);
+    font-family: var(--sans);
+    font-size: var(--text-sm);
+    font-weight: 500;
     padding-inline: var(--space-3);
+    transition: background-color .14s ease, color .14s ease;
 
     &:hover {
-      background: var(--subtle);
+      background: var(--subtle-strong);
       color: var(--foreground);
-    }
-  }
-
-  // ** shortcuts, in the info popover **
-
-  .shortcuts {
-    inline-size: 100%;
-
-    h4 {
-      color: var(--muted-foreground);
-      font-size: var(--text-xs);
-      font-weight: 500;
-      letter-spacing: .04em;
-      margin: 0 0 var(--space-2);
-      text-transform: uppercase;
-    }
-
-    dl {
-      display: grid;
-      gap: var(--space-1) var(--space-3);
-      grid-template-columns: auto 1fr;
-      margin: 0;
-    }
-
-    dt {
-      color: var(--foreground);
-      font-family: var(--mono);
-      font-size: var(--text-xs);
-    }
-
-    dd {
-      color: var(--muted-foreground);
-      font-size: var(--text-xs);
-      margin: 0;
-    }
-  }
-
-  // Below this width the field explorer is the first thing to go.
-  @container (max-width: 720px) {
-    .explorer-split {
-      grid-template-columns: 1fr;
-    }
-
-    .explorer {
-      display: none;
     }
   }
 
@@ -1435,122 +1247,151 @@
     // Anchored to the trigger's viewport rect by Popover.tsx, which measures
     // the panel and clamps it on screen.
     position: fixed;
-    z-index: 10;
+    z-index: 40;
 
     .popover-content {
+      animation: rise .12s ease-out;
       background: var(--popover);
-      box-shadow:
-        inset 0 0 0 var(--hairline) var(--border),
-        0 var(--space-2) var(--space-6) rgb(0 0 0 / .45);
+      border: var(--hairline) solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
       color: var(--popover-foreground);
       display: grid;
-      font-size: var(--text-sm);
-      inline-size: calc(var(--space-6) * 8);
-      margin-block-start: var(--hairline);
+      font-size: var(--text-md);
+      inline-size: calc(var(--space-6) * 9);
+      margin-block-start: var(--space-2);
+      overflow: hidden;
     }
 
     .popover-info {
-      gap: var(--space-2);
+      gap: var(--space-3);
       justify-items: center;
-      padding: var(--space-4);
+      padding: var(--space-5);
 
       .version {
-        color: var(--muted-foreground);
+        color: var(--faint-foreground);
+        font-size: var(--text-sm);
         font-variant-numeric: tabular-nums;
       }
 
       .btn {
         align-items: center;
         block-size: var(--control-h);
-        box-shadow: inset 0 0 0 var(--hairline) var(--border);
+        border: var(--hairline) solid var(--border);
+        border-radius: var(--radius-sm);
         color: var(--foreground);
         display: flex;
+        font-size: var(--text-sm);
+        font-weight: 500;
         inline-size: 100%;
         justify-content: center;
-        transition: background-color .12s ease, box-shadow .12s ease;
+        transition: background-color .14s ease;
 
-        &:hover {
-          background: var(--subtle);
-          box-shadow: inset 0 0 0 var(--hairline) var(--border-strong);
-        }
+        &:hover { background: var(--subtle); }
       }
     }
 
     .popover-settings {
-      gap: var(--space-1);
-      padding: var(--space-3);
+      gap: var(--space-3);
+      padding: var(--space-4);
 
       h4 {
-        color: var(--muted-foreground);
+        color: var(--faint-foreground);
         font-size: var(--text-xs);
         font-weight: 500;
-        letter-spacing: .06em;
+        letter-spacing: var(--tracking-wide);
         text-transform: uppercase;
+      }
+    }
+  }
 
-        // Space above each group except the first, without margins on both.
-        &:not(:first-child) {
-          margin-block-start: var(--space-3);
-        }
+  // ** segmented control, used by the settings popover **
+
+  .btn-group {
+    background: var(--muted);
+    border-radius: var(--radius-md);
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+
+    &.six-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .btn {
+      align-items: center;
+      block-size: var(--control-h);
+      border-radius: var(--radius-sm);
+      color: var(--muted-foreground);
+      display: flex;
+      flex: 1;
+      justify-content: center;
+      transition: background-color .14s ease, color .14s ease;
+
+      &:hover { background: var(--subtle); }
+
+      &.selected {
+        background: var(--card);
+        box-shadow: var(--shadow-sm);
+        color: var(--foreground);
       }
 
-      // Segmented control: one recessed track, square cells inside it. Grid
-      // with equal tracks, so two- and three-item groups both fill the rail.
-      .btn-group {
-        background: var(--muted);
-        display: grid;
-        gap: var(--hairline);
-        grid-auto-columns: 1fr;
-        grid-auto-flow: column;
-        padding: var(--hairline);
-
-        &.six-grid {
-          grid-auto-flow: row;
-          grid-template-columns: repeat(3, 1fr);
-        }
-
-        .btn {
-          align-items: center;
-          block-size: var(--row-h);
-          color: var(--muted-foreground);
-          display: flex;
-          font-size: var(--text-md);
-          justify-content: center;
-          min-inline-size: 0;
-          position: relative;
-          transition: background-color .12s ease, color .12s ease;
-
-          &::after {
-            block-size: var(--icon-sm);
-            content: '';
-            inline-size: var(--icon-sm);
-            position: absolute;
-          }
-
-          &:hover:not(.selected) {
-            color: var(--foreground);
-          }
-
-          // Selected reads as a cell lifted out of the rail.
-          &.selected {
-            background: var(--background);
-            box-shadow: inset 0 0 0 var(--hairline) var(--border-strong);
-            color: var(--foreground);
-          }
-
-          &.btn-font-smaller::after { @include icon('icn-font-decrease'); }
-          &.btn-font-reset::after   { @include icon('icn-font-reset'); }
-          &.btn-font-bigger::after  { @include icon('icn-font-increase'); }
-          &.btn-sorting-asc::after  { @include icon('icn-sort-asc'); }
-          &.btn-sorting-desc::after { @include icon('icn-sort-desc'); }
-          &.btn-theme-dark::after   { @include icon('icn-theme-dark'); }
-          &.btn-theme-light::after  { @include icon('icn-theme-light'); }
-        }
-
-        // The font-family swatches show real glyphs, not icons.
-        &.six-grid .btn::after {
-          content: none;
-        }
+      &::after {
+        block-size: var(--icon);
+        content: '';
+        inline-size: var(--icon);
       }
+
+      &.btn-font-smaller::after { @include icon('icn-font-decrease'); }
+      &.btn-font-reset::after { @include icon('icn-font-reset'); }
+      &.btn-font-bigger::after { @include icon('icn-font-increase'); }
+      &.btn-theme-dark::after { @include icon('icn-theme-dark'); }
+      &.btn-theme-light::after { @include icon('icn-theme-light'); }
+    }
+
+    // The font-family swatches show a glyph rather than an icon.
+    .btn[class*='btn-font-']:not(.btn-font-smaller):not(.btn-font-reset):not(.btn-font-bigger) {
+      font-size: var(--text-md);
+
+      &::after { content: none; }
+    }
+  }
+
+  // ** shortcuts, in the info popover **
+
+  .shortcuts {
+    inline-size: 100%;
+
+    h4 {
+      color: var(--faint-foreground);
+      font-size: var(--text-xs);
+      font-weight: 500;
+      letter-spacing: var(--tracking-wide);
+      margin-block-end: var(--space-2);
+      text-transform: uppercase;
+    }
+
+    dl {
+      display: grid;
+      gap: var(--space-2) var(--space-3);
+      grid-template-columns: auto 1fr;
+    }
+
+    dt {
+      background: var(--muted);
+      border: var(--hairline) solid var(--border);
+      border-radius: var(--radius-xs);
+      color: var(--foreground);
+      font-family: var(--mono);
+      font-size: var(--text-xs);
+      padding: 1px var(--space-2);
+      text-align: center;
+    }
+
+    dd {
+      color: var(--muted-foreground);
+      font-size: var(--text-sm);
     }
   }
 }

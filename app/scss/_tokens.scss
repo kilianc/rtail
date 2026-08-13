@@ -1,109 +1,141 @@
 // **
 // design system
 //
-// Three rules, enforced everywhere:
+// Four rules, enforced everywhere:
 //
-//   1. Zero radius. Every corner is square.
-//   2. Every length is a token. No arbitrary pixel values in main.scss —
-//      spacing comes from the 4px scale, sizes from the fixed set below.
-//   3. Monochrome chrome, one accent. A log viewer already has meaningful
-//      colour (ANSI codes, JSON syntax); the interface gives all of it up so
-//      the content is the only thing coloured.
+//   1. Surfaces are layered, not flat. The page, the panels that sit on it and
+//      the things that float above those are three different colours, and
+//      depth comes from that plus a hairline plus a shadow — never from one of
+//      the three alone.
+//   2. Everything is rounded. --radius is the unit; nothing invents its own.
+//   3. Every length is a token, from the 4px scale or the fixed sizes below.
+//   4. Greyscale, almost entirely. The interface is black and a ladder of
+//      greys; white is the interactive accent. The only chromatic colour is
+//      severity and the live indicator, so when something *is* coloured it
+//      means something. A log line already carries plenty of colour of its
+//      own (ANSI codes, JSON syntax) and the chrome should not compete.
 //
-// Naming follows the shadcn/ui convention (background/foreground, muted,
-// popover, primary, border, input, ring) so the palette swaps from one block.
+// The palette follows shadcn's naming (background/foreground, card, muted,
+// popover, primary, border, input, ring) so it swaps from one block, and the
+// scale is close to its dark theme — which is in turn close to Vercel's.
 //
 // Dark is the default and lives on :root, so the app paints correctly on the
-// first frame — before the bundle runs and stamps the persisted theme onto
+// first frame, before the bundle runs and stamps the persisted theme onto
 // <body>. `.light` is a pure override layer.
 // **
 
 :root {
   color-scheme: dark;
 
-  // ** radius — square, everywhere **
-  --radius: 0;
+  // ** radius **
+  --radius: 10px;       // cards, panels, popovers
+  --radius-md: 8px;     // inputs, buttons, menu items
+  --radius-sm: 6px;     // rows, chips, small hit targets
+  --radius-xs: 4px;     // bar caps, tiny marks
 
-  // ** spacing — 4px scale, the only permitted gaps and paddings **
+  // ** spacing — 4px scale **
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+  --space-5: 20px;
   --space-6: 24px;
+  --space-8: 32px;
 
-  // ** sizes — all multiples of 4 so every edge lands on the grid **
-  --bar-h: 40px;        // the single top bar
-  --row-h: 28px;        // sidebar rows
-  --control-h: 28px;    // inputs, buttons
-  --command-h: 36px;    // the command bar — taller, because it is the hero
-  --hit: 28px;          // icon button hit area
-  --icon: 16px;         // icon glyph
-  --icon-sm: 12px;      // inline icon glyph
-  --dot: 6px;           // severity dot
-  --line-h: 22px;       // one log row, exactly
-  --chart-h: 76px;      // the histogram
-  --gutter-w: 92px;     // timestamp column — time only, so it can be narrow
-  --sidebar-w: 240px;   // default; App keeps this in sync while resizing
-  --marker-w: 2px;      // active-row accent marker
+  // ** sizes **
+  --bar-h: 52px;        // the top bar
+  --row-h: 30px;        // list rows in panels
+  --control-h: 32px;    // buttons, small inputs
+  --command-h: 40px;    // the command bar — the hero control
+  --hit: 30px;          // icon button hit area
+  --icon: 16px;
+  --icon-sm: 13px;
+  --dot: 6px;
+  --line-h: 24px;       // one log row
+  --chart-h: 88px;
+  --gutter-w: 96px;     // timestamp column
+  --sidebar-w: 248px;
+  --marker-w: 2px;
   --hairline: 1px;
 
-  // ** type scale **
+  // ** type **
+  --sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
   --text-xs: 11px;
   --text-sm: 12px;
   --text-md: 13px;
-  --mono-size: 12px;
+  --text-lg: 15px;
+  --mono-size: 12.5px;
 
-  // ** surfaces — flat; separation comes from hairlines, never shadows **
-  --background: #09090b;
-  --foreground: #fafafa;
+  // Tightened tracking on UI text, the way Inter and SF are meant to be set.
+  --tracking-tight: -0.011em;
+  --tracking-wide: 0.04em;
 
-  --popover: #101013;
-  --popover-foreground: #fafafa;
+  // ** surfaces — true black, then a short ladder of greys **
+  --background: #000000;   // the page behind everything
+  --card: #0c0c0c;         // panels sitting on it
+  --elevated: #171717;     // popovers and menus above those
+  --foreground: #f2f2f2;
 
-  --muted: #131316;
-  // Chrome is deliberately quiet. The old value sat close enough to the
-  // content that everything on screen mumbled at the same volume; the whole
-  // interface reads better when labels recede and log lines do not.
-  --muted-foreground: #6b6b78;
-  --faint-foreground: #4a4a55;
+  --popover: var(--elevated);
+  --popover-foreground: var(--foreground);
 
-  --subtle: rgba(255, 255, 255, 0.035);
-  --subtle-strong: rgba(255, 255, 255, 0.065);
+  --muted: #111111;
+  --muted-foreground: #a1a1a1;
+  --faint-foreground: #6b6b6b;
 
-  // ** hairlines **
-  --border: #232327;
-  --border-strong: #303036;
-  --input: #232327;
+  --subtle: #0f0f0f;
+  --subtle-strong: #1a1a1a;
 
-  // ** severity — the only semantic colour, and the reason it earns its place **
+  // ** hairlines — flat greys rather than alpha **
+  //
+  // On true black an alpha hairline is a grey anyway, and a solid value is
+  // predictable when panels overlap: two stacked translucent borders read
+  // darker than one, which is exactly where a card edge should not change.
+  --border: #262626;
+  --border-strong: #383838;
+  --input: #2e2e2e;
+
+  // ** elevation **
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.35), 0 16px 48px rgba(0, 0, 0, 0.55);
+
+  // ** severity — one of only two chromatic colours in the interface **
   //
   // Kept out of the ANSI palette on purpose: those are *content* colours a log
   // line chose for itself, and severity is ours. Sharing them would mean a line
   // that printed red text was indistinguishable from one that was an error.
-  --level-error: #ff5f56;
-  --level-error-wash: rgba(255, 95, 86, 0.055);
-  --level-warn: #ffb224;
-  --level-info: #7e7e8c;
-  --level-debug: #4a4a55;
+  // Desaturated against a black ground, where a vivid red vibrates.
+  --level-error: #e5484d;
+  --level-error-wash: rgba(229, 72, 77, 0.045);
+  --level-warn: #d99b3a;
+  --level-info: #7d7d7d;
+  --level-debug: #4d4d4d;
 
-  // ** the one accent **
+  // ** the accent is white **
   //
-  // Mint, not the old salmon. Two reasons, and the first is not taste: the
-  // accent sat at almost exactly the hue of --level-error, so "focused",
-  // "live" and "this is on fire" were the same colour and the interface had
-  // no way to raise its voice. Putting the accent on the other side of the
-  // wheel means severity owns red and amber outright.
-  //
-  // The hue is rtail's own — the project has carried #04cd7e since 2014 —
-  // brightened here to hold up against a near-black background.
-  --primary: #2ae89b;
-  --primary-hover: #5cf2b8;
-  --primary-foreground: #04180f;
-  --primary-subtle: rgba(42, 232, 155, 0.10);
-  --primary-glow: rgba(42, 232, 155, 0.20);
-  --ring: #2ae89b;
+  // Emphasis on a black interface is best spent on brightness rather than hue:
+  // white reads as "this one" without claiming a meaning, which leaves red and
+  // amber free to mean something. A coloured accent also has to be checked
+  // against severity every time it moves — the previous one landed on almost
+  // exactly the error hue, so "focused" and "on fire" looked identical.
+  --primary: #f2f2f2;
+  --primary-hover: #ffffff;
+  --primary-foreground: #0a0a0a;
+  --primary-subtle: rgba(255, 255, 255, 0.08);
+  --primary-glow: rgba(255, 255, 255, 0.14);
+  --ring: rgba(255, 255, 255, 0.35);
 
-  // ** ansi palette — the only colour on screen **
+  // ** live — the one place a hue is worth spending **
+  //
+  // rtail has carried this green since 2014, and "is it streaming" is the one
+  // state worth being able to answer from across the room.
+  --live: #10a37f;
+  --live-glow: rgba(16, 163, 127, 0.45);
+
+  // ** ansi palette — the only colour on screen that is not ours **
   --ansi-black: #52525b;
   --ansi-black-bright: #7c7c88;
   --ansi-red: #ff6b6b;
@@ -125,60 +157,68 @@
 .light {
   color-scheme: light;
 
-  --background: #ffffff;
-  --foreground: #09090b;
+  --background: #fafafa;
+  --card: #ffffff;
+  --elevated: #ffffff;
+  --foreground: #0a0a0a;
 
-  --popover: #ffffff;
-  --popover-foreground: #09090b;
+  --popover: var(--elevated);
+  --popover-foreground: var(--foreground);
 
-  --muted: #f4f4f5;
-  --muted-foreground: #7c7c88;
-  --faint-foreground: #a1a1ac;
+  --muted: #f4f4f4;
+  --muted-foreground: #6e6e6e;
+  --faint-foreground: #9b9b9b;
 
-  --level-error: #dc2626;
-  --level-error-wash: rgba(220, 38, 38, 0.05);
-  --level-warn: #b45309;
-  --level-info: #71717a;
-  --level-debug: #a1a1aa;
+  --subtle: #f7f7f7;
+  --subtle-strong: #efefef;
 
-  --subtle: rgba(9, 9, 11, 0.035);
-  --subtle-strong: rgba(9, 9, 11, 0.065);
+  --border: #e4e4e4;
+  --border-strong: #d0d0d0;
+  --input: #d9d9d9;
 
-  --border: #e4e4e7;
-  --border-strong: #d4d4d8;
-  --input: #e4e4e7;
+  --shadow-sm: 0 1px 2px rgba(9, 9, 11, 0.06);
+  --shadow-md: 0 2px 4px rgba(9, 9, 11, 0.05), 0 8px 24px rgba(9, 9, 11, 0.08);
+  --shadow-lg: 0 4px 8px rgba(9, 9, 11, 0.06), 0 16px 48px rgba(9, 9, 11, 0.12);
 
-  --primary: #06a86a;
-  --primary-hover: #04845a;
+  --level-error: #cd2b31;
+  --level-error-wash: rgba(205, 43, 49, 0.04);
+  --level-warn: #a15c07;
+  --level-info: #737373;
+  --level-debug: #a3a3a3;
+
+  --primary: #0a0a0a;
+  --primary-hover: #000000;
   --primary-foreground: #ffffff;
-  --primary-subtle: rgba(6, 168, 106, 0.10);
-  --primary-glow: rgba(6, 168, 106, 0.18);
-  --ring: #06a86a;
+  --primary-subtle: rgba(10, 10, 10, 0.06);
+  --primary-glow: rgba(10, 10, 10, 0.10);
+  --ring: rgba(10, 10, 10, 0.30);
 
-  --ansi-black: #3f3f46;
-  --ansi-black-bright: #71717a;
+  --live: #0d8c6d;
+  --live-glow: rgba(13, 140, 109, 0.35);
+
+  --ansi-black: #52525b;
+  --ansi-black-bright: #3f3f46;
   --ansi-red: #dc2626;
-  --ansi-red-bright: #ef4444;
-  --ansi-green: #15803d;
-  --ansi-green-bright: #16a34a;
-  --ansi-yellow: #b45309;
-  --ansi-yellow-bright: #ca8a04;
+  --ansi-red-bright: #b91c1c;
+  --ansi-green: #16a34a;
+  --ansi-green-bright: #15803d;
+  --ansi-yellow: #ca8a04;
+  --ansi-yellow-bright: #a16207;
   --ansi-blue: #2563eb;
-  --ansi-blue-bright: #3b82f6;
+  --ansi-blue-bright: #1d4ed8;
   --ansi-magenta: #9333ea;
-  --ansi-magenta-bright: #a855f7;
-  --ansi-cyan: #0e7490;
-  --ansi-cyan-bright: #0891b2;
+  --ansi-magenta-bright: #7e22ce;
+  --ansi-cyan: #0891b2;
+  --ansi-cyan-bright: #0e7490;
   --ansi-white: #52525b;
   --ansi-white-bright: #27272a;
 }
 
 // **
-// icon helper
+// icons
 //
-// The SVG assets are solid, evenodd-filled shapes, so they mask cleanly.
-// Masking them with `currentColor` means one icon set serves both themes and
-// icons inherit hover / active colour for free.
+// Masked rather than inlined, so a glyph inherits `color` like text and needs
+// no second copy per theme.
 // **
 
 @mixin icon($name, $size: 100%) {
@@ -195,4 +235,15 @@
   mask: url('../images/common/#{$name}.svg') no-repeat 50% 50%;
   -webkit-mask-size: $size;
   mask-size: $size;
+}
+
+// A panel: the card surface and a hairline. No shadow — a drop shadow on true
+// black is invisible, and faking depth with one only adds grey haze around
+// every edge. The surface delta and the border are what separate a panel from
+// the page; shadows are kept for things that genuinely float (popovers,
+// menus), where there is a lit surface behind them to cast onto.
+@mixin panel($radius: var(--radius)) {
+  background: var(--card);
+  border: var(--hairline) solid var(--border);
+  border-radius: $radius;
 }

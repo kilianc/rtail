@@ -39,6 +39,9 @@ interface Props {
   onContext: () => void
 }
 
+/** Severities worth naming in the row. Below this the dot is enough. */
+const NAMED = new Set(['WARN', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY', 'FATAL'])
+
 export function LogRow({ line, expanded, selected, active, onToggle, onFilter, onContext }: Props) {
   const level = (line.level ?? '').toUpperCase()
   const clock = formatClock(line.timestamp)
@@ -56,14 +59,19 @@ export function LogRow({ line, expanded, selected, active, onToggle, onFilter, o
         </time>
 
         {/*
-          A dot carries the severity and the word confirms it. The dot is what
-          you actually scan — colour at a glance, at a size that survives forty
-          rows of it — and the label is there so the colour is never the only
-          thing saying so.
+          The dot always, the word only when it is worth reading.
+
+          A page of logs is mostly INFO, and spelling that out on every row is
+          forty repetitions of the least surprising thing on screen — it buries
+          the two lines that say WARN. The dot still carries the severity for
+          every row, and the colour is never the only signal where it matters.
+          The column keeps its width either way, so the message edge stays
+          straight.
         */}
-        <span class="row-level">
+        <span class="row-level" title={level || undefined}>
           <i class="row-dot" aria-hidden="true" />
-          {level}
+          {NAMED.has(level) && level}
+          <span class="sr-only">{level}</span>
         </span>
 
         <span class="row-message" dangerouslySetInnerHTML={{ __html: line.html }} />
