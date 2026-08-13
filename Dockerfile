@@ -11,6 +11,14 @@
 #
 # Not to be confused with tools/Dockerfile, which is the development toolchain
 # and mounts your checkout.
+#
+# ** This image is no longer static. **
+#
+# P2 embeds DuckDB, which is cgo. That ends CGO_ENABLED=0, ends the distroless
+# static base, and means the binary is linked against the glibc of the image it
+# was built in — so the build and runtime stages have to agree on their base.
+# The cost is roughly 45MB of DuckDB and a per-platform build; the alternative
+# was no SQL, which was the whole feature.
 
 ARG VERSION=2.0.0-dev
 
@@ -34,7 +42,7 @@ ARG VERSION
 
 WORKDIR /src
 
-COPY go.mod ./
+COPY go.mod go.sum ./
 RUN go mod download
 
 COPY cmd ./cmd
@@ -44,18 +52,26 @@ COPY web ./web
 # The webapp is embedded into the binary, so it has to land before the build.
 COPY --from=webapp /src/web/dist ./web/dist
 
-# P0 has no cgo dependencies, so the result is a fully static binary and the
-# runtime image can be distroless. That changes in P2: DuckDB is cgo, and this
-# will need a glibc base and a per-platform build.
-RUN CGO_ENABLED=0 go build \
+# CGO_ENABLED=1 and no -extldflags '-static': go-duckdb ships a prebuilt static
+# DuckDB per platform, but the Go side still links against the system libc.
+RUN CGO_ENABLED=1 go build \
       -trimpath \
       -ldflags "-s -w -X main.version=${VERSION}" \
       -o /rtail-server ./cmd/rtail-server
 
 # ---- runtime ---------------------------------------------------------------
-FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+#
+# Debian slim rather than distroless static, because the binary needs glibc and
+# libstdc++. Matching the build stage's Debian release is not optional: a
+# binary linked against bookworm's glibc will not start on an older one.
+FROM debian:bookworm-slim AS runtime
 
-COPY --from=build /rtail-server /rtail-server
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --uid 10001 --create-home rtail
+
+COPY --from=build /rtail-server /usr/local/bin/rtail-server
 
 # A container's loopback is its own; binding 127.0.0.1 would make the published
 # ports unreachable. Set as env rather than in CMD so that `docker run rtail
@@ -65,11 +81,17 @@ ENV RTAIL_WEB_HOST=0.0.0.0 \
     RTAIL_WEB_PORT=8888 \
     RTAIL_UDP_PORT=9999
 
+# Where --data points by default in the image. Mount a volume here to keep logs
+# across container restarts; without it the server stays memory-only.
+ENV RTAIL_DATA=""
+
 EXPOSE 8888/tcp
 EXPOSE 9999/udp
 
-# No HEALTHCHECK: a distroless image has no shell and no curl to run one with.
-# Point your orchestrator at GET /healthz instead — it reports the version,
-# the stream count and the UDP ingest counters.
+USER rtail
 
-ENTRYPOINT ["/rtail-server"]
+# No HEALTHCHECK: there is no curl in this image and adding one to run a health
+# probe is a poor trade. Point your orchestrator at GET /healthz instead — it
+# reports the version, the stream count and the UDP ingest counters.
+
+ENTRYPOINT ["/usr/local/bin/rtail-server"]

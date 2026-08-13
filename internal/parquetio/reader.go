@@ -14,6 +14,7 @@
 package parquetio
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -23,14 +24,12 @@ import (
 	"github.com/kilianc/rtail/v2/internal/model"
 	"github.com/kilianc/rtail/v2/internal/storage"
 	"github.com/parquet-go/parquet-go"
-	"github.com/parquet-go/parquet-go/format"
 )
 
 // leafInfo describes one column as found in a file being read.
 type leafInfo struct {
-	name   string
-	kind   parquet.Kind
-	isJSON bool
+	name string
+	kind parquet.Kind
 }
 
 /*!
@@ -65,11 +64,9 @@ func Read(ctx context.Context, backend storage.Backend, name string, limit int) 
 			continue
 		}
 
-		node := column.Node
 		leaves[column.ColumnIndex] = leafInfo{
-			name:   path[0],
-			kind:   node.Type().Kind(),
-			isJSON: isJSONNode(node),
+			name: path[0],
+			kind: column.Node.Type().Kind(),
 		}
 	}
 
@@ -104,17 +101,30 @@ func Read(ctx context.Context, backend storage.Backend, name string, limit int) 
 	return records, nil
 }
 
-// isJSONNode reports whether a leaf carries the JSON logical annotation, which
-// is how a nested-object column is told apart from a plain string one. The
-// annotation is a thrift union, so the check is a type assertion on its value.
-func isJSONNode(node parquet.Node) bool {
-	logical := node.Type().LogicalType()
-	if nil == logical {
+/*!
+ * looksLikeJSON classifies a string value as a nested document.
+ *
+ * The writer stores nested values as plain UTF8 rather than annotating them
+ * with the JSON logical type — see leafFor in schema.go for why — so there is
+ * no annotation to read back. The catalog knows each key's real kind, but this
+ * reader deliberately works without one: it is also what lets a bare directory
+ * of Parquet files be read by anything.
+ *
+ * The check is cheap and conservative. A log field whose value is the literal
+ * text "{}" is indistinguishable from an empty object, and treating it as the
+ * object it almost certainly was is the better guess.
+ */
+func looksLikeJSON(value []byte) bool {
+	trimmed := bytes.TrimSpace(value)
+
+	if len(trimmed) < 2 {
+		return false
+	}
+	if '{' != trimmed[0] && '[' != trimmed[0] {
 		return false
 	}
 
-	_, ok := logical.Value.(*format.JsonType)
-	return ok
+	return json.Valid(trimmed)
 }
 
 /*!
@@ -182,10 +192,6 @@ func decodeRow(row parquet.Row, leaves map[int]leafInfo) *model.Record {
 }
 
 func decodeValue(value parquet.Value, leaf leafInfo) model.Value {
-	if leaf.isJSON {
-		return model.JSON(string(value.ByteArray()))
-	}
-
 	switch leaf.kind {
 	case parquet.Boolean:
 		return model.Bool(value.Boolean())
@@ -194,7 +200,11 @@ func decodeValue(value parquet.Value, leaf leafInfo) model.Value {
 	case parquet.Double:
 		return model.Float(value.Double())
 	case parquet.ByteArray:
-		return model.Str(string(value.ByteArray()))
+		text := value.ByteArray()
+		if looksLikeJSON(text) {
+			return model.JSON(string(text))
+		}
+		return model.Str(string(text))
 	default:
 		return model.Null()
 	}

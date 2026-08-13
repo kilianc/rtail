@@ -8,8 +8,17 @@ on:
 jobs:
   # The server. v2 moved it from Node to Go; the webapp is embedded into the
   # binary, so the Go build needs the assets built first.
+  #
+  # P2 embeds DuckDB, which is cgo — so this is a per-platform build now, not
+  # one static binary. The matrix is what stops "works on my machine" from
+  # becoming the release process.
   server:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +32,7 @@ jobs:
         run: go vet ./...
 
       - name: Check formatting
+        if: runner.os == 'Linux'
         run: |
           unformatted="$(gofmt -l cmd internal web)"
           if [ -n "$unformatted" ]; then
@@ -35,18 +45,28 @@ jobs:
       # completely unrelated implementation. That claim is the product's core
       # promise, so it is checked rather than asserted — the tests skip
       # themselves when duckdb is absent, which is exactly why CI installs it.
-      - name: Install duckdb
+      - name: Install duckdb (linux)
+        if: runner.os == 'Linux'
         run: |
           curl -fsSL -o /tmp/duckdb.zip \
-            https://github.com/duckdb/duckdb/releases/latest/download/duckdb_cli-linux-amd64.zip
-          unzip -q /tmp/duckdb.zip -d /usr/local/bin
+            https://github.com/duckdb/duckdb/releases/download/v1.4.1/duckdb_cli-linux-amd64.zip
+          sudo unzip -q /tmp/duckdb.zip -d /usr/local/bin
+          duckdb -c "SELECT 'duckdb ' || version()"
+
+      - name: Install duckdb (macos)
+        if: runner.os == 'macOS'
+        run: |
+          brew install duckdb
           duckdb -c "SELECT 'duckdb ' || version()"
 
       - name: Test
         run: go test -race ./...
 
+      # CGO_ENABLED=1 is required from P2 on: go-duckdb has no pure-Go
+      # fallback, and a CGO_ENABLED=0 build fails at link time rather than
+      # silently losing search.
       - name: Build
-        run: CGO_ENABLED=0 go build -trimpath -o /tmp/rtail-server ./cmd/rtail-server
+        run: CGO_ENABLED=1 go build -trimpath -o /tmp/rtail-server ./cmd/rtail-server
 
   # The webapp and the client pipe, which is all npm still ships.
   webapp:

@@ -16,8 +16,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/kilianc/rtail/v2/internal/catalog"
 	"github.com/kilianc/rtail/v2/internal/ingest"
 	"github.com/kilianc/rtail/v2/internal/logstore"
+	"github.com/kilianc/rtail/v2/internal/query"
 	"github.com/kilianc/rtail/v2/web"
 )
 
@@ -26,6 +28,13 @@ type Options struct {
 	Store   logstore.Store
 	Log     *slog.Logger
 	Version string
+
+	// Engine and Catalog are set only when the server was started with
+	// --data. Without them the search endpoints report 503 with an
+	// explanation rather than 404ing, because "this build cannot search" and
+	// "this server is not storing anything" are different problems.
+	Engine  *query.Engine
+	Catalog *catalog.Catalog
 
 	// UDP, when set, is reported by /healthz.
 	UDP *ingest.UDPStats
@@ -67,6 +76,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /v1/streams", s.streams)
 	mux.HandleFunc("GET /v1/tail", s.tail)
+
+	mux.HandleFunc("GET /v1/search", s.search)
+	mux.HandleFunc("GET /v1/histogram", s.histogram)
+	mux.HandleFunc("GET /v1/fields", s.fields)
+	mux.HandleFunc("GET /v1/schema", s.schema)
+	mux.HandleFunc("POST /v1/sql", s.sql)
 
 	// Anything else is the webapp. Registered on the bare pattern so the
 	// explicit routes above always win.

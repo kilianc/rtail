@@ -24,9 +24,11 @@ import (
 	"time"
 
 	"github.com/kilianc/rtail/v2/internal/api"
+	"github.com/kilianc/rtail/v2/internal/catalog"
 	"github.com/kilianc/rtail/v2/internal/config"
 	"github.com/kilianc/rtail/v2/internal/ingest"
 	"github.com/kilianc/rtail/v2/internal/logstore"
+	"github.com/kilianc/rtail/v2/internal/query"
 )
 
 // version is stamped at build time with -ldflags "-X main.version=...".
@@ -68,11 +70,15 @@ func run() error {
 	 * before this returns, so the server never starts serving with unrecovered
 	 * data still on disk.
 	 */
-	var store logstore.Store
+	var (
+		store  logstore.Store
+		engine *query.Engine
+		cat    *catalog.Catalog
+	)
 
 	if "" == cfg.DataDir {
 		store = logstore.NewMemory(cfg.Backlog)
-		log.Info("running in memory; pass --data to keep logs across restarts")
+		log.Info("running in memory; pass --data to keep and search logs across restarts")
 	} else {
 		durable, err := logstore.OpenDurable(ctx, cfg.DataDir, logstore.DurableOptions{
 			Backlog: cfg.Backlog,
@@ -83,7 +89,15 @@ func run() error {
 			return fmt.Errorf("opening the data directory: %w", err)
 		}
 
-		store = durable
+		store, cat = durable, durable.Catalog()
+
+		engine, err = query.Open(cat, durable.Backend(), query.Limits{})
+		if nil != err {
+			durable.Close()
+			return fmt.Errorf("opening the query engine: %w", err)
+		}
+		defer engine.Close()
+
 		log.Info("storing logs as parquet", "data", cfg.DataDir)
 	}
 
@@ -99,6 +113,8 @@ func run() error {
 		Store:   store,
 		Log:     log,
 		Version: version,
+		Engine:  engine,
+		Catalog: cat,
 		UDP:     udp.Stats(),
 		WebRoot: cfg.WebRoot,
 	})

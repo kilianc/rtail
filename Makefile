@@ -55,8 +55,8 @@ DOCKER_RUN := docker run --rm \
 
 DEV_ENV := -e WEB_PORT=$(PORT) -e UDP_PORT=$(UDP_PORT) -p $(PORT):$(PORT)
 
-.PHONY: dev up down logs url server build dist release test go-test node-test \
-        vet typecheck fmt shell clean image deps
+.PHONY: dev up down logs url server build dist release test go-test go-test-one \
+        node-test vet typecheck fmt shell clean image deps
 
 ## Run the app in the foreground: builds and watches assets, serves the webapp
 ## from disk, and feeds it three live demo streams. Ctrl-C to stop.
@@ -89,9 +89,12 @@ url:
 server: image
 	$(DOCKER_RUN) $(IMAGE) go build -ldflags "$(LDFLAGS)" -o bin/rtail-server ./cmd/rtail-server
 
-## The real thing: webapp built and embedded, static, stripped.
+## The real thing: webapp built and embedded, stripped.
+##
+## Not static any more — DuckDB is cgo, so the binary links against the
+## toolchain image's glibc and has to run somewhere compatible.
 release: image deps dist
-	$(DOCKER_RUN) -e CGO_ENABLED=0 $(IMAGE) \
+	$(DOCKER_RUN) -e CGO_ENABLED=1 $(IMAGE) \
 		go build -trimpath -ldflags "-s -w $(LDFLAGS)" -o bin/rtail-server ./cmd/rtail-server
 	@echo "==> bin/rtail-server $(VERSION)"
 
@@ -105,6 +108,10 @@ test: go-test node-test
 
 go-test: image
 	$(DOCKER_RUN) $(IMAGE) go test -race ./...
+
+## Run one package's tests: make go-test-one PKG=./internal/query
+go-test-one: image
+	$(DOCKER_RUN) $(IMAGE) go test -race -v $(PKG)
 
 node-test: image deps
 	$(DOCKER_RUN) $(IMAGE) npm test

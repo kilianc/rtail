@@ -19,9 +19,11 @@
 > already have installed works against a v2 server unchanged. Everything else
 > on this branch is subject to change until 2.0.0 ships.
 >
-> **Where it is:** P0 (Go port at parity) and P1 (durable Parquet storage) are
-> done — `--data` keeps your logs across restarts, as plain Parquet files any
-> tool can read. SQL search over them is P2, and is not here yet.
+> **Where it is:** P0 (Go port), P1 (durable Parquet storage) and P2 (SQL
+> search) are done. `--data` keeps your logs across restarts as plain Parquet,
+> and you can search them with a filter bar or with raw SQL. The new interface
+> that makes all of it pleasant to use is P4, and is not here yet — today the
+> search API is an API.
 
 `rtail` is a command line utility that grabs every line in `stdin` and broadcasts it over **UDP**. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using `rtail` broadcasting to an `rtail-server` – See multiple streams in the browser, in realtime.
 
@@ -58,6 +60,11 @@ not in the container. It needs Node.js 20 or newer:
 That is all npm ships in v2. The server is a Go binary — run the container
 above, or build it yourself with `make release`.
 
+The server embeds DuckDB, which is a C++ library, so it is **not** a static
+binary and the image is ~240MB rather than the ~16MB it was before search
+existed. Builds are per-platform (linux/amd64, linux/arm64, darwin/arm64) and
+need `CGO_ENABLED=1`.
+
 ## Web app
 
 ![](https://s3.amazonaws.com/rtail/github/dark.png)
@@ -77,7 +84,7 @@ There are many log aggregation tools out there, but few of them are realtime. **
 * broadcast every line using UDP
 * `rtail-server`, **if listening**, will dispatch the stream into your browser, using [server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events).
 
-`rtail` is a realtime debugging and monitoring tool, which can display multiple aggregate streams via a modern web interface. **With `--data` it now keeps them too** — see [Storage](#storage) below. SQL search over that history is the next milestone; see [the proposal](docs/proposal-logging-system.md).
+`rtail` is a realtime debugging and monitoring tool, which can display multiple aggregate streams via a modern web interface. **With `--data` it now keeps them too, and lets you search them with SQL** — see [Storage](#storage) and [Search](#search) below.
 
 ## Storage
 
@@ -120,6 +127,42 @@ duplicates.
 
 Compaction is not implemented yet, so files currently accumulate at one per
 flush per stream. Retention and the L0→L1→L2 merge are P3.
+
+## Search
+
+Two ways in, sharing one set of semantics.
+
+**The filter bar** — terse, and what most searching looks like:
+
+    level>=ERROR service=api "connection timeout"
+    -path:/health AND (region=us-east-1 OR region=us-west-2)
+    latency_ms>500 req.path:~"^/v1/"
+    trace_id=*
+
+`k=v` is equality, `k:v` a case-insensitive substring, `k:~re` a regular
+expression, `k>n` a comparison, `k=*` "the key exists", `k=null` "it does not".
+A bare word is full-text across the message and the original line. Terms are
+ANDed unless you write `OR`; `-` and `NOT` negate; parentheses group.
+
+`level` compares by **severity, not alphabetically** — `level>=ERROR` matches
+FATAL too, which is what you meant. Quoting a value suppresses type coercion,
+so `status=200` is the number and `status="200"` is the string.
+
+**Raw SQL**, for everything else:
+
+    curl -XPOST localhost:8888/v1/sql -d '{
+      "sql": "SELECT a_service, count(*) n, quantile_cont(a_latency_ms, 0.95) p95
+              FROM logs WHERE level = '"'"'ERROR'"'"' GROUP BY 1 ORDER BY n DESC",
+      "from": "-6h"
+    }'
+
+`logs` is a view over the pruned files. The query runs read-only in a DuckDB
+sandbox that can see nothing but your data directory.
+
+**The time range is the partition pruner**, not decoration. It is always
+applied — a query without one gets the last 24 hours injected — and every
+response reports the window it used along with how many files and rows the
+query implied reading, so a slow search can explain itself.
 
 ## Examples
 
@@ -229,7 +272,17 @@ The webapp is a client of a small documented API, so anything else can be too:
 |---|---|
 | `GET /v1/streams` | every known stream |
 | `GET /v1/tail?stream=<name>` | SSE feed: `streams`, `backlog`, then `line` events. Omit `stream` to watch the stream list only |
+| `GET /v1/search` | matching records, keyset-paginated |
+| `GET /v1/histogram` | match counts over time, split by severity |
+| `GET /v1/fields?field=<name>` | the most common values of a field, within the current filter |
+| `GET /v1/schema` | every key ever seen, with its type — what autocomplete completes against |
+| `POST /v1/sql` | read-only SQL over a `logs` view |
 | `GET /healthz` | version, stream count, UDP ingest counters |
+
+The search endpoints share their parameters: `q` (filter), `stream`, `from` and
+`to` (RFC3339, epoch millis, or a relative `-6h`), `limit`, `cursor`, `order`.
+They return 503 with an explanation when the server is running without
+`--data`, since there is nothing to search.
 
 ## UDP Broadcasting
 

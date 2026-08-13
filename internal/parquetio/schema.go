@@ -253,10 +253,25 @@ func leafFor(kind model.Kind) parquet.Node {
 	case model.KindFloat:
 		return parquet.Leaf(parquet.DoubleType)
 	case model.KindJSON:
-		// Nested objects and arrays keep their original JSON text, queried
-		// with ->> at read time. Annotating the column JSON is what lets
-		// DuckDB and every other reader know to treat it that way.
-		return parquet.JSON()
+		/*!
+		 * Nested objects and arrays keep their original JSON text — but as a
+		 * plain UTF8 column, deliberately *not* annotated with the JSON
+		 * logical type.
+		 *
+		 * The annotation would be self-describing and is the obvious choice.
+		 * It is not used because readers disagree about it: DuckDB's embedded
+		 * build validates a JSON-annotated column at scan time and mis-parses
+		 * a dictionary-encoded page, reading every distinct value in the page
+		 * as one document and failing the whole query. The standalone CLI of
+		 * the same version reads the identical file without complaint.
+		 *
+		 * A file that only some readers can read is worse than a file that
+		 * describes itself less precisely, because "any tool reads these"
+		 * is the entire point. The text is identical either way, `->>` works
+		 * on VARCHAR, and the catalog records the key's real kind — so
+		 * nothing downstream loses information.
+		 */
+		return parquet.String()
 	default:
 		return parquet.String()
 	}

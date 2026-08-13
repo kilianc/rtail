@@ -152,22 +152,9 @@ func FromLine(stream, host string, port int, raw []byte) *model.Record {
  * untouched: there are no root keys to promote.
  */
 func enrich(rec *model.Record) {
-	if "object" != rec.Type || nil == rec.JSON {
+	lowered, ok := Promote(rec)
+	if !ok {
 		return
-	}
-
-	var root map[string]json.RawMessage
-	if err := json.Unmarshal(rec.JSON, &root); nil != err {
-		// Arrays and null are typeof "object" too, and neither has root keys.
-		return
-	}
-
-	rec.Fields = make(map[string]Value, len(root))
-	lowered := make(map[string]string, len(root))
-
-	for key, raw := range root {
-		rec.Fields[key] = classify(raw)
-		lowered[strings.ToLower(key)] = key
 	}
 
 	if value, ok := pick(rec.Fields, lowered, levelKeys); ok {
@@ -187,6 +174,42 @@ func enrich(rec *model.Record) {
 			rec.Ts = ts
 		}
 	}
+}
+
+/*!
+ * Promote fills a record's Fields from its JSON payload, leaving the envelope
+ * alone.
+ *
+ * Split out from enrich because the read path needs it on its own: a record
+ * reconstructed from Parquet already has its level, message and event time as
+ * stored columns, and re-deriving those would let a later change to the
+ * extraction rules silently rewrite history. Promoting the root keys, on the
+ * other hand, is a pure function of the payload and is how a searched record
+ * gets the fields the explorer and click-to-filter need.
+ *
+ * Returns the lower-cased key index enrich uses for its case-insensitive
+ * lookups, and false when there was nothing to promote.
+ */
+func Promote(rec *model.Record) (map[string]string, bool) {
+	if "object" != rec.Type || nil == rec.JSON {
+		return nil, false
+	}
+
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(rec.JSON, &root); nil != err {
+		// Arrays and null are typeof "object" too, and neither has root keys.
+		return nil, false
+	}
+
+	rec.Fields = make(map[string]Value, len(root))
+	lowered := make(map[string]string, len(root))
+
+	for key, raw := range root {
+		rec.Fields[key] = classify(raw)
+		lowered[strings.ToLower(key)] = key
+	}
+
+	return lowered, true
 }
 
 // Value is re-exported so callers of this package do not need to import model
