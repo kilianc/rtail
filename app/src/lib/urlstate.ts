@@ -1,6 +1,12 @@
 /*!
  * The whole view, in the URL.
  *
+ * The dividing line is view versus appearance: anything that changes *what you
+ * are looking at* belongs here, and anything that changes *how it looks* —
+ * theme, font — belongs in preferences. Whether the timeline is open was on
+ * the wrong side of that line, which meant a link to a spike arrived with the
+ * chart showing the spike collapsed.
+ *
  * Every state that changes what you are looking at — the stream, the filter,
  * the time range, whether it is streaming — lives in the address bar, so any
  * view can be pasted into a chat and opened by someone else exactly as it was.
@@ -23,6 +29,8 @@ export interface ViewState {
   columns: string[]
   /** Which language the query is written in. */
   lang: 'rql' | 'sql'
+  /** Whether the timeline is expanded. */
+  timeline: boolean
 }
 
 export const DEFAULT_STATE: ViewState = {
@@ -31,7 +39,11 @@ export const DEFAULT_STATE: ViewState = {
   range: DEFAULT_RANGE,
   live: true,
   columns: [],
-  lang: 'rql'
+  lang: 'rql',
+  // Tucked away by default, as the reference does it: the chart is the best
+  // way to find a spike and the worst use of eighty pixels once you already
+  // know what you are looking for.
+  timeline: false
 }
 
 export function read(): ViewState {
@@ -56,7 +68,8 @@ export function read(): ViewState {
     // Comma-separated, because a field name cannot contain one and the URL
     // stays readable — `cols=service,latency_ms` says what it is at a glance.
     columns: (params.get('cols') ?? '').split(',').map((name) => name.trim()).filter(Boolean),
-    lang: 'sql' === params.get('lang') ? 'sql' : 'rql'
+    lang: 'sql' === params.get('lang') ? 'sql' : 'rql',
+    timeline: '1' === params.get('chart')
   }
 }
 
@@ -69,6 +82,7 @@ export function write(state: ViewState): void {
   if (state.range.to) params.set('to', state.range.to)
   if (!state.live) params.set('live', 'false')
   if (state.columns.length) params.set('cols', state.columns.join(','))
+  if (state.timeline) params.set('chart', '1')
   if ('sql' === state.lang) params.set('lang', 'sql')
 
   const next = `#/${params}`

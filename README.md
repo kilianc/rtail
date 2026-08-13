@@ -65,21 +65,10 @@ need `CGO_ENABLED=1`.
 
 ## The explorer
 
-    ┌──────────────────────────────────────────────────────────────────┐
-    │ ▪ rtail   All streams 3   ▪ LIVE                          ⓘ ⚙   │
-    ├──────────────────────────────────────────────────────────────────┤
-    │  event=checkout.completed count>500              ▶ Last hour     │
-    ├──────────────────────────────────────────────────────────────────┤
-    │  ▁▂▃▅█▇▅▃▂▁▁▂▄▆█▇▄▂▁▁▁▂▃▄▃▂▁▁▂▃▅▇█▆▄▂▁      231 events          │
-    ├───────────────┬──────────────────────────────────────────────────┤
-    │ FIELDS        │ 09:51:34  ERROR  upstream timeout after 30000ms  │
-    │ region        │ ▼ 09:51:33 ERROR connection reset by peer        │
-    │  eu-west-1 243│     count    650          ⊕ filter  ⊖ exclude    │
-    │ stream        │     region   eu-west-1    ⊕ filter  ⊖ exclude    │
-    │  worker    91 │     req    ▸ { path: "/v1/orders" }              │
-    │  nginx     81 │     ⧉ Copy   ↗ Show context                      │
-    │  api       71 │ 09:51:26  INFO   cache warmed in 142ms           │
-    └───────────────┴──────────────────────────────────────────────────┘
+![The rTail explorer](docs/media/explorer.png)
+
+*A spike of upstream timeouts, twenty minutes back: `level>=WARN` on the `api`
+stream, with `service`, `latency_ms` and `region` promoted to columns.*
 
 **One filter drives everything.** Type it and the live tail narrows — the
 server compiles the same rQL to a predicate over the ingest stream. Switch to
@@ -99,8 +88,13 @@ answers "what is even in here" before you know what to search for.
 that has actually appeared, with its type and how often — not from a guess at
 what a log line might contain.
 
-**Every view is a link.** Stream, filter, time range and live/history all live
-in the URL.
+**Every view is a link.** Stream, filter, time range, promoted columns, and
+whether the timeline is open — all of it lives in the URL, so the screenshot
+above is a URL somebody could send you.
+
+**Any field can become a column.** The ⊞ beside a field in the sidebar pulls it
+out of the summary into a column of its own, and the × on the header puts it
+back.
 
 Keyboard: `/` or `⌘K` focuses the filter, `⏎` runs it, `j`/`k` move between
 events, `⎋` collapses everything.

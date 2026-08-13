@@ -888,20 +888,38 @@
     margin-inline-start: auto;
   }
 
+  /*!
+   * The scale sits in its own narrow track, the chart takes the rest.
+   *
+   * Declared rather than left to `grid-auto-flow`, which had been sizing the
+   * first track to whatever it liked and pushing the chart into the right half
+   * of the panel with an empty gutter beside it. The axis spans both tracks so
+   * its end labels line up with the ends of the bars.
+   */
   .histogram-body {
-    display: grid;
-    gap: var(--space-1);
-    padding: 0 var(--space-2) var(--space-2);
-  }
-
-  .histogram {
-    background: var(--card);
-    border-block-end: var(--hairline) solid var(--border);
     column-gap: var(--space-2);
     display: grid;
     grid-template-columns: auto 1fr;
-    padding: var(--space-3) var(--space-4) var(--space-2);
+    padding: 0 var(--space-2) var(--space-1);
     row-gap: var(--space-1);
+  }
+
+  .histogram-axis { grid-column: 2; }
+
+  /*!
+   * One column, not two.
+   *
+   * It was `auto 1fr`, which put the chart in the second track — beside the
+   * "Timeline" header rather than under it, with the width of the label as a
+   * gap down the left. Collapsed that looked deliberate, because the second
+   * track was empty; expanded it looked broken.
+   */
+  .histogram {
+    background: var(--card);
+    border-block-end: var(--hairline) solid var(--border);
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
     transition: opacity .16s ease;
 
     &.loading { opacity: .45; }

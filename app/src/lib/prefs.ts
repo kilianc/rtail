@@ -30,11 +30,7 @@ const DEFAULTS: Prefs = {
   theme: 'dark',
   fontFamily: 1,
   fontSize: 4,
-  favorites: [],
-  // Tucked away by default, as the reference is: the chart is the best way to
-  // find a spike and the worst use of eighty pixels when you already know what
-  // you are looking for.
-  timeline: false
+  favorites: []
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -59,7 +55,6 @@ export function loadPrefs(): Prefs {
     fontFamily: clamp(Number(stored.fontFamily) || DEFAULTS.fontFamily, 1, FONT_FAMILY_COUNT),
     fontSize: clamp(Number(stored.fontSize) || DEFAULTS.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX),
     favorites: Array.isArray(stored.favorites) ? stored.favorites.filter(isString) : [],
-    timeline: true === stored.timeline
   }
 }
 

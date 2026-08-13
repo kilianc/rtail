@@ -419,8 +419,8 @@ export function App() {
       </div>
 
       <Histogram
-        collapsed={!prefs.timeline}
-        onToggle={() => setPrefs((current) => ({ ...current, timeline: !current.timeline }))}
+        collapsed={!view.timeline}
+        onToggle={() => setView((current) => ({ ...current, timeline: !current.timeline }))}
         buckets={buckets}
         intervalMs={interval}
         range={resolved}
