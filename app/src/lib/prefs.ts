@@ -19,10 +19,7 @@ const DEFAULTS: Prefs = {
   theme: 'dark',
   fontFamily: 1,
   fontSize: 4,
-  ascending: true,
-  sidebarWidth: 240,
-  favorites: [],
-  hiddenTimestamps: []
+  favorites: []
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -46,12 +43,7 @@ export function loadPrefs(): Prefs {
     theme: 'light' === stored.theme ? 'light' : 'dark',
     fontFamily: clamp(Number(stored.fontFamily) || DEFAULTS.fontFamily, 1, FONT_FAMILY_COUNT),
     fontSize: clamp(Number(stored.fontSize) || DEFAULTS.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX),
-    ascending: 'boolean' === typeof stored.ascending ? stored.ascending : DEFAULTS.ascending,
-    sidebarWidth: clamp(Number(stored.sidebarWidth) || DEFAULTS.sidebarWidth, 180, 600),
-    favorites: Array.isArray(stored.favorites) ? stored.favorites.filter(isString) : [],
-    hiddenTimestamps: Array.isArray(stored.hiddenTimestamps)
-      ? stored.hiddenTimestamps.filter(isString)
-      : []
+    favorites: Array.isArray(stored.favorites) ? stored.favorites.filter(isString) : []
   }
 }
 
@@ -64,23 +56,7 @@ export function savePrefs(prefs: Prefs): void {
   }
 }
 
-/** Remembers which stream was open, so a reload lands back on it. */
-export function loadActiveStream(): string | null {
-  try {
-    return localStorage.getItem('rtail:activeStream')
-  } catch {
-    return null
-  }
-}
 
-export function saveActiveStream(stream: string | null): void {
-  try {
-    if (null === stream) localStorage.removeItem('rtail:activeStream')
-    else localStorage.setItem('rtail:activeStream', stream)
-  } catch {
-    // see savePrefs
-  }
-}
 
 export function isTheme(value: string): value is Theme {
   return 'dark' === value || 'light' === value

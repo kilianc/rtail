@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	neturl "net/url"
 	"strings"
 	"testing"
 	"time"
@@ -182,6 +183,27 @@ func (s *sseStream) read() (sseEvent, error) {
 	return event, io.EOF
 }
 
+/*!
+ * nextOf reads until an event of the given kind arrives.
+ *
+ * A new stream produces a `streams` announcement that interleaves with the
+ * lines, so a test that cares about lines has to say so rather than assume
+ * the next frame is one.
+ */
+func (s *sseStream) nextOf(t *testing.T, name string) sseEvent {
+	t.Helper()
+
+	for range 8 {
+		event := s.next(t)
+		if event.Name == name {
+			return event
+		}
+	}
+
+	t.Fatalf("no %q event arrived", name)
+	return sseEvent{}
+}
+
 // next reads one event, failing the test if none arrives.
 func (s *sseStream) next(t *testing.T) sseEvent {
 	t.Helper()
@@ -325,23 +347,25 @@ func TestBacklogLinesAreNotRepeated(t *testing.T) {
 	}
 }
 
-// No stream selected is the webapp's paused state: stream-list events only.
-func TestTailWithoutStreamGetsStreamsOnly(t *testing.T) {
+// No stream selected is the explorer's "All streams": every stream's lines.
+func TestTailWithoutStreamFollowsEveryStream(t *testing.T) {
 	h := newHarness(t)
 
 	stream := h.tail(t, "")
 
+	// Every subscription opens with the stream list and a backlog, even the
+	// unfiltered one and even when both are empty.
 	if event := stream.next(t); "streams" != event.Name {
 		t.Fatalf("first event = %q, want streams", event.Name)
+	}
+	if event := stream.next(t); "backlog" != event.Name {
+		t.Fatalf("second event = %q, want backlog", event.Name)
 	}
 
 	h.send(t, "api", "hello")
 
 	// The new stream is announced ...
-	event := stream.next(t)
-	if "streams" != event.Name {
-		t.Fatalf("event = %q, want streams", event.Name)
-	}
+	event := stream.nextOf(t, "streams")
 
 	var streams []string
 	json.Unmarshal(event.Data, &streams)
@@ -349,21 +373,81 @@ func TestTailWithoutStreamGetsStreamsOnly(t *testing.T) {
 		t.Errorf("streams = %v, want [api]", streams)
 	}
 
-	// ... and its lines are not. This reader may still be blocked when the
-	// test ends, so it must not touch t.
-	done := make(chan sseEvent, 1)
-	go func() {
-		if event, err := stream.read(); nil == err {
-			done <- event
+	// ... and so are lines, from any stream. The first append above produced
+	// one too, so read until the second stream shows up.
+	h.send(t, "worker", "from another stream")
+
+	var line struct {
+		StreamID string `json:"streamid"`
+		Content  string `json:"content"`
+	}
+
+	for range 6 {
+		json.Unmarshal(stream.nextOf(t, "line").Data, &line)
+		if "worker" == line.StreamID {
+			break
 		}
-	}()
+	}
 
-	h.send(t, "api", "second")
+	if "worker" != line.StreamID || "from another stream" != line.Content {
+		t.Errorf("line = %+v, want the worker line", line)
+	}
+}
 
-	select {
-	case event := <-done:
-		t.Fatalf("unexpected %q event while paused", event.Name)
-	case <-time.After(250 * time.Millisecond):
+/*!
+ * A filtered live tail is the same rQL the search bar sends, evaluated against
+ * the ingest stream — the reason rql compiles two ways.
+ */
+func TestTailAppliesTheFilter(t *testing.T) {
+	h := newHarness(t)
+
+	url := h.server.URL + "/v1/tail?stream=api&q=" + neturl.QueryEscape("level>=ERROR")
+
+	response, err := http.Get(url)
+	if nil != err {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { response.Body.Close() })
+
+	feed := &sseStream{body: response.Body, scanner: bufio.NewScanner(response.Body)}
+
+	if event := feed.next(t); "streams" != event.Name {
+		t.Fatalf("first event = %q", event.Name)
+	}
+	// A selected stream always gets a backlog frame, even an empty one.
+	if event := feed.next(t); "backlog" != event.Name {
+		t.Fatalf("second event = %q, want backlog", event.Name)
+	}
+
+	// Only the error survives the filter.
+	h.send(t, "api", map[string]any{"level": "info", "msg": "ignored"})
+	h.send(t, "api", map[string]any{"level": "error", "msg": "kept"})
+
+	event := feed.nextOf(t, "line")
+
+	var line struct {
+		Msg   string `json:"msg"`
+		Level string `json:"level"`
+	}
+	json.Unmarshal(event.Data, &line)
+
+	if "kept" != line.Msg {
+		t.Errorf("msg = %q, want the filtered-in line", line.Msg)
+	}
+}
+
+// A malformed filter is reported rather than silently matching nothing.
+func TestTailRejectsABadFilter(t *testing.T) {
+	h := newHarness(t)
+
+	response, err := http.Get(h.server.URL + "/v1/tail?q=" + neturl.QueryEscape("(unclosed"))
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+
+	if http.StatusBadRequest != response.StatusCode {
+		t.Errorf("status = %d, want 400", response.StatusCode)
 	}
 }
 

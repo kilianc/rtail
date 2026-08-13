@@ -32,6 +32,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -562,16 +563,41 @@ func (d *Durable) Streams(context.Context) ([]string, error) {
 	return append([]string(nil), d.order...), nil
 }
 
+/*!
+ * Backlog returns recent records, merging every stream when none is named.
+ *
+ * "All streams" is the explorer's default view, and a tail that opens empty
+ * and then trickles looks broken next to one that opens with the last hundred
+ * lines already there.
+ */
 func (d *Durable) Backlog(_ context.Context, stream string, limit int) ([]*model.Record, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	buffer, ok := d.streams[stream]
-	if !ok {
-		return nil, nil
+	if "" != stream {
+		buffer, ok := d.streams[stream]
+		if !ok {
+			return nil, nil
+		}
+		return buffer.slice(limit), nil
 	}
 
-	return buffer.slice(limit), nil
+	var merged []*model.Record
+	for _, buffer := range d.streams {
+		merged = append(merged, buffer.slice(0)...)
+	}
+
+	// Seq is monotonic across streams, so it is the merge order.
+	sort.Slice(merged, func(i, j int) bool { return merged[i].Seq < merged[j].Seq })
+
+	if limit <= 0 {
+		limit = d.opts.Backlog
+	}
+	if len(merged) > limit {
+		merged = merged[len(merged)-limit:]
+	}
+
+	return merged, nil
 }
 
 func (d *Durable) Subscribe(stream string, buffer int) *Subscription {

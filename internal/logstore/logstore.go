@@ -52,8 +52,8 @@ type Store interface {
 	// chronological order.
 	Backlog(ctx context.Context, stream string, limit int) ([]*model.Record, error)
 
-	// Subscribe opens a live feed. A subscriber with an empty stream hears
-	// only EventStreams, which is how the webapp represents a paused tab.
+	// Subscribe opens a live feed. An empty stream means every stream, which
+	// is what the explorer's "All streams" is.
 	Subscribe(stream string, buffer int) *Subscription
 
 	// Close releases resources and disconnects every subscriber.
@@ -111,8 +111,8 @@ type Fanout struct {
 	closed bool
 }
 
-// Subscribe registers a feed for one stream, or for stream-list events only
-// when stream is empty.
+// Subscribe registers a feed for one stream, or for every stream when the
+// name is empty.
 func (f *Fanout) Subscribe(stream string, buffer int) *Subscription {
 	if buffer < 1 {
 		buffer = 256
@@ -156,13 +156,20 @@ func (f *Fanout) remove(sub *Subscription) {
 	close(sub.ch)
 }
 
-// PublishLine delivers a record to everyone watching its stream.
+/*!
+ * PublishLine delivers a record to everyone watching its stream.
+ *
+ * An empty subscription matches everything. In v1 it meant the opposite —
+ * "send me nothing" was how a paused tab was expressed — but v2 has no paused
+ * subscription: switching to history closes the connection outright, and an
+ * unfiltered tail across every stream is the explorer's default view.
+ */
 func (f *Fanout) PublishLine(rec *model.Record) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
 	for _, sub := range f.subs {
-		if sub.stream == rec.Stream {
+		if "" == sub.stream || sub.stream == rec.Stream {
 			sub.send(Event{Kind: EventLine, Record: rec})
 		}
 	}

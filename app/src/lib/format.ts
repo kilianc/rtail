@@ -35,7 +35,15 @@ const timestampFormat = new Intl.DateTimeFormat(undefined, {
 
 let nextKey = 0
 
-/** Formats a line for display, computing its HTML and filter text once. */
+/*!
+ * Formats a line for display, computing its HTML and filter text once.
+ *
+ * A structured record renders as its extracted message rather than as pretty
+ * JSON: the row is one line tall, the full payload is a click away in the
+ * expanded view, and twenty lines of indented JSON per event makes a result
+ * list unreadable. Plain-text lines keep their ANSI colours, which is the
+ * whole reason anyone points rtail at a terminal.
+ */
 export function formatLine(wire: WireLine): Line {
   let html: string
   let text: string
@@ -44,14 +52,34 @@ export function formatLine(wire: WireLine): Line {
     html = ''
     text = ''
   } else if ('object' === wire.type) {
-    text = JSON.stringify(wire.content, null, '  ')
-    html = '<pre>' + hljs.highlight(text, { language: 'json' }).value + '</pre>'
+    text = wire.msg || JSON.stringify(wire.content)
+
+    html = wire.msg
+      ? escapeHtml(wire.msg)
+      : '<span class="row-raw">' +
+        hljs.highlight(JSON.stringify(wire.content), { language: 'json' }).value +
+        '</span>'
   } else {
     text = String(wire.content)
     html = ansi.ansi_to_html(text)
   }
 
   return { ...wire, html, text, key: nextKey++ }
+}
+
+/*!
+ * escapeHtml exists because a message is attacker-controlled text.
+ *
+ * The row body is injected as HTML so that ANSI colouring works, which means
+ * everything on that path has to be escaped by whoever produced it. ansi_up
+ * does its own; a plain message needs this.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
 export function formatTimestamp(timestamp: number): string {

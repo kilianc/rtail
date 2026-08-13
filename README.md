@@ -19,12 +19,11 @@
 > already have installed works against a v2 server unchanged. Everything else
 > on this branch is subject to change until 2.0.0 ships.
 >
-> **Where it is:** P0 (Go port), P1 (durable Parquet storage), P2 (SQL search)
-> and P3 (compaction and retention) are done. `--data` keeps your logs across
-> restarts as plain Parquet, compacts them in the background, expires them on
-> a schedule, and lets you search them with a filter bar or raw SQL. The new
-> interface that makes all of it pleasant to use is P4, and is not here yet —
-> today the search API is an API.
+> **Where it is:** P0–P4 are done. `--data` keeps your logs across restarts as
+> plain Parquet, compacts them in the background, expires them on a schedule,
+> and the explorer searches them with a filter bar, a brushable histogram and
+> a field sidebar. What is left before 2.0.0 is the other ingest protocols
+> (OTLP, HTTP, syslog) and the operational edges.
 
 `rtail` is a command line utility that grabs every line in `stdin` and broadcasts it over **UDP**. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using `rtail` broadcasting to an `rtail-server` – See multiple streams in the browser, in realtime.
 
@@ -66,11 +65,47 @@ binary and the image is ~240MB rather than the ~16MB it was before search
 existed. Builds are per-platform (linux/amd64, linux/arm64, darwin/arm64) and
 need `CGO_ENABLED=1`.
 
-## Web app
+## The explorer
 
-![](https://s3.amazonaws.com/rtail/github/dark.png)
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ ▪ rtail   All streams 3   ▪ LIVE                          ⓘ ⚙   │
+    ├──────────────────────────────────────────────────────────────────┤
+    │  event=checkout.completed count>500              ▶ Last hour     │
+    ├──────────────────────────────────────────────────────────────────┤
+    │  ▁▂▃▅█▇▅▃▂▁▁▂▄▆█▇▄▂▁▁▁▂▃▄▃▂▁▁▂▃▅▇█▆▄▂▁      231 events          │
+    ├───────────────┬──────────────────────────────────────────────────┤
+    │ FIELDS        │ 09:51:34  ERROR  upstream timeout after 30000ms  │
+    │ region        │ ▼ 09:51:33 ERROR connection reset by peer        │
+    │  eu-west-1 243│     count    650          ⊕ filter  ⊖ exclude    │
+    │ stream        │     region   eu-west-1    ⊕ filter  ⊖ exclude    │
+    │  worker    91 │     req    ▸ { path: "/v1/orders" }              │
+    │  nginx     81 │     ⧉ Copy   ↗ Show context                      │
+    │  api       71 │ 09:51:26  INFO   cache warmed in 142ms           │
+    └───────────────┴──────────────────────────────────────────────────┘
 
-![](https://s3.amazonaws.com/rtail/github/light.png)
+**One filter drives everything.** Type it and the live tail narrows — the
+server compiles the same rQL to a predicate over the ingest stream. Switch to
+history and the same query runs against Parquet. Same semantics either way,
+because there is one parser behind both.
+
+**The histogram is the navigation.** Counts over time stacked by severity; drag
+across it to zoom the range.
+
+**Most queries are built by clicking.** Expand any event and every value
+carries "filter to this" and "exclude this"; the command bar updates to match,
+so whatever you built by pointing is something you could have typed. The field
+sidebar shows the top values of every field *within the current results*, which
+answers "what is even in here" before you know what to search for.
+
+**Completion is real.** It comes from the catalog's key inventory — every field
+that has actually appeared, with its type and how often — not from a guess at
+what a log line might contain.
+
+**Every view is a link.** Stream, filter, time range and live/history all live
+in the URL.
+
+Keyboard: `/` or `⌘K` focuses the filter, `⏎` runs it, `j`/`k` move between
+events, `⎋` collapses everything.
 
 ## Rationale
 

@@ -271,14 +271,43 @@ func (s *Server) schema(w http.ResponseWriter, r *http.Request) {
 		fields = append(fields, fieldJSON{Name: name, Kind: "envelope"})
 	}
 
+	/*!
+	 * Keys are stored per stream, so asking across all of them returns the
+	 * same name once per stream that ever had it. The explorer wants one entry
+	 * per name — a sidebar listing `region` four times is noise, not detail —
+	 * so they are merged: occurrences add up, and a key whose type differs
+	 * between streams is polymorphic for the same reason it would be within
+	 * one.
+	 */
+	merged := make(map[string]*fieldJSON, len(keys))
+	order := make([]string, 0, len(keys))
+
 	for _, key := range keys {
-		fields = append(fields, fieldJSON{
-			Name:        key.SourceKey,
-			Kind:        key.Kind,
-			Polymorphic: key.Polymorphic,
-			Occurrences: key.Occurrences,
-			Stream:      key.Stream,
-		})
+		existing, ok := merged[key.SourceKey]
+		if !ok {
+			merged[key.SourceKey] = &fieldJSON{
+				Name:        key.SourceKey,
+				Kind:        key.Kind,
+				Polymorphic: key.Polymorphic,
+				Occurrences: key.Occurrences,
+				Stream:      key.Stream,
+			}
+			order = append(order, key.SourceKey)
+			continue
+		}
+
+		existing.Occurrences += key.Occurrences
+		if existing.Kind != key.Kind {
+			existing.Polymorphic = true
+			existing.Kind = "string"
+		}
+		existing.Polymorphic = existing.Polymorphic || key.Polymorphic
+		// No single stream owns it any more.
+		existing.Stream = ""
+	}
+
+	for _, name := range order {
+		fields = append(fields, *merged[name])
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"fields": fields})

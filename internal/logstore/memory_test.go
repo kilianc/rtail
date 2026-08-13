@@ -137,8 +137,7 @@ func TestNewStreamsAreAnnouncedToEveryone(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemory(10)
 
-	// An empty stream is how the webapp represents a paused tab: it still
-	// wants to hear about new streams.
+	// An empty stream is the explorer's "All streams".
 	sub := store.Subscribe("", 16)
 	defer sub.Close()
 
@@ -156,13 +155,27 @@ func TestNewStreamsAreAnnouncedToEveryone(t *testing.T) {
 		t.Fatal("no stream announcement")
 	}
 
-	// ... but no line events, having selected no stream.
+	// ... and so are lines, from every stream — including the one that came
+	// with the announcement above.
 	store.Append(ctx, record("api", "second"))
+	store.Append(ctx, record("worker", "third"))
 
-	select {
-	case event := <-sub.C:
-		t.Fatalf("unexpected event %v", event.Kind)
-	case <-time.After(100 * time.Millisecond):
+	var seen []string
+
+	deadline := time.After(2 * time.Second)
+	for len(seen) < 3 {
+		select {
+		case event := <-sub.C:
+			if EventLine == event.Kind {
+				seen = append(seen, event.Record.Msg)
+			}
+		case <-deadline:
+			t.Fatalf("timed out with %v", seen)
+		}
+	}
+
+	if "hello" != seen[0] || "second" != seen[1] || "third" != seen[2] {
+		t.Errorf("lines = %v, want every stream in order", seen)
 	}
 }
 

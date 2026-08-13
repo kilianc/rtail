@@ -21,6 +21,7 @@ import (
 
 	"github.com/kilianc/rtail/v2/internal/logstore"
 	"github.com/kilianc/rtail/v2/internal/model"
+	"github.com/kilianc/rtail/v2/internal/rql"
 )
 
 // subscriberBuffer is generous because the cost of a dropped line is much
@@ -30,6 +31,30 @@ const subscriberBuffer = 1024
 func (s *Server) tail(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	stream := r.URL.Query().Get("stream")
+
+	/*!
+	 * The filter is compiled here, from the same rQL the search bar sends to
+	 * /v1/search — which is the entire payoff of rql having two compilers.
+	 * Streaming with a filter applied and searching history with it produce
+	 * the same answers because there is one AST and one set of semantics
+	 * behind both, not two implementations kept in sync by hand.
+	 *
+	 * Compiled once per connection rather than per record: a tail doing 100k
+	 * lines a second cannot afford to re-parse, and a bad regexp should be an
+	 * error the subscriber sees immediately rather than a filter that matches
+	 * nothing forever.
+	 */
+	node, err := rql.Parse(r.URL.Query().Get("q"))
+	if nil != err {
+		s.failQuery(w, err)
+		return
+	}
+
+	matches, err := rql.ToPredicate(node)
+	if nil != err {
+		s.failQuery(w, err)
+		return
+	}
 
 	/*!
 	 * Subscribe before reading the backlog, never after.
@@ -68,23 +93,35 @@ func (s *Server) tail(w http.ResponseWriter, r *http.Request) {
 
 	var floor uint64
 
-	if "" != stream {
-		backlog, err := s.opts.Store.Backlog(ctx, stream, 0)
-		if nil != err {
-			s.opts.Log.Error("reading backlog", "stream", stream, "err", err)
-			return
-		}
+	/*!
+	 * The backlog is sent for every subscription, including the unfiltered one.
+	 *
+	 * An empty stream means "all streams" — the explorer's default view — and
+	 * the store merges the per-stream rings by seq to serve it. A tail that
+	 * opens blank and then trickles reads as broken next to one that opens
+	 * with the last hundred lines already on screen.
+	 */
+	backlog, err := s.opts.Store.Backlog(ctx, stream, 0)
+	if nil != err {
+		s.opts.Log.Error("reading backlog", "stream", stream, "err", err)
+		return
+	}
 
-		if nil == backlog {
-			backlog = []*model.Record{}
-		}
-		if n := len(backlog); n > 0 {
-			floor = backlog[n-1].Seq
-		}
+	if n := len(backlog); n > 0 {
+		floor = backlog[n-1].Seq
+	}
 
-		if err := sendEvent(w, "backlog", backlog); nil != err {
-			return
+	// Filtered too, so a tab that starts filtered does not flash a screenful
+	// of non-matching history before settling.
+	filtered := make([]*model.Record, 0, len(backlog))
+	for _, rec := range backlog {
+		if matches(rec) {
+			filtered = append(filtered, rec)
 		}
+	}
+
+	if err := sendEvent(w, "backlog", filtered); nil != err {
+		return
 	}
 
 	if err := flusher.Flush(); nil != err {
@@ -118,6 +155,9 @@ func (s *Server) tail(w http.ResponseWriter, r *http.Request) {
 			case logstore.EventLine:
 				// Already delivered in the backlog.
 				if event.Record.Seq <= floor {
+					continue
+				}
+				if !matches(event.Record) {
 					continue
 				}
 				if err := sendEvent(w, "line", event.Record); nil != err {

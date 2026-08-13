@@ -101,10 +101,11 @@
   }
 
   // The shell: one fixed-height bar, then everything else.
+  // The shell: the bar, the query row, the histogram, then the results.
   #root {
     block-size: 100%;
     display: grid;
-    grid-template-rows: var(--bar-h) 1fr;
+    grid-template-rows: var(--bar-h) auto auto 1fr;
     min-block-size: 0;
   }
 
@@ -407,49 +408,49 @@
     padding-inline: var(--space-4);
   }
 
-  // ** top bar: stream identity **
+  // ** top bar: stream picker, live toggle **
 
-  .stream-title {
+  .stream-picker {
     align-items: center;
     block-size: var(--control-h);
     color: var(--foreground);
     display: flex;
     flex-shrink: 0;
     font-size: var(--text-md);
-    font-weight: 500;
     gap: var(--space-2);
-    letter-spacing: -0.01em;
     max-inline-size: calc(var(--space-6) * 10);
     min-inline-size: 0;
     padding-inline: var(--space-2);
-    // Cancel the field padding so the star aligns with the sidebar text below.
     margin-inline-start: calc(var(--space-2) * -1);
-    overflow: hidden;
-    text-overflow: ellipsis;
     transition: background-color .12s ease;
-    white-space: nowrap;
 
     &:hover {
       background: var(--subtle);
     }
   }
 
-  .stream-title-favorite {
-    @include icon-common('btn-fav-off', contain);
+  .stream-picker-icon {
+    @include icon-common('icn-filter', contain);
     block-size: var(--icon-sm);
     color: var(--muted-foreground);
     flex-shrink: 0;
     inline-size: var(--icon-sm);
-    transition: color .12s ease;
-
-    &.on {
-      @include icon-common('btn-fav-on', contain);
-      color: var(--primary);
-    }
   }
 
-  // Live / paused — the accent doing real work.
-  .stream-status {
+  .stream-picker-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stream-picker-count {
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  // Live / history — the accent doing real work.
+  .live-toggle {
     align-items: center;
     color: var(--muted-foreground);
     display: flex;
@@ -457,287 +458,884 @@
     font-size: var(--text-xs);
     gap: var(--space-2);
     letter-spacing: .02em;
+    padding-inline: var(--space-2);
     text-transform: uppercase;
 
     i {
-      background: var(--primary);
+      background: var(--muted-foreground);
       block-size: var(--space-1);
       display: block;
       inline-size: var(--space-1);
       position: relative;
+    }
 
-      // A halo that breathes, so "live" reads at a glance.
-      &::after {
-        animation: pulse 1.8s ease-out infinite;
+    &.on {
+      color: var(--foreground);
+
+      i {
         background: var(--primary);
-        content: '';
-        inset: calc(var(--space-1) * -1);
-        position: absolute;
-      }
-    }
 
-    &.paused i {
-      background: var(--muted-foreground);
-
-      &::after {
-        content: none;
-      }
-    }
-  }
-
-  .topbar .filter-box {
-    inline-size: calc(var(--space-6) * 10);
-  }
-
-  // Below this width the filter box is the first thing to go.
-  @container (max-width: 640px) {
-    .topbar .filter-box {
-      display: none;
-    }
-  }
-
-  // ** sidebar **
-
-  .stream-sections {
-    min-block-size: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding-block: var(--space-2) var(--space-4);
-
-    .stream-section h4 {
-      align-items: center;
-      color: var(--muted-foreground);
-      display: flex;
-      font-size: var(--text-xs);
-      font-weight: 500;
-      letter-spacing: .06em;
-      min-block-size: var(--row-h);
-      padding-inline: var(--space-4);
-      text-transform: uppercase;
-    }
-
-    .stream-section + .stream-section h4 {
-      margin-block-start: var(--space-2);
-    }
-
-    .stream-section a {
-      align-items: center;
-      color: var(--muted-foreground);
-      display: flex;
-      gap: var(--space-2);
-      min-block-size: var(--row-h);
-      padding-inline: var(--space-4);
-      position: relative;
-      transition: background-color .12s ease, color .12s ease;
-
-      &:hover {
-        background: var(--subtle);
-        color: var(--foreground);
-      }
-
-      // The active row is monochrome; the marker is the only colour here.
-      &.selected {
-        background: var(--subtle-strong);
-        color: var(--foreground);
-        font-weight: 500;
-
-        &::before {
+        // A halo that breathes, so "live" reads at a glance.
+        &::after {
+          animation: pulse 1.8s ease-out infinite;
           background: var(--primary);
           content: '';
-          inline-size: var(--marker-w);
-          inset-block: 0;
-          inset-inline-start: 0;
+          inset: calc(var(--space-1) * -1);
           position: absolute;
         }
       }
+    }
+  }
 
-      span {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+  .topbar-scanned {
+    color: var(--muted-foreground);
+    flex-shrink: 0;
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  // ** the query row **
+  //
+  // The command bar is the primary control, so it gets a row of its own rather
+  // than competing for space in the top bar.
+
+  .query-row {
+    align-items: center;
+    box-shadow: inset 0 calc(var(--hairline) * -1) 0 var(--border);
+    display: flex;
+    gap: var(--space-2);
+    min-inline-size: 0;
+    padding-inline: var(--space-3);
+    padding-block: var(--space-2);
+  }
+
+  .command {
+    flex: 1;
+    min-inline-size: 0;
+    position: relative;
+  }
+
+  .command-input {
+    align-items: center;
+    background: var(--muted);
+    block-size: var(--control-h);
+    box-shadow: inset 0 0 0 var(--hairline) var(--input);
+    display: flex;
+    gap: var(--space-2);
+    padding-inline: var(--space-2);
+    transition: box-shadow .12s ease;
+
+    &:focus-within {
+      box-shadow: inset 0 0 0 var(--hairline) var(--ring);
+    }
+
+    input {
+      background: none;
+      border: 0;
+      color: var(--foreground);
+      flex: 1;
+      font-family: var(--mono);
+      font-size: var(--mono-size);
+      min-inline-size: 0;
+      outline: 0;
+
+      &::placeholder {
+        color: var(--muted-foreground);
       }
-
-      // Unread marker.
-      i {
-        background: var(--primary);
-        block-size: var(--space-1);
-        flex-shrink: 0;
-        inline-size: var(--space-1);
-        margin-inline-start: auto;
-      }
     }
   }
 
-  .resize-handler {
-    cursor: col-resize;
-    inline-size: var(--space-2);
-    inset-block: 0;
-    // Straddle the hairline so the grab area is centred on it.
-    inset-inline-end: calc(var(--space-1) * -1);
-    position: absolute;
-    z-index: 2;
-
-    &::after {
-      background: transparent;
-      content: '';
-      inline-size: var(--hairline);
-      inset-block: 0;
-      inset-inline-start: var(--space-1);
-      position: absolute;
-      transition: background-color .12s ease;
-    }
-
-    &:hover::after {
-      background: var(--border-strong);
-    }
+  .command.invalid .command-input {
+    box-shadow: inset 0 0 0 var(--hairline) var(--ansi-red);
   }
 
-  // ** log viewport **
-
-  .stream-lines {
-    // Two tracks; each row opts into them with subgrid, so every timestamp and
-    // every message share one column edge no matter what they contain.
-    display: grid;
-    grid-template-columns: var(--gutter-w) 1fr;
-    align-content: start;
-    font-size: var(--mono-size);
-    min-block-size: 0;
-    overflow: auto;
-    overscroll-behavior: contain;
+  .command-icon {
+    @include icon-common('icn-search', contain);
+    block-size: var(--icon-sm);
+    color: var(--muted-foreground);
+    flex-shrink: 0;
+    inline-size: var(--icon-sm);
   }
 
-  .stream-line {
-    // NB: no content-visibility here. It applies size containment, and a
-    // subgrid under containment silently degrades to a standalone grid — which
-    // put every timestamp on its own line. The buffer is capped at 100 rows,
-    // so there is nothing to gain from skipping off-screen work anyway.
-    display: grid;
-    grid-column: 1 / -1;
-    grid-template-columns: subgrid;
+  .command-busy {
+    animation: pulse 1s ease-in-out infinite alternate;
+    background: var(--primary);
+    block-size: var(--space-1);
+    flex-shrink: 0;
+    inline-size: var(--space-1);
+  }
+
+  .command-clear {
+    @include icon-common('icn-close-date', contain);
+    block-size: var(--icon-sm);
+    color: var(--muted-foreground);
+    flex-shrink: 0;
+    inline-size: var(--icon-sm);
 
     &:hover {
-      background: var(--subtle);
-    }
-
-    :is(.stream-line-timestamp, .stream-line-content) {
-      // No block padding: a single-line row is exactly --line-h tall, so the
-      // whole log keeps one rhythm.
-      line-height: var(--line-h);
-      min-block-size: var(--line-h);
-      padding-inline: var(--space-4);
-    }
-
-    .stream-line-timestamp {
-      border-inline-end: var(--hairline) solid var(--border);
-      color: var(--muted-foreground);
-      font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: var(--text-xs);
-      font-variant-numeric: tabular-nums;
-      overflow: hidden;
-      user-select: none;
-      white-space: nowrap;
-    }
-
-    .stream-line-content {
-      min-inline-size: 0;
-      white-space: pre;
-    }
-
-    pre {
-      line-height: var(--line-h);
+      color: var(--foreground);
     }
   }
 
-  // Collapsing the column drops the track to nothing, and the control that
-  // sits on its edge follows automatically.
-  .stream-view.no-timestamps {
-    --gutter-w: 0px;
-
-    .stream-lines {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  .btn-toggle-timestamp {
-    align-items: center;
-    background: var(--background);
-    block-size: var(--space-4);
-    box-shadow: inset 0 0 0 var(--hairline) var(--border);
-    color: var(--muted-foreground);
-    display: flex;
-    inline-size: var(--space-4);
-    inset-block-end: var(--space-4);
-    inset-inline-start: var(--gutter-w);
-    justify-content: center;
+  .command-menu {
+    background: var(--popover);
+    box-shadow:
+      inset 0 0 0 var(--hairline) var(--border),
+      0 var(--space-2) var(--space-6) rgb(0 0 0 / .45);
+    inset-block-start: calc(var(--control-h) + var(--hairline));
+    inset-inline: 0;
+    list-style: none;
+    margin: 0;
+    max-block-size: calc(var(--row-h) * 9);
+    overflow-y: auto;
+    padding: 0;
     position: absolute;
-    transform: translateX(-50%);
-    transition: color .12s ease, box-shadow .12s ease;
-    z-index: 1;
+    z-index: 10;
 
-    &::after {
-      @include icon('icn-close-date', contain);
-      block-size: var(--space-2);
-      content: '';
-      inline-size: var(--space-1);
+    li {
+      align-items: center;
+      block-size: var(--row-h);
+      cursor: pointer;
+      display: flex;
+      gap: var(--space-2);
+      padding-inline: var(--space-3);
+
+      &.active {
+        background: var(--subtle-strong);
+        box-shadow: inset var(--marker-w) 0 0 var(--primary);
+      }
     }
+  }
+
+  .command-menu-name {
+    color: var(--foreground);
+    font-family: var(--mono);
+    font-size: var(--mono-size);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .command-menu-kind {
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+
+    &.kind-envelope { color: var(--primary); }
+  }
+
+  .command-menu-detail {
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    margin-inline-start: auto;
+  }
+
+  // The parse error, with a caret under the character the parser stopped at.
+  .command-error {
+    color: var(--ansi-red);
+    font-size: var(--text-xs);
+    padding-block-start: var(--space-1);
+    padding-inline-start: calc(var(--space-2) * 2 + var(--icon-sm));
+    position: relative;
+  }
+
+  .command-caret {
+    // 1ch per character, because the input is monospace — which is most of
+    // why it is monospace.
+    color: var(--ansi-red);
+    inset-inline-start: calc(var(--space-2) * 2 + var(--icon-sm) + var(--at) * 1ch);
+    position: absolute;
+  }
+
+  // ** time range **
+
+  .timerange {
+    align-items: center;
+    block-size: var(--control-h);
+    box-shadow: inset 0 0 0 var(--hairline) var(--input);
+    color: var(--foreground);
+    display: flex;
+    flex-shrink: 0;
+    font-size: var(--text-sm);
+    gap: var(--space-2);
+    padding-inline: var(--space-3);
+    transition: box-shadow .12s ease;
 
     &:hover {
       box-shadow: inset 0 0 0 var(--hairline) var(--border-strong);
-      color: var(--foreground);
     }
 
-    &.closed::after {
-      rotate: 180deg;
+    // An absolute range is pinned, and looks it.
+    &.absolute {
+      box-shadow: inset 0 0 0 var(--hairline) var(--primary);
+      color: var(--primary);
     }
   }
 
-  .btn-resume {
-    align-items: center;
+  .timerange-icon {
+    @include icon-common('icn-resume', contain);
+    block-size: var(--icon-sm);
+    color: currentcolor;
+    inline-size: var(--icon-sm);
+  }
+
+  .popover-timerange {
+    gap: var(--space-2);
+    padding: var(--space-3);
+
+    h4 {
+      color: var(--muted-foreground);
+      font-size: var(--text-xs);
+      font-weight: 500;
+      letter-spacing: .04em;
+      margin: 0;
+      text-transform: uppercase;
+    }
+  }
+
+  .timerange-presets {
+    display: grid;
+
+    button {
+      block-size: var(--row-h);
+      color: var(--foreground);
+      font-size: var(--text-sm);
+      padding-inline: var(--space-2);
+      text-align: start;
+
+      &:hover { background: var(--subtle); }
+      &.selected {
+        box-shadow: inset var(--marker-w) 0 0 var(--primary);
+        color: var(--primary);
+      }
+    }
+  }
+
+  .timerange-absolute {
+    display: grid;
+    gap: var(--space-2);
+
+    label {
+      color: var(--muted-foreground);
+      display: grid;
+      font-size: var(--text-xs);
+      gap: var(--space-1);
+    }
+
+    input {
+      background: var(--muted);
+      block-size: var(--control-h);
+      box-shadow: inset 0 0 0 var(--hairline) var(--input);
+      color: var(--foreground);
+      font-family: var(--mono);
+      font-size: var(--text-sm);
+      padding-inline: var(--space-2);
+    }
+  }
+
+  .timerange-apply,
+  .timerange-reset {
     background: var(--primary);
     block-size: var(--control-h);
     color: var(--primary-foreground);
-    display: flex;
     font-size: var(--text-sm);
-    font-weight: 500;
+
+    &:hover { background: var(--primary-hover); }
+  }
+
+  .timerange-reset {
+    background: none;
+    box-shadow: inset 0 0 0 var(--hairline) var(--border);
+    color: var(--foreground);
+
+    &:hover { background: var(--subtle); }
+  }
+
+  // ** streams popover **
+
+  .popover-streams {
+    padding: 0;
+
+    input {
+      background: none;
+      block-size: var(--bar-h);
+      box-shadow: inset 0 calc(var(--hairline) * -1) 0 var(--border);
+      color: var(--foreground);
+      font-size: var(--text-sm);
+      inline-size: 100%;
+      padding-inline: var(--space-3);
+    }
+  }
+
+  .stream-list {
+    list-style: none;
+    margin: 0;
+    max-block-size: calc(var(--row-h) * 10);
+    overflow-y: auto;
+    padding: 0;
+
+    li {
+      align-items: center;
+      display: flex;
+    }
+  }
+
+  .stream-item {
+    block-size: var(--row-h);
+    color: var(--foreground);
+    flex: 1;
+    font-size: var(--text-sm);
+    overflow: hidden;
+    padding-inline: var(--space-3);
+    text-align: start;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &:hover { background: var(--subtle); }
+
+    &.selected {
+      box-shadow: inset var(--marker-w) 0 0 var(--primary);
+      color: var(--primary);
+    }
+  }
+
+  .stream-fav {
+    @include icon-common('btn-fav-off', contain);
+    block-size: var(--icon-sm);
+    color: var(--muted-foreground);
+    flex-shrink: 0;
+    inline-size: var(--icon-sm);
+    margin-inline-end: var(--space-3);
+
+    &.on {
+      @include icon-common('btn-fav-on', contain);
+      color: var(--primary);
+    }
+  }
+
+  .stream-empty {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    padding: var(--space-3);
+  }
+
+  // ** histogram **
+  //
+  // The navigation, not decoration: drag across it to zoom the range.
+
+  .histogram {
+    box-shadow: inset 0 calc(var(--hairline) * -1) 0 var(--border);
+    display: grid;
+    gap: var(--space-1);
+    padding-block: var(--space-2);
+    padding-inline: var(--space-3);
+    transition: opacity .12s ease;
+
+    &.loading { opacity: .5; }
+  }
+
+  .histogram-surface {
+    block-size: calc(var(--space-6) * 2);
+    cursor: crosshair;
+    position: relative;
+    user-select: none;
+  }
+
+  .histogram-bar {
+    // Bars are positioned by timestamp, so a gap in the data stays a gap.
+    display: flex;
+    flex-direction: column;
+    inset-block-end: 0;
+    justify-content: flex-end;
+    min-block-size: var(--hairline);
+    position: absolute;
+  }
+
+  .histogram-part {
+    inline-size: 100%;
+    min-block-size: var(--hairline);
+
+    &.level-none,
+    &.level-other,
+    &.level-trace,
+    &.level-debug { background: var(--border-strong); }
+
+    &.level-info,
+    &.level-notice { background: var(--muted-foreground); }
+
+    &.level-warn { background: var(--ansi-yellow); }
+
+    &.level-error,
+    &.level-critical,
+    &.level-alert,
+    &.level-emergency,
+    &.level-fatal { background: var(--ansi-red); }
+  }
+
+  .histogram-selection {
+    background: var(--primary-subtle);
+    box-shadow:
+      inset var(--hairline) 0 0 var(--primary),
+      inset calc(var(--hairline) * -1) 0 0 var(--primary);
+    inset-block: 0;
+    pointer-events: none;
+    position: absolute;
+  }
+
+  .histogram-tip {
+    background: var(--popover);
+    box-shadow: inset 0 0 0 var(--hairline) var(--border);
+    display: grid;
+    font-size: var(--text-xs);
+    gap: var(--space-1);
+    inset-block-start: 0;
+    justify-items: center;
+    padding: var(--space-1) var(--space-2);
+    pointer-events: none;
+    position: absolute;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    z-index: 5;
+
+    span { color: var(--muted-foreground); }
+    strong { font-variant-numeric: tabular-nums; }
+  }
+
+  .histogram-axis {
+    color: var(--muted-foreground);
+    display: flex;
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    justify-content: space-between;
+  }
+
+  .histogram-count { color: var(--foreground); }
+
+  // ** the split: field explorer beside the results **
+
+  .explorer-split {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) 1fr;
+    min-block-size: 0;
+    overflow: hidden;
+  }
+
+  .explorer {
+    box-shadow: inset calc(var(--hairline) * -1) 0 0 var(--border);
+    display: grid;
+    grid-template-rows: var(--bar-h) 1fr;
+    min-block-size: 0;
+  }
+
+  .explorer-search input {
+    background: none;
+    block-size: var(--bar-h);
+    box-shadow: inset 0 calc(var(--hairline) * -1) 0 var(--border);
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    inline-size: 100%;
+    padding-inline: var(--space-3);
+
+    &::placeholder { color: var(--muted-foreground); }
+  }
+
+  .explorer-list {
+    min-block-size: 0;
+    overflow-y: auto;
+  }
+
+  .explorer-empty,
+  .explorer-note {
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .explorer-head {
+    align-items: center;
+    block-size: var(--row-h);
+    display: flex;
     gap: var(--space-2);
+    inline-size: 100%;
+    padding-inline: var(--space-3);
+    text-align: start;
+
+    &:hover { background: var(--subtle); }
+  }
+
+  .explorer-field.active .explorer-head {
+    box-shadow: inset var(--marker-w) 0 0 var(--primary);
+  }
+
+  .explorer-name {
+    color: var(--foreground);
+    font-family: var(--mono);
+    font-size: var(--mono-size);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .explorer-kind {
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    margin-inline-start: auto;
+  }
+
+  .explorer-values {
+    padding-block-end: var(--space-2);
+  }
+
+  .explorer-value {
+    align-items: center;
+    display: flex;
+
+    &:hover .explorer-exclude { opacity: 1; }
+  }
+
+  .explorer-value-main {
+    align-items: center;
+    block-size: var(--row-h);
+    display: flex;
+    flex: 1;
+    gap: var(--space-2);
+    min-inline-size: 0;
+    padding-inline: var(--space-3);
+    position: relative;
+    text-align: start;
+
+    &:hover { background: var(--subtle); }
+  }
+
+  // The share bar sits behind the label: the sidebar is narrow, and a value
+  // that needs the width should get it.
+  .explorer-share {
+    background: var(--primary-subtle);
+    inset-block: var(--space-1);
+    inset-inline-start: 0;
+    position: absolute;
+  }
+
+  .explorer-label {
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    overflow: hidden;
+    position: relative;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .explorer-count {
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    margin-inline-start: auto;
+    position: relative;
+  }
+
+  .explorer-exclude {
+    block-size: var(--hit);
+    color: var(--muted-foreground);
+    inline-size: var(--hit);
+    opacity: 0;
+    transition: opacity .12s ease, color .12s ease;
+
+    &:hover { color: var(--ansi-red); }
+  }
+
+  // ** results **
+
+  .results {
+    min-block-size: 0;
+    position: relative;
+  }
+
+  .results-scroll {
+    block-size: 100%;
+    overflow-y: auto;
+  }
+
+  .results-spacer {
+    position: relative;
+  }
+
+  .results-row {
+    inline-size: 100%;
+    inset-block-start: 0;
+    position: absolute;
+  }
+
+  .results-more {
+    block-size: var(--bar-h);
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    inline-size: 100%;
+
+    &:hover:not(:disabled) {
+      background: var(--subtle);
+      color: var(--foreground);
+    }
+  }
+
+  .results-follow {
+    background: var(--primary);
+    block-size: var(--control-h);
+    color: var(--primary-foreground);
+    font-size: var(--text-sm);
     inset-block-end: var(--space-4);
     inset-inline-end: var(--space-4);
     padding-inline: var(--space-3);
     position: absolute;
-    transition: background-color .12s ease;
-    z-index: 2;
+    z-index: 5;
 
-    &::before {
-      @include icon-common('icn-resume', contain);
-      block-size: var(--space-2);
-      content: '';
-      inline-size: var(--space-2);
-    }
+    &:hover { background: var(--primary-hover); }
+  }
 
-    &:hover {
-      background: var(--primary-hover);
+  .results-empty {
+    align-content: center;
+    block-size: 100%;
+    display: grid;
+    gap: var(--space-3);
+    justify-items: center;
+
+    p {
+      color: var(--muted-foreground);
+      font-size: var(--text-sm);
+      margin: 0;
     }
   }
 
-  // ** empty state **
+  // Two crossed rules, so it stays crisp and inherits colour.
+  .results-empty-mark {
+    block-size: var(--space-6);
+    inline-size: var(--space-6);
+    position: relative;
 
-  .stream-empty {
-    align-content: center;
-    color: var(--muted-foreground);
-    display: grid;
-    gap: var(--space-4);
-    justify-items: center;
-    user-select: none;
-
-    .stream-empty-mark {
-      @include icon-common('logo-rtail', contain);
-      block-size: var(--space-6);
-      color: var(--border-strong);
-      inline-size: calc(var(--space-6) * 3 + var(--space-2));
+    &::before,
+    &::after {
+      background: var(--border-strong);
+      content: '';
+      inset-block-start: 50%;
+      inset-inline-start: 0;
+      position: absolute;
+      inline-size: 100%;
+      block-size: var(--hairline);
     }
 
-    p {
-      font-size: var(--text-sm);
+    &::before { transform: rotate(45deg); }
+    &::after { transform: rotate(-45deg); }
+  }
+
+  // ** one row **
+
+  .row {
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: var(--mono-size);
+
+    &:hover { background: var(--subtle); }
+    &.selected { background: var(--subtle-strong); }
+
+    &.expanded {
+      background: var(--muted);
+      box-shadow:
+        inset 0 var(--hairline) 0 var(--border),
+        inset 0 calc(var(--hairline) * -1) 0 var(--border);
+    }
+  }
+
+  .row-head {
+    align-items: baseline;
+    display: flex;
+    gap: var(--space-2);
+    min-block-size: var(--line-h);
+    padding-inline: var(--space-3);
+  }
+
+  .row-time {
+    color: var(--muted-foreground);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    inline-size: var(--gutter-w);
+  }
+
+  // Severity is a 2px left border and a label, not a badge: colour carries it,
+  // chrome does not.
+  .row-level {
+    flex-shrink: 0;
+    font-size: var(--text-xs);
+    inline-size: calc(var(--space-6) * 2);
+    letter-spacing: .02em;
+  }
+
+  .row-message {
+    flex: 1;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .row-raw { color: var(--muted-foreground); }
+
+  .row.level-warn {
+    box-shadow: inset var(--marker-w) 0 0 var(--ansi-yellow);
+    .row-level { color: var(--ansi-yellow); }
+  }
+
+  .row.level-error,
+  .row.level-critical,
+  .row.level-alert,
+  .row.level-emergency,
+  .row.level-fatal {
+    box-shadow: inset var(--marker-w) 0 0 var(--ansi-red);
+    .row-level { color: var(--ansi-red); }
+  }
+
+  .row.level-debug,
+  .row.level-trace {
+    .row-message { color: var(--muted-foreground); }
+    .row-level { color: var(--muted-foreground); }
+  }
+
+  .row.level-info .row-level,
+  .row.level-notice .row-level { color: var(--muted-foreground); }
+
+  // ** the expanded row **
+
+  .row-detail {
+    cursor: default;
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3) var(--space-3);
+    padding-inline-start: calc(var(--space-3) + var(--gutter-w) + var(--space-2));
+  }
+
+  .row-fields {
+    display: grid;
+    gap: var(--hairline);
+    margin: 0;
+  }
+
+  .leaf {
+    display: grid;
+    gap: var(--space-2);
+    grid-template-columns: calc(var(--space-6) * 6) 1fr;
+    min-block-size: var(--line-h);
+
+    &:hover .leaf-actions { opacity: 1; }
+
+    &.active .leaf-key { color: var(--primary); }
+  }
+
+  .leaf-key {
+    color: var(--muted-foreground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .leaf-value {
+    align-items: baseline;
+    display: flex;
+    gap: var(--space-2);
+    margin: 0;
+    min-inline-size: 0;
+  }
+
+  .leaf-scalar {
+    color: var(--foreground);
+    overflow-wrap: anywhere;
+
+    &.type-number { color: var(--ansi-cyan); }
+    &.type-boolean { color: var(--ansi-magenta); }
+  }
+
+  .leaf-json {
+    color: var(--foreground);
+    margin: 0;
+    max-block-size: calc(var(--line-h) * 12);
+    overflow: auto;
+    white-space: pre;
+  }
+
+  .leaf-actions {
+    display: flex;
+    flex-shrink: 0;
+    gap: var(--space-1);
+    opacity: 0;
+    transition: opacity .12s ease;
+  }
+
+  .leaf-filter {
+    color: var(--muted-foreground);
+    font-size: var(--text-md);
+    line-height: 1;
+
+    &:hover { color: var(--primary); }
+  }
+
+  .row-actions {
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .row-action {
+    block-size: var(--control-h);
+    box-shadow: inset 0 0 0 var(--hairline) var(--border);
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    padding-inline: var(--space-3);
+
+    &:hover {
+      background: var(--subtle);
+      color: var(--foreground);
+    }
+  }
+
+  // ** shortcuts, in the info popover **
+
+  .shortcuts {
+    inline-size: 100%;
+
+    h4 {
+      color: var(--muted-foreground);
+      font-size: var(--text-xs);
+      font-weight: 500;
+      letter-spacing: .04em;
+      margin: 0 0 var(--space-2);
+      text-transform: uppercase;
+    }
+
+    dl {
+      display: grid;
+      gap: var(--space-1) var(--space-3);
+      grid-template-columns: auto 1fr;
+      margin: 0;
+    }
+
+    dt {
+      color: var(--foreground);
+      font-family: var(--mono);
+      font-size: var(--text-xs);
+    }
+
+    dd {
+      color: var(--muted-foreground);
+      font-size: var(--text-xs);
+      margin: 0;
+    }
+  }
+
+  // Below this width the field explorer is the first thing to go.
+  @container (max-width: 720px) {
+    .explorer-split {
+      grid-template-columns: 1fr;
+    }
+
+    .explorer {
+      display: none;
     }
   }
 

@@ -1,3 +1,15 @@
+/*!
+ * The top bar.
+ *
+ * Brand, stream, the live toggle, and what the last query cost. Everything
+ * else that used to live here moved: the filter is its own row now because it
+ * is the primary control, and streams collapsed into a picker.
+ *
+ * The cost readout is deliberate. A search interface that hides how much work
+ * it just did teaches nobody why one query is instant and another is not.
+ */
+
+import type { ComponentChildren } from 'preact'
 import { useRef, useState } from 'preact/hooks'
 import { FONT_FAMILY_COUNT, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../lib/prefs.js'
 import type { Prefs, Theme } from '../lib/types.js'
@@ -7,34 +19,16 @@ declare const __VERSION__: string
 
 interface Props {
   prefs: Prefs
-  activeStream: string | null
-  isFavorite: boolean
-  paused: boolean
-  filter: string
+  live: boolean
+  scanned: string
+  children?: ComponentChildren
   onChangePrefs: (patch: Partial<Prefs>) => void
-  onToggleFavorite: () => void
-  onFilter: (pattern: string) => void
+  onToggleLive: () => void
 }
 
 type OpenPanel = 'info' | 'settings' | null
 
-/**
- * The single top bar.
- *
- * The brand cell is exactly as wide as the sidebar, so the vertical hairline
- * runs unbroken from the top of the window to the bottom. Both widths come
- * from --sidebar-w, which App keeps in sync while the sidebar is dragged.
- */
-export function TopBar({
-  prefs,
-  activeStream,
-  isFavorite,
-  paused,
-  filter,
-  onChangePrefs,
-  onToggleFavorite,
-  onFilter
-}: Props) {
+export function TopBar({ prefs, live, scanned, children, onChangePrefs, onToggleLive }: Props) {
   const [open, setOpen] = useState<OpenPanel>(null)
   const infoRef = useRef<HTMLButtonElement>(null)
   const settingsRef = useRef<HTMLButtonElement>(null)
@@ -43,75 +37,71 @@ export function TopBar({
     setOpen((current) => (current === panel ? null : panel))
 
   return (
-    // The popovers are siblings of the bar, not children, so bar-scoped styles
-    // cannot reach into them.
     <>
-    <div class="topbar">
-      <div class="topbar-brand">
-        <div class="rtail-logo" />
-      </div>
+      <div class="topbar">
+        <div class="topbar-brand">
+          <div class="rtail-logo" />
+        </div>
 
-      <div class="topbar-main">
-        {activeStream && (
-          <>
+        <div class="topbar-main">
+          {children}
+
+          <button
+            class={`live-toggle ${live ? 'on' : ''}`}
+            title={live ? 'Streaming — click to browse history' : 'Click to stream live'}
+            aria-pressed={live}
+            onClick={onToggleLive}
+          >
+            <i />
+            {live ? 'Live' : 'History'}
+          </button>
+
+          {scanned && !live && <span class="topbar-scanned">{scanned}</span>}
+
+          <div class="topbar-actions">
             <button
-              class="stream-title"
-              title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-              onClick={onToggleFavorite}
-            >
-              <i class={`stream-title-favorite ${isFavorite ? 'on' : ''}`} />
-              {activeStream}
-            </button>
+              ref={infoRef}
+              class="btn btn-info"
+              aria-label="About rTail"
+              aria-expanded={'info' === open}
+              onClick={() => toggle('info')}
+            />
 
-            <span class={`stream-status ${paused ? 'paused' : ''}`}>
-              <i />
-              {paused ? 'Paused' : 'Live'}
-            </span>
+            <a
+              class="btn btn-github"
+              aria-label="rTail on GitHub"
+              href="https://github.com/kilianc/rtail"
+              target="_blank"
+              rel="noreferrer"
+            />
 
-            <div class="filter-box">
-              <input
-                type="text"
-                placeholder="filter stream (regexp allowed)"
-                aria-label="Filter stream"
-                value={filter}
-                onInput={(event) => onFilter(event.currentTarget.value)}
-              />
-            </div>
-          </>
-        )}
-
-        <div class="topbar-actions">
-          <button
-            ref={infoRef}
-            class="btn btn-info"
-            aria-label="About rTail"
-            aria-expanded={'info' === open}
-            onClick={() => toggle('info')}
-          />
-
-          <a
-            class="btn btn-github"
-            aria-label="rTail on GitHub"
-            href="https://github.com/kilianc/rtail"
-            target="_blank"
-            rel="noreferrer"
-          />
-
-          <button
-            ref={settingsRef}
-            class="btn btn-settings"
-            aria-label="Settings"
-            aria-expanded={'settings' === open}
-            onClick={() => toggle('settings')}
-          />
+            <button
+              ref={settingsRef}
+              class="btn btn-settings"
+              aria-label="Settings"
+              aria-expanded={'settings' === open}
+              onClick={() => toggle('settings')}
+            />
+          </div>
         </div>
       </div>
-    </div>
 
-    {'info' === open && (
+      {'info' === open && (
         <Popover anchor={infoRef.current} class="popover-info" onClose={() => setOpen(null)}>
           <div class="rtail-logo" />
           <div class="version">Version {__VERSION__}</div>
+
+          <div class="shortcuts">
+            <h4>Shortcuts</h4>
+            <dl>
+              <dt>/</dt><dd>focus the filter</dd>
+              <dt>⌘K</dt><dd>focus the filter</dd>
+              <dt>⏎</dt><dd>run the query</dd>
+              <dt>j / k</dt><dd>move between events</dd>
+              <dt>⎋</dt><dd>collapse everything</dd>
+            </dl>
+          </div>
+
           <a
             class="btn btn-issue"
             href="https://github.com/kilianc/rtail/issues"
@@ -119,14 +109,6 @@ export function TopBar({
             rel="noreferrer"
           >
             Report issue
-          </a>
-          <a
-            class="btn btn-fork"
-            href="https://github.com/kilianc/rtail/fork"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Fork it
           </a>
         </Popover>
       )}
@@ -166,20 +148,6 @@ export function TopBar({
                 Ag
               </button>
             ))}
-          </div>
-
-          <h4>Sorting</h4>
-          <div class="btn-group">
-            <button
-              class={`btn btn-sorting-asc ${prefs.ascending ? 'selected' : ''}`}
-              aria-label="Oldest first"
-              onClick={() => onChangePrefs({ ascending: true })}
-            />
-            <button
-              class={`btn btn-sorting-desc ${prefs.ascending ? '' : 'selected'}`}
-              aria-label="Newest first"
-              onClick={() => onChangePrefs({ ascending: false })}
-            />
           </div>
 
           <h4>Theme</h4>
