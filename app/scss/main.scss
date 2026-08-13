@@ -5,10 +5,9 @@
 // severity histogram under it, a Log fields panel down the left, and a dense
 // results table with a sticky header and rows that expand in place.
 //
-// Chrome is Google Sans / Roboto where present and the system sans otherwise;
-// only log content and field names are monospace. Setting an entire interface
-// in mono is the single biggest thing that makes a developer tool look like a
-// terminal emulator instead of a console.
+// Monospace throughout. Nearly everything on this screen is an identifier —
+// field names, stream names, severities, counts, timestamps — and setting
+// those in a proportional face makes every column of them ragged.
 //
 // Cascade is ordered with @layer, so component rules never need to out-specify
 // the reset and nothing depends on source order.
@@ -83,17 +82,23 @@
    * outline is painted within the element's own box and cannot be cropped, and
    * it never nudges anything off the grid either.
    */
-  :where(a, button, input, [tabindex]) {
-    // Pointer focus gets nothing; keyboard focus gets the ring below. Declared
-    // here and nowhere else — an `outline: 0` inside a component rule lives in
-    // a later cascade layer and silently wins, which is how the ring came to
-    // be missing on every input on the page.
-    &:focus { outline: 0; }
+  /*!
+   * Two focus treatments, and each element gets exactly one.
+   *
+   * Fields are flat and show focus by thickening their underline; everything
+   * else gets a ring. Applying the ring to inputs as well drew both at once —
+   * a blue box *and* a heavy blue underline on the same box, which is what a
+   * focused text field looked like until this was scoped.
+   *
+   * Declared here and nowhere else: an `outline: 0` inside a component rule
+   * lives in a later cascade layer and silently wins, which is how the ring
+   * came to be missing everywhere before that.
+   */
+  :where(a, button, input, textarea, [tabindex]):focus { outline: 0; }
 
-    &:focus-visible {
-      outline: 2px solid var(--ring);
-      outline-offset: -2px;
-    }
+  :where(a, button, [tabindex]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
   }
 }
 
@@ -110,7 +115,7 @@
   body {
     background: var(--background);
     color: var(--foreground);
-    font-family: var(--sans);
+    font-family: var(--mono);
     font-size: var(--text-md);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -238,7 +243,7 @@
     display: flex;
     gap: var(--space-3);
     min-inline-size: 0;
-    padding: var(--space-3) var(--space-4);
+    padding: var(--space-2) var(--space-3);
   }
 
   .query-actions {
@@ -460,9 +465,8 @@
     color: var(--faint-foreground);
     display: flex;
     flex-shrink: 0;
-    font-family: var(--mono);
     font-size: var(--mono-size);
-    inline-size: var(--space-8);
+    inline-size: var(--space-6);
     justify-content: center;
     padding-block-start: var(--space-2);
     user-select: none;
@@ -473,7 +477,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-3);
-    padding-inline-start: var(--space-8);
+    padding-inline-start: var(--space-6);
   }
 
   .command-example {
@@ -538,7 +542,7 @@
     border-radius: var(--radius);
     box-shadow: var(--shadow-lg);
     inset-block-start: calc(var(--command-h) + var(--space-1));
-    inset-inline: var(--space-8) 0;
+    inset-inline: var(--space-6) 0;
     max-block-size: calc(var(--row-h) * 9);
     overflow-y: auto;
     padding: var(--space-1);
@@ -588,14 +592,14 @@
   .command-error {
     color: var(--level-error);
     font-size: var(--text-xs);
-    padding-inline-start: var(--space-8);
+    padding-inline-start: var(--space-6);
     position: relative;
   }
 
   .command-caret {
     // 1ch per character, because the input is monospace — which is most of
     // why it is monospace.
-    inset-inline-start: calc(var(--space-8) + var(--at) * 1ch);
+    inset-inline-start: calc(var(--space-6) + var(--at) * 1ch);
     position: absolute;
   }
 
@@ -790,7 +794,7 @@
     gap: var(--space-2);
     inline-size: 100%;
     min-block-size: var(--row-h);
-    padding-inline: var(--space-4);
+    padding-inline: var(--space-3);
 
     &:hover { background: var(--subtle); }
   }
@@ -814,7 +818,7 @@
   .histogram-body {
     display: grid;
     gap: var(--space-2);
-    padding: 0 var(--space-4) var(--space-3);
+    padding: 0 var(--space-3) var(--space-2);
   }
 
   .histogram {
@@ -990,7 +994,7 @@
   .explorer-list {
     min-block-size: 0;
     overflow-y: auto;
-    padding: var(--space-2);
+    padding-block: var(--space-1);
   }
 
   .explorer-empty,
@@ -1032,11 +1036,11 @@
     block-size: var(--row-h);
     color: var(--foreground);
     display: flex;
-    font-family: var(--sans);
+    font-family: var(--mono);
     font-size: var(--text-md);
     gap: var(--space-2);
     inline-size: 100%;
-    padding-inline: 0 var(--space-4);
+    padding-inline: 0 var(--space-3);
     text-align: start;
     transition: background-color .12s ease;
 
@@ -1056,7 +1060,7 @@
 
   .explorer-name {
     color: var(--foreground);
-    font-family: var(--sans);
+    font-family: var(--mono);
     font-size: var(--text-md);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1093,7 +1097,7 @@
     min-inline-size: 0;
     overflow: hidden;
     // Indented past the section caret, so values read as children of it.
-    padding-inline: var(--space-8) var(--space-2);
+    padding-inline: var(--space-6) var(--space-2);
     position: relative;
     text-align: start;
 
@@ -1399,7 +1403,6 @@
     color: var(--background);
     display: flex;
     flex-shrink: 0;
-    font-family: var(--sans);
     font-size: 9px;
     font-style: normal;
     font-weight: 700;
@@ -1470,10 +1473,9 @@
   .row-fields { display: grid; }
 
   .leaf {
-    border-radius: var(--radius-sm);
     display: grid;
     gap: var(--space-3);
-    grid-template-columns: calc(var(--space-6) * 6) 1fr;
+    grid-template-columns: calc(var(--space-6) * 5) 1fr;
     min-block-size: var(--line-h);
     padding-inline: var(--space-2);
 
@@ -1544,7 +1546,6 @@
     border: var(--hairline) solid var(--border);
     border-radius: var(--radius-sm);
     color: var(--muted-foreground);
-    font-family: var(--sans);
     font-size: var(--text-sm);
     font-weight: 500;
     padding-inline: var(--space-3);

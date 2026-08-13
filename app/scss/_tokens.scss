@@ -40,35 +40,51 @@
   --space-8: 32px;
 
   // ** sizes **
-  --bar-h: 48px;        // the top bar
-  --row-h: 28px;        // list rows in panels
-  --control-h: 32px;    // buttons, small inputs
-  --command-h: 36px;    // the query box
-  --hit: 32px;          // icon button hit area
-  --icon: 18px;
-  --icon-sm: 14px;
-  --dot: 8px;
-  --line-h: 22px;       // one log row — measured off the real thing
+  //
+  // Tightened a second time against the reference. A console is judged on how
+  // many lines fit on the screen, and every one of these was a few pixels
+  // looser than the thing it was copied from.
+  --bar-h: 40px;        // the top bar
+  --row-h: 24px;        // list rows in panels
+  --control-h: 28px;    // buttons, small inputs
+  --command-h: 32px;    // the query box
+  --hit: 26px;          // icon button hit area
+  --icon: 16px;
+  --icon-sm: 13px;
+  --dot: 7px;
+  --line-h: 20px;       // one log row
   --chart-h: 72px;
-  --gutter-w: 148px;    // timestamp column, wide enough for a full date
+  --gutter-w: 136px;    // timestamp column, wide enough for a full date
   --sev-w: 44px;        // severity column — one badge, and the word "Sev"
   --caret-w: 20px;      // disclosure column
   --sidebar-w: 264px;
   --marker-w: 3px;
   --hairline: 1px;
 
-  // ** type — Google Sans/Roboto if present, otherwise the system sans **
-  --sans: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  /*!
+   * ** type — monospace, throughout **
+   *
+   * The chrome was set in a sans on the reasoning that an all-mono interface
+   * reads as a terminal emulator rather than a product. That is true of a
+   * marketing page and wrong here: everything on this screen is an identifier —
+   * field names, stream names, severities, counts, timestamps — and a
+   * proportional face makes columns of them ragged. Mono also makes every
+   * digit the same width for free, which a table of counts and durations
+   * wants anyway.
+   *
+   * --sans is kept for the rare label that is a sentence rather than a token.
+   */
   --mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-md: 13px;
-  --text-lg: 15px;
+  --text-xs: 10.5px;
+  --text-sm: 11.5px;
+  --text-md: 12px;
+  --text-lg: 14px;
   --mono-size: 12px;
 
   --tracking-tight: 0;
-  --tracking-wide: 0.08em;
+  --tracking-wide: 0.06em;
 
   // ** surfaces — Google's own dark console greys **
   --background: #1f1f1f;
@@ -299,9 +315,8 @@
 }
 
 @mixin field-focus {
-  // Two pixels, not a recoloured hairline: the underline has to be visible
-  // from the far side of the screen or it is decoration rather than a state.
+  // One declaration, not two. The inset shadow draws over the hairline, so
+  // also recolouring the border stacked a second mark in the same place.
   box-shadow: inset 0 -2px 0 var(--primary);
-  border-block-end-color: var(--primary);
 }
 
