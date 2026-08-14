@@ -96,8 +96,13 @@ above is a URL somebody could send you.
 out of the summary into a column of its own, and the × on the header puts it
 back.
 
-Keyboard: `/` or `⌘K` focuses the filter, `⏎` runs it, `j`/`k` move between
-events, `⎋` collapses everything.
+**The query pane holds everything that acts on the query** — the language
+switch, the examples, the time range and Run — inside its own border, because
+they belong to the query rather than to the page.
+
+Keyboard: `/` or `⌘K` focuses the editor, `⌘⏎` runs it (plain `⏎` is a
+newline — it is an editor), `j`/`k` move between events, `⎋` collapses
+everything.
 
 ## Getting logs in
 

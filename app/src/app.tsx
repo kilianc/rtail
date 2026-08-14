@@ -397,6 +397,12 @@ export function App() {
         />
       </TopBar>
 
+      {/*
+        The time range is passed *into* the editor rather than placed beside
+        it. It is part of the question being asked — it is the partition
+        pruner, and it is always applied — so it belongs with the query text
+        rather than in a separate row of controls.
+      */}
       <div class="query-row">
         <CommandBar
           value={draft}
@@ -407,15 +413,9 @@ export function App() {
           busy={loading}
           onChange={setDraft}
           onSubmit={commit}
-        />
-
-        <div class="query-actions">
-          <button class="command-run" onClick={commit}>
-            Run query
-          </button>
-
+        >
           <TimeRange range={view.range} onChange={setRange} />
-        </div>
+        </CommandBar>
       </div>
 
       <Histogram

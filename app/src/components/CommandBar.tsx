@@ -1,25 +1,31 @@
 /*!
  * The query editor.
  *
+ * One pane, full width, a few lines tall, with every control that acts on the
+ * query floating inside it: the language switch, the examples, the time range
+ * and Run. Those were laid out beside the box before, which made the query
+ * look like one input among several rather than the thing the whole screen is
+ * arranged around — and it left the box itself too narrow to write a query in.
+ *
  * Modelled on Cloud Logging's LQL pane, with one deliberate difference: there
  * it is behind a "Show query" toggle because the filter chips above can build a
  * query without it. rQL is the only way to ask rTail anything, so the editor is
  * always open — hiding the sole input behind a switch would be hiding the
  * product.
- * Completion is driven by the catalog's key inventory — every field that has
- * actually appeared on this stream, ranked by how often — so it suggests what
- * is really there rather than what a log line might plausibly contain.
  *
- * Two rules it lives by:
+ * Three rules it lives by:
  *
- *   1. A half-written query is the normal state. The bar never blocks typing,
+ *   1. A half-written query is the normal state. The pane never blocks typing,
  *      never clears itself, and shows a parse error inline with the offending
  *      character underlined rather than turning red and refusing to explain.
- *   2. Enter is the only thing that runs a historical search. Streaming
- *      filters live as you type, because that costs nothing; scanning a week
- *      of Parquet on every keystroke does not.
+ *   2. Enter is a newline, ⌘⏎ runs. It is a code editor now, and a code editor
+ *      that submits on Enter cannot be used to write two lines.
+ *   3. Completion comes from the catalog's key inventory — every field that has
+ *      actually appeared on this stream, ranked by how often — so it suggests
+ *      what is really there rather than what a log line might contain.
  */
 
+import type { ComponentChildren } from 'preact'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { Field } from '../lib/api.js'
 import { complete, type Completion } from '../lib/query.js'
@@ -35,8 +41,11 @@ const EXAMPLES = ['level>=ERROR', 'service=api latency_ms>500', '"connection res
 const SQL_EXAMPLES = [
   "level = 'ERROR'",
   'a_latency_ms > 500',
-  "a_service LIKE 'api%' AND level IN ('ERROR','FATAL')"
+  "a_service LIKE 'api%'"
 ]
+
+/** How many lines the pane shows before it scrolls. */
+const ROWS = 3
 
 interface Props {
   value: string
@@ -48,10 +57,22 @@ interface Props {
   busy: boolean
   onChange: (query: string) => void
   onSubmit: () => void
+  /** The time range control, rendered inside the pane's footer. */
+  children?: ComponentChildren
 }
 
-export function CommandBar({ value, lang, onChangeLang, fields, error, busy, onChange, onSubmit }: Props) {
-  const input = useRef<HTMLInputElement>(null)
+export function CommandBar({
+  value,
+  lang,
+  onChangeLang,
+  fields,
+  error,
+  busy,
+  onChange,
+  onSubmit,
+  children
+}: Props) {
+  const input = useRef<HTMLTextAreaElement>(null)
   const [cursor, setCursor] = useState(0)
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
@@ -66,20 +87,21 @@ export function CommandBar({ value, lang, onChangeLang, fields, error, busy, onC
 
   useEffect(() => setActive(0), [suggestions.items.length, value])
 
-  // `/` focuses the bar from anywhere, the way every tool built for keyboards
+  // The gutter numbers every line the query actually has, never fewer than the
+  // pane is tall — so an empty editor still reads as an editor.
+  const lines = useMemo(() => {
+    const count = Math.max(ROWS, value.split('\n').length)
+    return Array.from({ length: count }, (_, index) => index + 1)
+  }, [value])
+
+  // `/` focuses the pane from anywhere, the way every tool built for keyboards
   // has done since less(1).
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       const typing = target && /^(INPUT|TEXTAREA)$/.test(target.tagName)
 
-      if ('/' === event.key && !typing) {
-        event.preventDefault()
-        input.current?.focus()
-        input.current?.select()
-      }
-
-      if ('k' === event.key && (event.metaKey || event.ctrlKey)) {
+      if (('/' === event.key && !typing) || ('k' === event.key && (event.metaKey || event.ctrlKey))) {
         event.preventDefault()
         input.current?.focus()
         input.current?.select()
@@ -122,8 +144,8 @@ export function CommandBar({ value, lang, onChangeLang, fields, error, busy, onC
           apply(items[active])
           return
         case 'Enter':
-          // Enter takes the completion when the menu is open, and runs the
-          // query when it is not — so it never does two things at once.
+          // Enter takes the completion when the menu is open, and inserts a
+          // newline when it is not — so it never does two things at once.
           event.preventDefault()
           apply(items[active])
           return
@@ -135,7 +157,15 @@ export function CommandBar({ value, lang, onChangeLang, fields, error, busy, onC
       return
     }
 
-    if ('Enter' === event.key) {
+    /*!
+     * ⌘⏎ runs; bare Enter is a newline.
+     *
+     * The single-line version ran on Enter, which is right for a search box and
+     * wrong for an editor — there would be no way to type the second line of a
+     * three-line query. This is the convention every query console uses, and
+     * the Run button is there for anyone who does not know it.
+     */
+    if ('Enter' === event.key && (event.metaKey || event.ctrlKey)) {
       event.preventDefault()
       setOpen(false)
       onSubmit()
@@ -143,111 +173,116 @@ export function CommandBar({ value, lang, onChangeLang, fields, error, busy, onC
   }
 
   const sync = (event: Event) => {
-    const element = event.currentTarget as HTMLInputElement
-    setCursor(element.selectionStart ?? 0)
+    setCursor((event.currentTarget as HTMLTextAreaElement).selectionStart ?? 0)
   }
+
+  const examples = 'sql' === lang ? SQL_EXAMPLES : EXAMPLES
 
   return (
     <div class={`command ${error ? 'invalid' : ''}`}>
-      <div class="command-editor">
-        {/*
-          A line-number gutter, as the reference has. It is one line today and
-          the input is still single-line; the gutter is what makes the pane read
-          as an editor rather than as a search box, and it is where line 2 will
-          go when the parser grows a newline.
-        */}
-        <div class="command-gutter" aria-hidden="true">1</div>
+      <div class="command-pane">
+        <div class="command-editor">
+          {/*
+            A line-number gutter, as the reference has. It is what makes the
+            pane read as somewhere code is written rather than as a search box.
+          */}
+          <div class="command-gutter" aria-hidden="true">
+            {lines.map((line) => (
+              <span key={line}>{line}</span>
+            ))}
+          </div>
 
-        <input
-          ref={input}
-          type="text"
-          spellcheck={false}
-          autocomplete="off"
-          autocorrect="off"
-          autocapitalize="off"
-          placeholder={
-            'sql' === lang
-              ? "Start writing a SQL expression — level = 'ERROR' AND a_latency_ms > 500"
-              : 'Start writing a query using rQL (rTail query language)'
-          }
-          aria-label="Query"
-          value={value}
-          onInput={(event) => {
-            onChange(event.currentTarget.value)
-            setCursor(event.currentTarget.selectionStart ?? 0)
-            setOpen(true)
-          }}
-          onKeyDown={onKeyDown}
-          onKeyUp={sync}
-          onClick={sync}
-          onFocus={() => setOpen(true)}
-          // A click on a suggestion blurs the input first, so closing is
-          // deferred by a frame or the click never lands.
-          onBlur={() => setTimeout(() => setOpen(false), 120)}
-        />
-
-        {busy && <i class="command-busy" aria-label="Searching" />}
-
-        {value && (
-          <button
-            class="command-clear"
-            aria-label="Clear the query"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              onChange('')
-              onSubmit()
-              input.current?.focus()
+          <textarea
+            ref={input}
+            rows={ROWS}
+            spellcheck={false}
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            placeholder={
+              'sql' === lang
+                ? "Start writing a SQL expression — level = 'ERROR' AND a_latency_ms > 500"
+                : 'Start writing a query using rQL (rTail query language)'
+            }
+            aria-label="Query"
+            value={value}
+            onInput={(event) => {
+              onChange(event.currentTarget.value)
+              setCursor(event.currentTarget.selectionStart ?? 0)
+              setOpen(true)
             }}
+            onKeyDown={onKeyDown}
+            onKeyUp={sync}
+            onClick={sync}
+            onFocus={() => setOpen(true)}
+            // A click on a suggestion blurs the field first, so closing is
+            // deferred by a frame or the click never lands.
+            onBlur={() => setTimeout(() => setOpen(false), 120)}
           />
-        )}
-      </div>
 
-      {/*
-        The helper row under the editor, which is where the reference puts its
-        two links. Ours run the examples rather than linking away — the query
-        language is small enough that showing one working example teaches more
-        than a page about it would.
-      */}
-      <div class="command-help">
-        {/*
-          The language switch sits with the examples, because the examples are
-          what tell you what each language looks like.
-        */}
-        <div class="command-lang" role="group" aria-label="Query language">
-          {(['rql', 'sql'] as const).map((option) => (
+          {busy && <i class="command-busy" aria-label="Searching" />}
+
+          {value && (
             <button
-              key={option}
-              class={option === lang ? 'on' : ''}
-              aria-pressed={option === lang}
+              class="command-clear"
+              aria-label="Clear the query"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onChangeLang(option)}
-            >
-              {'rql' === option ? 'rQL' : 'SQL'}
-            </button>
-          ))}
+              onClick={() => {
+                onChange('')
+                onSubmit()
+                input.current?.focus()
+              }}
+            />
+          )}
         </div>
 
-        {(('sql' === lang ? SQL_EXAMPLES : EXAMPLES)).map((example) => (
-          <button
-            key={example}
-            class="command-example"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              onChange(example)
-              requestAnimationFrame(() => input.current?.focus())
-            }}
-          >
-            {example}
-          </button>
-        ))}
+        {/*
+          The footer, inside the pane. Everything that acts on the query lives
+          here: which language it is written in, what one looks like, the window
+          it runs over, and the button that runs it.
+        */}
+        <div class="command-footer">
+          <div class="command-lang" role="group" aria-label="Query language">
+            {(['rql', 'sql'] as const).map((option) => (
+              <button
+                key={option}
+                class={option === lang ? 'on' : ''}
+                aria-pressed={option === lang}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onChangeLang(option)}
+              >
+                {'rql' === option ? 'rQL' : 'SQL'}
+              </button>
+            ))}
+          </div>
+
+          <div class="command-examples">
+            {examples.map((example) => (
+              <button
+                key={example}
+                class="command-example"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  onChange(example)
+                  requestAnimationFrame(() => input.current?.focus())
+                }}
+              >
+                {example}
+              </button>
+            ))}
+          </div>
+
+          <div class="command-actions">
+            {children}
+
+            <button class="command-run" onClick={onSubmit}>
+              Run query
+              <kbd>⌘⏎</kbd>
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/*
-        An explicit Run query button beside the box, which Cloud Logging has and
-        which matters more than it looks: Enter already runs the query, but a
-        visible control is what tells a first-time reader that the box is not a
-        live filter and that nothing has been searched yet.
-      */}
       {open && suggestions.items.length > 0 && (
         <ul class="command-menu" role="listbox">
           {suggestions.items.map((item, index) => (
@@ -271,11 +306,12 @@ export function CommandBar({ value, lang, onChangeLang, fields, error, busy, onC
       {error && (
         <div class="command-error">
           {/*
-            The caret sits under the character the parser stopped at. A search
-            bar that says "syntax error" without saying where is a search bar
-            that makes you delete the whole query and start again.
+            The caret sits under the character the parser stopped at, but only
+            on a single-line query: past a newline the offset no longer maps to
+            a column, and a caret pointing at the wrong character is worse than
+            none. The message still says what went wrong either way.
           */}
-          {undefined !== error.position && (
+          {undefined !== error.position && !value.includes('\n') && (
             <span class="command-caret" style={{ '--at': error.position } as never}>
               ↑
             </span>

@@ -237,20 +237,10 @@
   }
 
   .query-row {
-    align-items: flex-start;
     background: var(--card);
     border-block-end: var(--hairline) solid var(--border);
-    display: flex;
-    gap: var(--space-3);
     min-inline-size: 0;
-    padding: var(--space-1) var(--space-2);
-  }
-
-  .query-actions {
-    align-items: center;
-    display: flex;
-    flex-shrink: 0;
-    gap: var(--space-2);
+    padding: var(--space-2);
   }
 
   // Flush panes divided by rules rather than floating cards: a console packs
@@ -464,73 +454,143 @@
   }
 
   /*!
-   * The query editor.
+   * The query editor: one pane, full width, with its controls inside it.
    *
-   * An inset pane rather than a field: it is a place code is written, and the
-   * gutter plus the recessed surface is what says so. Still flat — no border
-   * box — with the accent underline the rest of the inputs use.
+   * A bordered box rather than the flat underlined field the rest of the
+   * inputs use. Those are single controls in a row; this one is a region that
+   * contains other controls, and a region needs an edge for the things inside
+   * it to read as inside.
    */
-  .command-editor {
-    @include field(var(--command-h));
-    align-items: center;
-    background: var(--muted);
-    display: flex;
-    gap: var(--space-3);
+  .command {
     min-inline-size: 0;
-    padding-inline: 0 var(--space-3);
+    position: relative;
+  }
 
-    &:focus-within { @include field-focus; }
+  .command-pane {
+    background: var(--muted);
+    border: var(--hairline) solid var(--input);
+    border-radius: var(--radius-md);
+    display: grid;
+    overflow: hidden;
+    transition: border-color .16s ease;
 
-    input {
-      background: none;
-      color: var(--foreground);
-      flex: 1;
-      font-family: var(--mono);
-      font-size: var(--mono-size);
-      min-inline-size: 0;
+    &:hover { border-color: var(--border-strong); }
 
-      // Italic, like the reference's empty state: it reads as a prompt rather
-      // than as text somebody left in the box.
-      &::placeholder {
-        color: var(--faint-foreground);
-        font-style: italic;
-      }
+    // The whole pane lights up when the text inside it has focus, so the
+    // footer controls read as part of the focused thing.
+    &:focus-within { border-color: var(--primary); }
+  }
+
+  .command.invalid .command-pane { border-color: var(--level-error); }
+
+  .command-editor {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    position: relative;
+  }
+
+  /*!
+   * The gutter numbers every line, and shares the editor's line-height.
+   *
+   * Both sides are set from --line-h explicitly rather than inherited: a
+   * textarea and a stack of spans compute their leading differently, and a
+   * half-pixel of drift per line puts the number beside the wrong row by the
+   * bottom of the pane.
+   */
+  .command-gutter {
+    border-inline-end: var(--hairline) solid var(--border);
+    color: var(--faint-foreground);
+    display: grid;
+    font-size: var(--mono-size);
+    inline-size: var(--space-8);
+    line-height: var(--line-h);
+    padding-block: var(--space-2);
+    text-align: end;
+    user-select: none;
+
+    span {
+      block-size: var(--line-h);
+      padding-inline-end: var(--space-2);
     }
   }
 
-  // The line-number gutter.
-  .command-gutter {
-    align-self: stretch;
-    border-inline-end: var(--hairline) solid var(--border);
-    color: var(--faint-foreground);
-    display: flex;
-    flex-shrink: 0;
+  .command-editor textarea {
+    background: none;
+    color: var(--foreground);
+    display: block;
+    font-family: var(--mono);
     font-size: var(--mono-size);
-    inline-size: var(--space-6);
-    justify-content: center;
-    user-select: none;
+    line-height: var(--line-h);
+    min-inline-size: 0;
+    outline: 0;
+    padding: var(--space-2) var(--space-3);
+    resize: none;
+
+    &::placeholder {
+      color: var(--faint-foreground);
+      font-style: italic;
+    }
   }
 
-  // The helper row: runnable examples rather than links away.
-  .command-help {
+  .command-busy {
+    animation: pulse 1.1s ease-out infinite;
+    background: var(--primary);
+    block-size: var(--dot);
+    border-radius: 50%;
+    inset-block-start: var(--space-2);
+    inset-inline-end: var(--space-6);
+    position: absolute;
+  }
+
+  .command-clear {
+    @include icon-common('icn-close-date', contain);
+    block-size: var(--icon-sm);
+    color: var(--faint-foreground);
+    inline-size: var(--icon-sm);
+    inset-block-start: var(--space-2);
+    inset-inline-end: var(--space-2);
+    position: absolute;
+
+    &:hover { color: var(--foreground); }
+  }
+
+  /*!
+   * The footer, inside the pane.
+   *
+   * Divided from the text by a hairline rather than by a gap: a gap would make
+   * two boxes, and the point is that these controls belong to the query above
+   * them.
+   */
+  .command-footer {
+    align-items: center;
+    border-block-start: var(--hairline) solid var(--border);
+    display: flex;
+    gap: var(--space-2);
+    min-inline-size: 0;
+    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+  }
+
+  .command-actions {
     align-items: center;
     display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    padding-inline-start: var(--space-6);
+    flex-shrink: 0;
+    gap: var(--space-1);
+    margin-inline-start: auto;
   }
 
-  // A two-state switch, sized like the example links beside it.
+  // A segmented switch, sized to sit in the footer without growing it.
   .command-lang {
-    border: var(--hairline) solid var(--border);
+    background: var(--card);
     border-radius: var(--radius-sm);
     display: flex;
-    overflow: hidden;
+    flex-shrink: 0;
+    padding: 1px;
 
     button {
+      border-radius: var(--radius-xs);
       color: var(--faint-foreground);
       font-size: var(--text-xs);
-      padding: 1px var(--space-2);
+      padding: 2px var(--space-2);
       transition: background-color .12s ease, color .12s ease;
 
       &:hover { color: var(--foreground); }
@@ -542,58 +602,45 @@
     }
   }
 
+  .command-examples {
+    display: flex;
+    gap: var(--space-3);
+    min-inline-size: 0;
+    overflow: hidden;
+  }
+
   .command-example {
-    color: var(--primary);
-    font-family: var(--mono);
-    font-size: var(--text-sm);
-
-    &:hover { text-decoration: underline; }
-  }
-
-  .command.invalid .command-editor { border-block-end-color: var(--level-error); }
-
-  .command-icon {
-    @include icon-common('icn-search', contain);
-    block-size: var(--icon-sm);
     color: var(--faint-foreground);
-    flex-shrink: 0;
-    inline-size: var(--icon-sm);
+    font-size: var(--text-xs);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &:hover { color: var(--primary); }
   }
 
-  .command-busy {
-    animation: pulse 1.1s ease-out infinite;
-    background: var(--muted-foreground);
-    block-size: var(--dot);
-    border-radius: 50%;
-    flex-shrink: 0;
-    inline-size: var(--dot);
-  }
-
-  .command-clear {
-    @include icon-common('icn-close-date', contain);
-    block-size: var(--icon-sm);
-    color: var(--faint-foreground);
-    flex-shrink: 0;
-    inline-size: var(--icon-sm);
-
-    &:hover { color: var(--foreground); }
-  }
-
-  // The primary action, filled in Google blue.
   .command-run {
+    align-items: center;
     background: var(--primary);
-    block-size: var(--command-h);
-    border-radius: var(--radius-md);
+    block-size: var(--control-h);
+    border-radius: var(--radius-sm);
     color: var(--primary-foreground);
+    display: flex;
     flex-shrink: 0;
-    font-size: var(--text-md);
+    font-size: var(--text-sm);
     font-weight: 500;
-    padding-inline: var(--space-5);
-    transition: background-color .14s ease, box-shadow .14s ease;
+    gap: var(--space-2);
+    line-height: 1;
+    padding-inline: var(--space-2);
+    transition: background-color .14s ease;
 
-    &:hover {
-      background: var(--primary-hover);
-      box-shadow: var(--shadow-sm);
+    &:hover { background: var(--primary-hover); }
+
+    // The shortcut, so the convention is discoverable rather than folklore.
+    kbd {
+      font-family: inherit;
+      font-size: var(--text-xs);
+      opacity: .6;
     }
   }
 
@@ -601,11 +648,12 @@
     animation: rise .12s ease-out;
     background: var(--elevated);
     border: var(--hairline) solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-lg);
-    inset-block-start: calc(var(--command-h) + var(--space-1));
-    inset-inline: var(--space-6) 0;
+    inset-block-start: 100%;
+    inset-inline: var(--space-8) auto;
     max-block-size: calc(var(--row-h) * 9);
+    min-inline-size: calc(var(--space-6) * 12);
     overflow-y: auto;
     padding: var(--space-1);
     position: absolute;
@@ -614,11 +662,11 @@
     li {
       align-items: center;
       block-size: var(--row-h);
-      border-radius: var(--radius-sm);
+      border-radius: var(--radius-xs);
       cursor: pointer;
       display: flex;
       gap: var(--space-3);
-      padding-inline: var(--space-3);
+      padding-inline: var(--space-2);
 
       &.active { background: var(--subtle-strong); }
     }
@@ -626,7 +674,6 @@
 
   .command-menu-name {
     color: var(--foreground);
-    font-family: var(--mono);
     font-size: var(--mono-size);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -634,13 +681,8 @@
   }
 
   .command-menu-kind {
-    background: var(--subtle-strong);
-    border-radius: var(--radius-xs);
-    color: var(--muted-foreground);
+    color: var(--faint-foreground);
     font-size: var(--text-xs);
-    padding: 1px var(--space-1);
-
-    &.kind-envelope { color: var(--foreground); }
   }
 
   .command-menu-detail {
@@ -650,18 +692,16 @@
     margin-inline-start: auto;
   }
 
-  // The parse error, with a caret under the character the parser stopped at.
   .command-error {
     color: var(--level-error);
     font-size: var(--text-xs);
-    padding-inline-start: var(--space-6);
+    padding-block-start: var(--space-1);
+    padding-inline-start: var(--space-8);
     position: relative;
   }
 
   .command-caret {
-    // 1ch per character, because the input is monospace — which is most of
-    // why it is monospace.
-    inset-inline-start: calc(var(--space-6) + var(--at) * 1ch);
+    inset-inline-start: calc(var(--space-8) + var(--space-3) + var(--at) * 1ch);
     position: absolute;
   }
 
