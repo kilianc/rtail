@@ -68,8 +68,12 @@ func TestFlagsBeatTheEnvironment(t *testing.T) {
 }
 
 // The v1 short aliases are documented and in people's scripts.
+//
+// --insecure because the point here is the aliases, not the safety rule: a
+// non-loopback --wh with no token is refused, which TestRefusesToBeOpenOffLoopback
+// covers on its own.
 func TestV1ShortAliases(t *testing.T) {
-	cfg := parse(t, "--uh", "1.2.3.4", "--up", "1111", "--wh", "5.6.7.8", "--wp", "2222", "-b", "7")
+	cfg := parse(t, "--uh", "1.2.3.4", "--up", "1111", "--wh", "5.6.7.8", "--wp", "2222", "-b", "7", "--insecure")
 
 	if "1.2.3.4" != cfg.UDPHost || 1111 != cfg.UDPPort {
 		t.Errorf("udp = %s:%d", cfg.UDPHost, cfg.UDPPort)
@@ -202,5 +206,51 @@ func TestCompactionDefaultsOn(t *testing.T) {
 	}
 	if 0 != off.CompactInterval {
 		t.Errorf("compact-interval = %s, want 0", off.CompactInterval)
+	}
+}
+
+/*!
+ * The one rule that is about safety rather than typos.
+ *
+ * A server bound where other machines can reach it, with no token, is an
+ * open archive of everything the application has printed. It has to be
+ * impossible to do that silently — so it is refused, and sayable two ways:
+ * configure a token, or state that something in front handles access.
+ */
+func TestRefusesToBeOpenOffLoopback(t *testing.T) {
+	_, err := Parse([]string{"--web-host", "0.0.0.0"}, "test", io.Discard)
+	if nil == err {
+		t.Fatal("binding 0.0.0.0 with no token should be refused")
+	}
+	if !strings.Contains(err.Error(), "--auth-token") {
+		t.Errorf("the error should say how to fix it, got: %v", err)
+	}
+}
+
+func TestLoopbackNeedsNoToken(t *testing.T) {
+	for _, host := range []string{"127.0.0.1", "localhost", "::1"} {
+		if _, err := Parse([]string{"--web-host", host}, "test", io.Discard); nil != err {
+			t.Errorf("--web-host %s should need no token: %v", host, err)
+		}
+	}
+}
+
+func TestATokenOrInsecureAllowsAnyAddress(t *testing.T) {
+	if _, err := Parse([]string{"--web-host", "0.0.0.0", "--auth-token", "s3cret"}, "test", io.Discard); nil != err {
+		t.Errorf("a token should allow any address: %v", err)
+	}
+	if _, err := Parse([]string{"--web-host", "0.0.0.0", "--insecure"}, "test", io.Discard); nil != err {
+		t.Errorf("--insecure should allow any address: %v", err)
+	}
+}
+
+// Half a TLS pair is a misconfiguration that would otherwise only show up as
+// a handshake failure on somebody's first request.
+func TestTLSNeedsBothHalves(t *testing.T) {
+	if _, err := Parse([]string{"--tls-cert", "cert.pem"}, "test", io.Discard); nil == err {
+		t.Error("--tls-cert alone should be refused")
+	}
+	if _, err := Parse([]string{"--tls-key", "key.pem"}, "test", io.Discard); nil == err {
+		t.Error("--tls-key alone should be refused")
 	}
 }

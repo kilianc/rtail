@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kilianc/rtail/v2/internal/auth"
 )
 
 // Config is the server's runtime configuration.
@@ -56,6 +58,25 @@ type Config struct {
 	IngestStream string
 	// MaxBody bounds one ingest request.
 	MaxBody int
+
+	/*!
+	 * AuthToken guards the HTTP surface. Empty disables authentication, which
+	 * is right on a laptop and refused off loopback — see Validate.
+	 *
+	 * One shared secret rather than accounts: rTail is a single-node tool, and
+	 * anyone who needs users and roles already has a reverse proxy that does
+	 * them properly.
+	 */
+	AuthToken string
+
+	// Insecure allows binding a non-loopback address with no token. It exists
+	// so that "I know, it is behind a proxy" is sayable; it has no short alias
+	// and no environment default, because it should be typed deliberately.
+	Insecure bool
+
+	// TLSCert and TLSKey serve HTTPS directly. Both or neither.
+	TLSCert string
+	TLSKey  string
 
 	Verbose bool
 }
@@ -120,6 +141,11 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 	str(&cfg.IngestStream, "http", "ingest-stream", "", "stream for HTTP records that name none")
 	num(&cfg.MaxBody, 32, "max-body-mb", "", "largest accepted ingest request, in megabytes")
 
+	str(&cfg.AuthToken, "", "auth-token", "", "require this bearer token on the HTTP API and webapp")
+	str(&cfg.TLSCert, "", "tls-cert", "", "serve HTTPS with this certificate (PEM)")
+	str(&cfg.TLSKey, "", "tls-key", "", "the private key for --tls-cert (PEM)")
+
+	set.BoolVar(&cfg.Insecure, "insecure", false, "allow a non-loopback address with no --auth-token")
 	set.BoolVar(&cfg.Verbose, "verbose", envBool("verbose", false), "log at debug level")
 	set.BoolVar(&showVersion, "version", false, "print the version and exit")
 	set.BoolVar(&showVersion, "v", false, "alias for --version")
@@ -147,7 +173,45 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 		return nil, fmt.Errorf("ports must be between 0 and 65535")
 	}
 
+	if err := cfg.Validate(); nil != err {
+		return nil, err
+	}
+
 	return cfg, nil
+}
+
+/*!
+ * Validate refuses the configurations that are quietly dangerous.
+ *
+ * There is exactly one rule here and it is the whole point of the flag: a
+ * server reachable from another machine must either require a token or be told
+ * explicitly that it should not. Every other check in this file is about
+ * typos; this one is about the difference between a log viewer and a public
+ * archive of everything your application has ever printed.
+ *
+ * The check is on the bind address rather than on a --production flag,
+ * because the bind address is the thing that is actually true. Someone who
+ * meant to stay local keeps working with no flags at all; someone who moved
+ * off loopback is asked, once, at startup, rather than discovering it later.
+ */
+func (c *Config) Validate() error {
+	if ("" == c.TLSCert) != ("" == c.TLSKey) {
+		return fmt.Errorf("--tls-cert and --tls-key must be given together")
+	}
+
+	if "" != c.AuthToken || c.Insecure {
+		return nil
+	}
+
+	if auth.IsLoopback(c.WebHost) {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"refusing to listen on %s with no --auth-token: anyone who can reach it could read every log.\n"+
+			"  set --auth-token (or RTAIL_AUTH_TOKEN), or pass --insecure if something in front of it handles access",
+		c.WebHost,
+	)
 }
 
 // envKey maps a flag name onto its environment variable: udp-host -> RTAIL_UDP_HOST.

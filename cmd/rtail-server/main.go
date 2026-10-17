@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/kilianc/rtail/v2/internal/api"
+	"github.com/kilianc/rtail/v2/internal/auth"
 	"github.com/kilianc/rtail/v2/internal/catalog"
 	"github.com/kilianc/rtail/v2/internal/compact"
 	"github.com/kilianc/rtail/v2/internal/config"
@@ -178,6 +179,10 @@ func run() error {
 		log.Info("syslog listening", "udp", sys.Addr().String(), "tcp", sys.TCPAddr().String())
 	}
 
+	tls := "" != cfg.TLSCert
+
+	guard := auth.New(cfg.AuthToken, tls)
+
 	server := api.New(api.Options{
 		Store:   store,
 		Log:     log,
@@ -188,6 +193,7 @@ func run() error {
 		HTTPIn:  httpIn,
 		Syslog:  syslogStats,
 		WebRoot: cfg.WebRoot,
+		Guard:   guard,
 	})
 
 	listener, err := net.Listen("tcp", net.JoinHostPort(cfg.WebHost, strconv.Itoa(cfg.WebPort)))
@@ -208,19 +214,45 @@ func run() error {
 	go func() { errs <- udp.Serve(ctx) }()
 
 	go func() {
-		if err := http1.Serve(listener); nil != err && !errors.Is(err, http.ErrServerClosed) {
+		// ServeTLS reads the key pair itself, so a bad path or a mismatched
+		// pair surfaces here as a startup error rather than as a handshake
+		// failure on the first request.
+		serve := func() error { return http1.Serve(listener) }
+		if tls {
+			serve = func() error { return http1.ServeTLS(listener, cfg.TLSCert, cfg.TLSKey) }
+		}
+
+		if err := serve(); nil != err && !errors.Is(err, http.ErrServerClosed) {
 			errs <- err
 			return
 		}
 		errs <- nil
 	}()
 
+	scheme := "http://"
+	if tls {
+		scheme = "https://"
+	}
+
 	log.Info("rtail-server listening",
 		"version", version,
-		"http", "http://"+listener.Addr().String(),
+		"http", scheme+listener.Addr().String(),
 		"udp", udp.Addr().String(),
 		"backlog", cfg.Backlog,
+		"auth", guard.Enabled(),
 	)
+
+	/*!
+	 * Say it out loud when the server is open on an address other machines
+	 * can reach. config.Validate refuses this unless --insecure was passed,
+	 * so reaching here means somebody chose it — and a choice made once at
+	 * install time deserves a reminder every time it starts.
+	 */
+	if !guard.Enabled() && !auth.IsLoopback(cfg.WebHost) {
+		log.Warn("no --auth-token: anyone who can reach this address can read every log",
+			"host", cfg.WebHost,
+		)
+	}
 
 	select {
 	case <-ctx.Done():

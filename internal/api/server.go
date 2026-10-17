@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/kilianc/rtail/v2/internal/auth"
 	"github.com/kilianc/rtail/v2/internal/catalog"
 	"github.com/kilianc/rtail/v2/internal/ingest"
 	"github.com/kilianc/rtail/v2/internal/logstore"
@@ -49,6 +50,11 @@ type Options struct {
 	// Heartbeat is how often a tail connection emits a comment to keep
 	// intermediaries from treating an idle stream as a dead one.
 	Heartbeat time.Duration
+
+	// Guard authenticates every route except /healthz. A nil Guard, or one
+	// built with no token, leaves the server open — which is the default and
+	// is refused off loopback by config.Validate rather than here.
+	Guard *auth.Guard
 }
 
 // Server routes the API and the webapp.
@@ -99,6 +105,17 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("/", noCache(http.FileServer(http.Dir(s.opts.WebRoot))))
 	} else {
 		mux.Handle("/", web.Handler())
+	}
+
+	/*!
+	 * The guard wraps the whole mux rather than each route.
+	 *
+	 * Per-route middleware is how an endpoint added next year ends up
+	 * unprotected: the default becomes "open unless someone remembered". This
+	 * way the default is "closed unless named", and the only name is /healthz.
+	 */
+	if nil != s.opts.Guard {
+		return s.opts.Guard.Wrap(mux, "/healthz")
 	}
 
 	return mux

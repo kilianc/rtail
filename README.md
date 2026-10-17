@@ -385,6 +385,10 @@ Open your browser and start tailing logs!
       -backlog int       lines of history kept per stream (default 100)
       -data string       directory for durable storage  (unset: memory only)
       -web-root string   serve the webapp from this directory instead of the binary
+      -auth-token string require this bearer token on the API and webapp
+      -tls-cert string   serve HTTPS with this certificate (PEM)
+      -tls-key string    the private key for --tls-cert (PEM)
+      -insecure          allow a non-loopback address with no --auth-token
       -verbose           log at debug level
       -version           print the version and exit
 
@@ -424,9 +428,53 @@ They return 503 with an explanation when the server is running without
 
 To scale and broadcast on multiple servers, instruct the `rtail` client to stream to the broadcast address. Every message will then be delivered to all servers in your subnet.
 
-## Authentication layer
+## Authentication
 
-For the time being, the webapp doesn't have an authentication layer; it assumes that you will run it behind a VPN or reverse proxy, with a simple `Authorization` header check.
+One shared token, or nothing.
+
+    $ rtail-server --auth-token "$(openssl rand -hex 32)" --web-host 0.0.0.0
+
+With a token set, every route except `/healthz` requires it. Programs send it
+as a header; browsers sign in once and get a cookie.
+
+    $ curl -H "Authorization: Bearer $TOKEN" http://logs.example.com/v1/streams
+
+`X-Rtail-Token` works too, for clients that reserve `Authorization`. In a
+browser, opening the server without one gives you a sign-in form, and
+`https://logs.example.com/?token=…` signs you in from a link — the token is
+spent immediately and redirected out of the address bar so it does not end up
+in your history.
+
+`/healthz` is deliberately left open, so a container healthcheck or a load
+balancer keeps working without being handed the secret. It reports liveness
+and stream names; everything that could show a log line is behind the token.
+
+**Running with no token is refused on any address but loopback.** This is the
+one rule the server enforces on your behalf:
+
+    $ rtail-server --web-host 0.0.0.0
+    rtail-server: refusing to listen on 0.0.0.0 with no --auth-token:
+    anyone who can reach it could read every log.
+
+Pass `--insecure` if something in front of it handles access. Nothing stops
+you; it just will not happen by accident.
+
+What this deliberately is not: accounts, roles, OIDC, SAML, or per-stream
+permissions. rTail is a single-node tool, and anyone who needs those already
+has a reverse proxy that does them properly.
+
+**Two holes worth knowing about.** UDP ingest is unauthenticated, because UDP
+has no handshake to carry a token and v1's wire format is frozen. Syslog is
+unauthenticated for the same reason. Both listen on `127.0.0.1` by default; if
+you move either off loopback you are trusting your network.
+
+### TLS
+
+    $ rtail-server --tls-cert cert.pem --tls-key key.pem
+
+Both or neither — half a pair is refused at startup rather than failing on
+somebody's first request. There is no ACME client and there will not be one:
+a certificate is the one thing every reverse proxy already solves.
 
 # Running it locally
 

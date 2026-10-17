@@ -93,8 +93,17 @@ func TestRoundTrip(t *testing.T) {
 	if "10.0.0.1" != first.Host {
 		t.Errorf("host = %q", first.Host)
 	}
-	if !first.Ts.Equal(records[0].Ts) {
-		t.Errorf("ts = %s, want %s", first.Ts, records[0].Ts)
+	/*!
+	 * Compared at microseconds, which is the precision the format stores.
+	 *
+	 * ColTs is declared parquet.Timestamp(parquet.Microsecond) and the writer
+	 * puts UnixMicro in it, so a record built from time.Now() loses its
+	 * nanoseconds on the way to disk by design. Asserting exact equality made
+	 * this test fail on every run — the round trip was never broken, the
+	 * expectation was.
+	 */
+	if want := records[0].Ts.Truncate(time.Microsecond); !first.Ts.Equal(want) {
+		t.Errorf("ts = %s, want %s", first.Ts, want)
 	}
 
 	// Promoted fields keep their types across the round trip.
