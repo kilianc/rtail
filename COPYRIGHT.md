@@ -44,7 +44,7 @@ and is marked superseded.
 
 The licence was kept at AGPL for a while on a second argument — that copyleft
 keeps improvements public, and that a tool promising your logs outlive it
-should not be closable downstream. That argument does not survive examination:
+should not be closable downstream. That argument does not hold:
 
 - **The format promise is kept by the format, not the licence.** A proprietary
   fork cannot make anybody's existing Parquet unreadable. Parquet is an open
@@ -57,6 +57,19 @@ should not be closable downstream. That argument does not survive examination:
   clearest example — which for a commercial project is a feature, because it
   routes those companies to a commercial licence. With no commercial licence to
   route them to, it is cost with no corresponding benefit.
+- **Copyleft was not protecting the design either.** A permissive original
+  keeps existing and keeps being forkable, and a fork only harms if it
+  outcompetes and replaces the original — which happens when the forker is far
+  better resourced, and which copyleft does not prevent, because anyone in that
+  position reimplements rather than forks. OpenObserve and Parseable arrived at
+  this same architecture independently, without needing anyone's code.
+- **It discouraged the use rTail is for.** AGPL §13 binds whoever modifies the
+  program and offers it to users over a network, and the natural way to run a
+  log explorer is as an internal service for colleagues. A conservative reading
+  says a team that patches it owes its users the source — so the licence
+  discouraged exactly the modify-and-deploy-internally behaviour this project
+  wants, hardest in the organisations with the log volumes to make it
+  interesting.
 - **The decision is one-way.** Apache code can be taken into a GPLv3 or AGPL
   project later; copyleft cannot move back. And without a CLA, once there are
   outside AGPL contributions the choice becomes permanent. Choosing the
@@ -65,9 +78,18 @@ should not be closable downstream. That argument does not survive examination:
 Apache rather than MIT for the patent grant, and because §6 withholds trademark
 rights explicitly rather than leaving it to be argued.
 
-Somebody else running a hosted rTail is welcome, and Apache-2.0 means they need
-nobody's permission. The only reservation is the one §6 makes: run the
-software, do not use the project's name in a way that implies it is ours.
+## Money
+
+rTail takes sponsorship and runs nothing. There is no hosted rTail operated by
+this project, now or later — a hosted tier creates users whose data is in it,
+and no change of mind undoes that, so it is ruled out now while it costs a
+sentence rather than a migration. Paid support is not taken up and not ruled
+out.
+
+Somebody else running a hosted rTail is welcome: that is free distribution for
+the project and a competitor for nothing, because there is nothing to compete
+for. The one reservation is the name, which Apache-2.0 §6 reserves — run the
+software, do not imply it is ours.
 
 ## Contributing
 

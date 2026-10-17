@@ -506,7 +506,8 @@ because the reasoning explains why the code looks the way it does.
    permanent. Apache rather than MIT for the patent grant and the explicit
    trademark reservation.
 
-   [`COPYRIGHT.md`](../COPYRIGHT.md) carries this for readers.
+   [`COPYRIGHT.md`](../COPYRIGHT.md) carries this for readers, and the
+   argument in full.
 4. **Does the OSS single-node version stay fully featured forever?** *Moot,
    and in the strongest way.* There is no other version. Nothing is withheld
    because there is nowhere to withhold it to.
