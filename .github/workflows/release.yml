@@ -1,0 +1,234 @@
+# Cut a release.
+#
+# Tag `v2.0.0` and this builds the binaries, the container image, and the
+# GitHub release that carries them.
+#
+# ** Why there is a build matrix instead of one static binary. **
+#
+# P2 embedded DuckDB, which is cgo. There is no pure-Go fallback, so a
+# CGO_ENABLED=0 build fails at link time rather than quietly losing search —
+# and cgo means no practical cross-compilation. Every target is therefore built
+# on a runner of its own architecture, which is slower to configure once and
+# the only arrangement that is actually honest about what it produced.
+#
+# Linux binaries are built inside the same Debian bookworm container the image
+# uses, not on the runner. A binary linked against the runner's newer glibc
+# refuses to start on an older distribution, and "works on the machine that
+# built it" is exactly what a release pipeline exists to prevent.
+#
+# This replaces docker.yml, which published the image on the same tags. Two
+# workflows racing to push the same tag is a bug waiting for a slow day; the
+# image is a step of the release now, and it is gated on the binaries having
+# built and answered /healthz first.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  # So the whole thing can be rehearsed on a branch without cutting a tag.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # The webapp is built once and shared: it is identical on every platform,
+  # and building it per-target would be four chances to ship four different
+  # bundles under one version number.
+  webapp:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - run: npm run dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: webapp
+          path: web/dist
+          retention-days: 1
+
+  binaries:
+    needs: webapp
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - os: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+          - os: macos-13
+            goos: darwin
+            goarch: amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: go.mod
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: webapp
+          path: web/dist
+
+      - name: Version from the tag
+        id: version
+        shell: bash
+        run: |
+          ref="${GITHUB_REF#refs/tags/}"
+          if [ "$ref" = "$GITHUB_REF" ]; then
+            ref="0.0.0-$(git rev-parse --short HEAD)"
+          fi
+          echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
+
+      # macOS builds natively; Linux builds in bookworm so the binary runs on
+      # anything with glibc 2.36 or newer rather than only on the runner.
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          CGO_ENABLED=1 go build \
+            -trimpath \
+            -ldflags "-s -w -X main.version=$VERSION" \
+            -o rtail-server ./cmd/rtail-server
+
+      - name: Build (Linux, in bookworm)
+        if: runner.os == 'Linux'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker run --rm \
+            -u "$(id -u):$(id -g)" \
+            -e HOME=/tmp -e CGO_ENABLED=1 -e VERSION \
+            -v "$PWD:/src" -w /src \
+            golang:1.26.3-bookworm \
+            go build \
+              -trimpath \
+              -ldflags "-s -w -X main.version=$VERSION" \
+              -o rtail-server ./cmd/rtail-server
+
+      # The binary is the whole product, so it is run before it is published.
+      # A release that cannot answer /healthz is worth catching here rather
+      # than in somebody's issue.
+      - name: Smoke-test what was built
+        shell: bash
+        run: |
+          ./rtail-server --version
+          ./rtail-server --web-port 8899 --udp-port 9899 &
+          pid=$!
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8899/healthz >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8899/healthz | tee /dev/stderr | grep -q '"status":"ok"'
+          # The webapp has to be embedded, not merely built: this is the check
+          # that catches a missing web/dist artifact.
+          curl -sf http://127.0.0.1:8899/ | grep -qi '<title'
+          kill "$pid"
+
+      - name: Package
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          name="rtail-server_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          mkdir -p "dist/$name"
+          cp rtail-server README.md LICENSE "dist/$name/"
+          tar -czf "dist/$name.tar.gz" -C dist "$name"
+          # Checksums are produced next to the artifact and merged later, so a
+          # failed target cannot silently drop a line from the manifest.
+          ( cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256" )
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          retention-days: 1
+
+  image:
+    needs: binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          # arm64 is emulated here rather than built on a native runner. It is
+          # slow — tens of minutes — but it happens once per release, and the
+          # alternative is a second runner and a manifest to assemble by hand.
+          platforms: linux/amd64,linux/arm64
+          push: ${{ startsWith(github.ref, 'refs/tags/') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    needs: [binaries, image]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binary-*
+          merge-multiple: true
+          path: dist
+
+      - name: One checksum manifest
+        run: cat dist/*.sha256 > dist/checksums.txt && rm dist/*.sha256
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          # Every release before 2.0.0 is a prerelease, so a `v2.0.0-rc.1` tag
+          # does not become the download the README points at.
+          prerelease: ${{ contains(github.ref_name, '-') }}

@@ -81,6 +81,19 @@ ENV RTAIL_WEB_HOST=0.0.0.0 \
     RTAIL_WEB_PORT=8888 \
     RTAIL_UDP_PORT=9999
 
+# ** This image is open unless you give it a token. **
+#
+# The server refuses to bind a non-loopback address without --auth-token,
+# which is the right rule on a host and the wrong question inside a container:
+# 0.0.0.0 here does not mean "public", it means "reachable through whatever
+# you published with -p". So the image answers it once, and the server warns
+# on every start instead.
+#
+# Set RTAIL_AUTH_TOKEN and this goes away:
+#
+#   docker run -e RTAIL_AUTH_TOKEN="$(openssl rand -hex 32)" -p 8888:8888 rtail
+ENV RTAIL_INSECURE=true
+
 # Where --data points by default in the image. Mount a volume here to keep logs
 # across container restarts; without it the server stays memory-only.
 ENV RTAIL_DATA=""

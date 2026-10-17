@@ -48,6 +48,22 @@ The image binds `0.0.0.0` inside the container, so **the published ports are
 reachable from your whole network**. It has no authentication — keep it on a
 trusted network, or put a reverse proxy in front of it.
 
+## Releases
+
+Tagged releases carry a binary for each platform and a container image.
+
+    $ docker run -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail
+
+Or take the binary for your platform from the
+[releases page](https://github.com/kilianc/rtail/releases) — `linux_amd64`,
+`linux_arm64`, `darwin_amd64`, `darwin_arm64`, with a `checksums.txt` beside
+them. There is no Windows build: DuckDB is cgo and nobody has asked.
+
+The binary is not static, because DuckDB is cgo. Linux builds are linked in
+Debian bookworm, so they need glibc 2.36 or newer; the container image is the
+answer on anything older. Every binary is started and asked for `/healthz`
+before it is published, so a release that cannot run does not become one.
+
 ## Installing the client
 
 The client is a UNIX pipe and belongs on the host whose output you are tailing,

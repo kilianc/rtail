@@ -69,9 +69,20 @@ type Config struct {
 	 */
 	AuthToken string
 
-	// Insecure allows binding a non-loopback address with no token. It exists
-	// so that "I know, it is behind a proxy" is sayable; it has no short alias
-	// and no environment default, because it should be typed deliberately.
+	/*!
+	 * Insecure allows binding a non-loopback address with no token: a way to
+	 * say "I know, something in front of this handles access".
+	 *
+	 * Settable as RTAIL_INSECURE because the container image needs it. A
+	 * container binds 0.0.0.0 by necessity — its loopback is its own, and
+	 * binding 127.0.0.1 there would make the published ports unreachable — so
+	 * inside an image 0.0.0.0 does not mean "public", it means "reachable
+	 * through whatever the operator published". Refusing to start would have
+	 * broken every existing deployment to enforce a rule the bind address
+	 * cannot actually answer there.
+	 *
+	 * It still warns on every start, which is the part that was missing.
+	 */
 	Insecure bool
 
 	// TLSCert and TLSKey serve HTTPS directly. Both or neither.
@@ -145,7 +156,7 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 	str(&cfg.TLSCert, "", "tls-cert", "", "serve HTTPS with this certificate (PEM)")
 	str(&cfg.TLSKey, "", "tls-key", "", "the private key for --tls-cert (PEM)")
 
-	set.BoolVar(&cfg.Insecure, "insecure", false, "allow a non-loopback address with no --auth-token")
+	set.BoolVar(&cfg.Insecure, "insecure", envBool("insecure", false), "allow a non-loopback address with no --auth-token")
 	set.BoolVar(&cfg.Verbose, "verbose", envBool("verbose", false), "log at debug level")
 	set.BoolVar(&showVersion, "version", false, "print the version and exit")
 	set.BoolVar(&showVersion, "v", false, "alias for --version")
