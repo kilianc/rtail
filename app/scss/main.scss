@@ -271,26 +271,112 @@
     inline-size: calc(var(--space-6) * 2);
   }
 
-  // ** ghost icon button **
-  //
-  // Scoped to the action cluster, not the whole bar: `.topbar .btn` also
-  // matched the buttons inside the settings popover and pinned them to the
-  // icon hit size instead of letting them fill their segmented track.
-  .topbar-actions .btn {
+  /*!
+   * ** the button — one block, four variants **
+   *
+   * This replaces nineteen hand-written blocks, each of which picked its own
+   * height, padding, radius, weight and hover, and each of which drifted the
+   * moment any other one was touched. See Button.tsx for why four variants is
+   * the right number and which five controls deliberately stay out.
+   *
+   * Appearance lives here; *placement* stays with the call site. A button that
+   * is absolutely positioned, revealed on hover, or stretched to a container
+   * keeps a class of its own doing only that, and takes everything else from
+   * this block.
+   */
+  .btn {
     align-items: center;
-    block-size: var(--hit);
+    background: none;
+    block-size: var(--control-h);
+    /*!
+     * A transparent hairline at rest.
+     *
+     * Only the outline variant draws an edge, but if the border appeared with
+     * the variant the box would grow two pixels when it did — which is how a
+     * row of mixed buttons ends up a pixel out of alignment with itself.
+     * Reserving it costs nothing and makes every variant the same height.
+     */
+    border: var(--hairline) solid transparent;
     border-radius: var(--radius-sm);
-    color: var(--faint-foreground);
-    display: flex;
-    inline-size: var(--hit);
+    color: var(--muted-foreground);
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    gap: var(--space-2);
     justify-content: center;
-    position: relative;
-    transition: background-color .14s ease, color .14s ease;
+    line-height: 1;
+    padding-inline: var(--space-2);
+    transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+    white-space: nowrap;
+  }
 
-    &:hover {
+  // The reset layer already dims and un-points a disabled control, so the
+  // variants below only ever need `:not(:disabled)` on their hover.
+  .btn-sm {
+    block-size: var(--row-h);
+    font-size: var(--text-xs);
+  }
+
+  .btn-block { inline-size: 100%; }
+
+  // The one action a view is for.
+  .btn-solid {
+    background: var(--primary);
+    color: var(--primary-foreground);
+
+    &:hover:not(:disabled) { background: var(--primary-hover); }
+
+    // The shortcut, so the convention is discoverable rather than folklore.
+    kbd {
+      font-family: inherit;
+      font-size: var(--text-xs);
+      opacity: .6;
+    }
+  }
+
+  // A secondary action that still needs an edge.
+  .btn-outline {
+    background: var(--card);
+    border-color: var(--border);
+
+    &:hover:not(:disabled) {
+      background: var(--subtle-strong);
+      color: var(--foreground);
+    }
+
+    // :not(:disabled) on the hover above weighs three classes, so the on-state
+    // has to match it or hovering a pressed toggle would quietly un-press it.
+    &.on:not(:disabled) {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+  }
+
+  // A quiet action inside something else.
+  .btn-ghost {
+    &:hover:not(:disabled) {
       background: var(--subtle);
       color: var(--foreground);
     }
+
+    &.on:not(:disabled) { color: var(--primary); }
+  }
+
+  // A glyph in a square hit area.
+  .btn-icon {
+    block-size: var(--hit);
+    color: var(--faint-foreground);
+    inline-size: var(--hit);
+    padding-inline: 0;
+    position: relative;
+
+    &:hover:not(:disabled) {
+      background: var(--subtle);
+      color: var(--foreground);
+    }
+
+    &.on:not(:disabled) { color: var(--primary); }
 
     &::after {
       block-size: var(--icon);
@@ -298,9 +384,44 @@
       inline-size: var(--icon);
     }
 
-    &.btn-info::after { @include icon('btn-info'); }
-    &.btn-github::after { @include icon('btn-github'); }
-    &.btn-settings::after { @include icon('btn-settings'); }
+    &.btn-sm {
+      block-size: var(--row-h);
+      inline-size: var(--row-h);
+
+      &::after {
+        block-size: var(--icon-sm);
+        inline-size: var(--icon-sm);
+      }
+    }
+  }
+
+  /*!
+   * Every glyph, in one place.
+   *
+   * The mask is on ::after rather than on the button itself, which is what
+   * lets the hit area be a comfortable square while the glyph stays small —
+   * four of the originals masked the element directly and so were only as
+   * clickable as their 12px icon.
+   */
+  .btn-icon-info::after { @include icon('btn-info'); }
+  .btn-icon-github::after { @include icon('btn-github'); }
+  .btn-icon-settings::after { @include icon('btn-settings'); }
+  .btn-icon-font-smaller::after { @include icon('icn-font-decrease'); }
+  .btn-icon-font-reset::after { @include icon('icn-font-reset'); }
+  .btn-icon-font-bigger::after { @include icon('icn-font-increase'); }
+  .btn-icon-theme-dark::after { @include icon('icn-theme-dark'); }
+  .btn-icon-theme-light::after { @include icon('icn-theme-light'); }
+  .btn-icon-close::after { @include icon-common('icn-close-date', contain); }
+  .btn-icon-fav-off::after { @include icon-common('btn-fav-off', contain); }
+  .btn-icon-fav-on::after { @include icon-common('btn-fav-on', contain); }
+
+  // A swatch shows its own glyph as text, so it suppresses the icon slot and
+  // reads at body size. Replaces a [class*=] selector that had to name three
+  // exceptions to say the same thing.
+  .btn-swatch {
+    font-size: var(--text-md);
+
+    &::after { content: none; }
   }
 
   // ** top bar: stream picker **
@@ -542,16 +663,11 @@
     position: absolute;
   }
 
+  // Placement only; the button is a .btn-icon.
   .command-clear {
-    @include icon-common('icn-close-date', contain);
-    block-size: var(--icon-sm);
-    color: var(--faint-foreground);
-    inline-size: var(--icon-sm);
-    inset-block-start: var(--space-2);
-    inset-inline-end: var(--space-2);
+    inset-block-start: var(--space-1);
+    inset-inline-end: var(--space-1);
     position: absolute;
-
-    &:hover { color: var(--foreground); }
   }
 
   /*!
@@ -578,7 +694,13 @@
     margin-inline-start: auto;
   }
 
-  // A segmented switch, sized to sit in the footer without growing it.
+  /*!
+   * A segmented switch, sized to sit in the footer without growing it.
+   *
+   * The track owns the "on" treatment rather than the button: a pressed
+   * segment inside a filled track is a different thing from a pressed button
+   * standing on its own, and only the track knows it is a track.
+   */
   .command-lang {
     background: var(--card);
     border-radius: var(--radius-sm);
@@ -586,19 +708,15 @@
     flex-shrink: 0;
     padding: 1px;
 
-    button {
+    .btn {
+      block-size: auto;
       border-radius: var(--radius-xs);
-      color: var(--faint-foreground);
-      font-size: var(--text-xs);
       padding: 2px var(--space-2);
-      transition: background-color .12s ease, color .12s ease;
+    }
 
-      &:hover { color: var(--foreground); }
-
-      &.on {
-        background: var(--primary-subtle);
-        color: var(--primary);
-      }
+    .btn.on {
+      background: var(--primary-subtle);
+      color: var(--primary);
     }
   }
 
@@ -607,40 +725,13 @@
     gap: var(--space-3);
     min-inline-size: 0;
     overflow: hidden;
-  }
 
-  .command-example {
-    color: var(--faint-foreground);
-    font-size: var(--text-xs);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-
-    &:hover { color: var(--primary); }
-  }
-
-  .command-run {
-    align-items: center;
-    background: var(--primary);
-    block-size: var(--control-h);
-    border-radius: var(--radius-sm);
-    color: var(--primary-foreground);
-    display: flex;
-    flex-shrink: 0;
-    font-size: var(--text-sm);
-    font-weight: 500;
-    gap: var(--space-2);
-    line-height: 1;
-    padding-inline: var(--space-2);
-    transition: background-color .14s ease;
-
-    &:hover { background: var(--primary-hover); }
-
-    // The shortcut, so the convention is discoverable rather than folklore.
-    kbd {
-      font-family: inherit;
-      font-size: var(--text-xs);
-      opacity: .6;
+    // An example is as long as it is; the row elides rather than wraps.
+    .btn {
+      min-inline-size: 0;
+      overflow: hidden;
+      padding-inline: 0;
+      text-overflow: ellipsis;
     }
   }
 
@@ -764,20 +855,16 @@
     display: grid;
     gap: 2px;
 
-    button {
-      block-size: var(--row-h);
-      border-radius: var(--radius-sm);
+    // A list, so the labels start at one edge rather than centring.
+    .btn {
+      justify-content: start;
+    }
+
+    // The chosen preset is a current state, not an accent: this list is read
+    // top to bottom and a blue row in it reads as a link.
+    .btn.on {
+      background: var(--subtle-strong);
       color: var(--foreground);
-      font-size: var(--text-md);
-      padding-inline: var(--space-2);
-      text-align: start;
-
-      &:hover { background: var(--subtle); }
-
-      &.selected {
-        background: var(--subtle-strong);
-        color: var(--foreground);
-      }
     }
   }
 
@@ -800,33 +887,6 @@
 
       &:focus { @include field-focus; }
     }
-  }
-
-  // Flex-centred rather than relying on the inherited line-height, which was
-  // taller than the button and pushed the label out of its own box.
-  .timerange-apply,
-  .timerange-reset {
-    align-items: center;
-    background: var(--primary);
-    block-size: var(--control-h);
-    display: flex;
-    justify-content: center;
-    line-height: 1;
-    border-radius: var(--radius-sm);
-    color: var(--primary-foreground);
-    font-size: var(--text-md);
-    font-weight: 500;
-    transition: background-color .14s ease;
-
-    &:hover { background: var(--primary-hover); }
-  }
-
-  .timerange-reset {
-    background: none;
-    border: var(--hairline) solid var(--border);
-    color: var(--foreground);
-
-    &:hover { background: var(--subtle); }
   }
 
   // ** streams popover **
@@ -858,32 +918,25 @@
     }
   }
 
+  // A name in a list: it fills the row and elides, and the row behind it
+  // draws the hover. The chosen one is weight, not colour — the list is
+  // scanned, and one blue row in it reads as a link rather than as current.
   .stream-item {
-    block-size: var(--row-h);
-    color: var(--foreground);
     flex: 1;
-    font-size: var(--text-md);
+    justify-content: start;
+    min-inline-size: 0;
     overflow: hidden;
     padding-inline: var(--space-3);
-    text-align: start;
     text-overflow: ellipsis;
-    white-space: nowrap;
 
-    &.selected { color: var(--foreground); font-weight: 550; }
+    &.on {
+      color: var(--foreground);
+      font-weight: 550;
+    }
   }
 
   .stream-fav {
-    @include icon-common('btn-fav-off', contain);
-    block-size: var(--icon-sm);
-    color: var(--faint-foreground);
-    flex-shrink: 0;
-    inline-size: var(--icon-sm);
-    margin-inline-end: var(--space-3);
-
-    &.on {
-      @include icon-common('btn-fav-on', contain);
-      color: var(--primary);
-    }
+    margin-inline-end: var(--space-2);
   }
 
   .stream-empty {
@@ -1135,24 +1188,15 @@
     padding: var(--space-2) var(--space-3);
   }
 
-  // A section header: a caret, the name, and the total on the right.
-  // The column toggle, revealed on hover so the list stays quiet at rest.
+  // The column toggle, revealed on hover so the list stays quiet at rest —
+  // and always shown once it is on, because a toggle you cannot see is one
+  // you cannot discover you left on.
   .explorer-column {
-    align-items: center;
-    block-size: var(--row-h);
-    color: var(--faint-foreground);
-    display: flex;
     inline-size: var(--space-5);
-    justify-content: center;
     opacity: 0;
-    transition: opacity .12s ease, color .12s ease;
+    transition: opacity .12s ease, background-color .14s ease, color .14s ease;
 
-    &:hover { color: var(--foreground); }
-
-    &.on {
-      color: var(--primary);
-      opacity: 1;
-    }
+    &.on { opacity: 1; }
   }
 
   .explorer-field:hover .explorer-column,
@@ -1258,21 +1302,14 @@
     position: relative;
   }
 
+  // Revealed on hover, and red on its own hover: excluding is the one
+  // destructive thing this panel does.
   .explorer-exclude {
-    align-items: center;
-    block-size: var(--hit);
-    border-radius: var(--radius-sm);
-    color: var(--faint-foreground);
-    display: flex;
     inline-size: var(--space-6);
-    justify-content: center;
     opacity: 0;
-    transition: opacity .12s ease, color .12s ease, background-color .12s ease;
+    transition: opacity .12s ease, background-color .14s ease, color .14s ease;
 
-    &:hover {
-      background: var(--subtle);
-      color: var(--level-error);
-    }
+    &:hover:not(:disabled) { color: var(--level-error); }
   }
 
   // ** results **
@@ -1358,14 +1395,13 @@
     white-space: nowrap;
   }
 
+  // Dropping a column is destructive, so it reveals on hover and goes red on
+  // its own — same reasoning as the field explorer's exclude.
   .results-col-drop {
-    color: var(--faint-foreground);
-    flex-shrink: 0;
-    line-height: 1;
     opacity: 0;
-    transition: opacity .12s ease, color .12s ease;
+    transition: opacity .12s ease, background-color .14s ease, color .14s ease;
 
-    &:hover { color: var(--level-error); }
+    &:hover:not(:disabled) { color: var(--level-error); }
   }
 
   // A promoted value. Monospace and truncating, because these are identifiers
@@ -1393,18 +1429,6 @@
     position: absolute;
   }
 
-  .results-more {
-    block-size: var(--row-h);
-    border-radius: var(--radius-sm);
-    color: var(--muted-foreground);
-    font-size: var(--text-md);
-    inline-size: 100%;
-
-    &:hover:not(:disabled) {
-      background: var(--subtle);
-      color: var(--foreground);
-    }
-  }
 
   // Matched text, marked in the summary the way the reference does it.
   // Amber rather than blue. Blue is selection, and a marked term inside a
@@ -1432,22 +1456,15 @@
     padding: 0 var(--space-1);
   }
 
+  // Floats over the results, so it keeps its own placement, lift and entrance.
   .results-follow {
     animation: rise .14s ease-out;
-    background: var(--primary);
-    block-size: var(--control-h);
-    border-radius: var(--radius-md);
     box-shadow: var(--shadow-md);
-    color: var(--primary-foreground);
-    font-size: var(--text-sm);
-    font-weight: 500;
     inset-block-end: var(--space-4);
     inset-inline-end: var(--space-5);
     padding-inline: var(--space-4);
     position: absolute;
     z-index: 5;
-
-    &:hover { background: var(--primary-hover); }
   }
 
   .results-empty {
@@ -1680,14 +1697,10 @@
     transition: opacity .12s ease;
   }
 
+  // Two glyphs that sit against the value they filter on, so they give up
+  // the standard inline padding.
   .leaf-filter {
-    border-radius: var(--radius-xs);
-    color: var(--faint-foreground);
-    font-size: var(--text-md);
-    line-height: 1;
-    padding: 0 2px;
-
-    &:hover { color: var(--foreground); }
+    padding-inline: 2px;
   }
 
   .row-actions {
@@ -1696,22 +1709,6 @@
     padding-inline: var(--space-2);
   }
 
-  .row-action {
-    background: var(--card);
-    block-size: var(--control-h);
-    border: var(--hairline) solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--muted-foreground);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    padding-inline: var(--space-3);
-    transition: background-color .14s ease, color .14s ease;
-
-    &:hover {
-      background: var(--subtle-strong);
-      color: var(--foreground);
-    }
-  }
 
   // ** popovers **
 
@@ -1791,42 +1788,25 @@
       grid-template-columns: repeat(3, 1fr);
     }
 
+    // Segments divide the track between them rather than each being a
+    // square, so the icon variant's fixed width is given back here.
     .btn {
-      align-items: center;
-      block-size: var(--control-h);
-      border-radius: var(--radius-sm);
-      color: var(--muted-foreground);
-      display: flex;
       flex: 1;
-      justify-content: center;
-      transition: background-color .14s ease, color .14s ease;
-
-      &:hover { background: var(--subtle); }
-
-      &.selected {
-        background: var(--card);
-        box-shadow: var(--shadow-sm);
-        color: var(--foreground);
-      }
-
-      &::after {
-        block-size: var(--icon);
-        content: '';
-        inline-size: var(--icon);
-      }
-
-      &.btn-font-smaller::after { @include icon('icn-font-decrease'); }
-      &.btn-font-reset::after { @include icon('icn-font-reset'); }
-      &.btn-font-bigger::after { @include icon('icn-font-increase'); }
-      &.btn-theme-dark::after { @include icon('icn-theme-dark'); }
-      &.btn-theme-light::after { @include icon('icn-theme-light'); }
+      inline-size: auto;
     }
 
-    // The font-family swatches show a glyph rather than an icon.
-    .btn[class*='btn-font-']:not(.btn-font-smaller):not(.btn-font-reset):not(.btn-font-bigger) {
-      font-size: var(--text-md);
-
-      &::after { content: none; }
+    /*!
+     * The chosen segment is lifted, not tinted.
+     *
+     * The track is the recessed surface and the current segment sits on top
+     * of it — which is the whole idea of a segmented control, and why this
+     * treatment belongs to the track rather than to the button. A plain
+     * accent colour here would read as one of three links.
+     */
+    .btn.on {
+      background: var(--card);
+      box-shadow: var(--shadow-sm);
+      color: var(--foreground);
     }
   }
 

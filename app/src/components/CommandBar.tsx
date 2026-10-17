@@ -28,6 +28,7 @@
 import type { ComponentChildren } from 'preact'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { Field } from '../lib/api.js'
+import { Button } from './Button.js'
 import { complete, type Completion } from '../lib/query.js'
 
 /** Shown under an empty editor, and inserted on click. */
@@ -223,7 +224,10 @@ export function CommandBar({
           {busy && <i class="command-busy" aria-label="Searching" />}
 
           {value && (
-            <button
+            <Button
+              variant="icon"
+              size="sm"
+              icon="close"
               class="command-clear"
               aria-label="Clear the query"
               onMouseDown={(event) => event.preventDefault()}
@@ -244,23 +248,23 @@ export function CommandBar({
         <div class="command-footer">
           <div class="command-lang" role="group" aria-label="Query language">
             {(['rql', 'sql'] as const).map((option) => (
-              <button
+              <Button
                 key={option}
-                class={option === lang ? 'on' : ''}
-                aria-pressed={option === lang}
+                size="sm"
+                on={option === lang}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => onChangeLang(option)}
               >
                 {'rql' === option ? 'rQL' : 'SQL'}
-              </button>
+              </Button>
             ))}
           </div>
 
           <div class="command-examples">
             {examples.map((example) => (
-              <button
+              <Button
                 key={example}
-                class="command-example"
+                size="sm"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
                   onChange(example)
@@ -268,17 +272,17 @@ export function CommandBar({
                 }}
               >
                 {example}
-              </button>
+              </Button>
             ))}
           </div>
 
           <div class="command-actions">
             {children}
 
-            <button class="command-run" onClick={onSubmit}>
+            <Button variant="solid" onClick={onSubmit}>
               Run query
               <kbd>⌘⏎</kbd>
-            </button>
+            </Button>
           </div>
         </div>
       </div>

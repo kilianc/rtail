@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { useVirtual } from '../lib/virtual.js'
 import type { Line } from '../lib/types.js'
+import { Button } from './Button.js'
 import { LogRow, type FilterAction } from './LogRow.js'
 
 interface Props {
@@ -211,13 +212,15 @@ export function Results({
         {columns.map((field) => (
           <span key={field} class="results-col-added" title={field}>
             <span class="results-col-name">{field}</span>
-            <button
+            <Button
+              variant="icon"
+              size="sm"
               class="results-col-drop"
               aria-label={`Remove the ${field} column`}
               onClick={() => onDropColumn(field)}
             >
               ×
-            </button>
+            </Button>
           </span>
         ))}
 
@@ -252,14 +255,15 @@ export function Results({
         </div>
 
         {hasMore && !live && (
-          <button class="results-more" disabled={loading} onClick={onLoadMore}>
+          <Button size="sm" block disabled={loading} onClick={onLoadMore}>
             {loading ? 'Loading…' : 'Load older events'}
-          </button>
+          </Button>
         )}
       </div>
 
       {live && (paused || !following) && (
-        <button
+        <Button
+          variant="solid"
           class="results-follow"
           onClick={() => {
             setFollowing(true)
@@ -269,7 +273,7 @@ export function Results({
         >
           {paused ? 'Resume' : 'Jump to latest'}
           {pending > 0 && <span class="results-pending">{pending.toLocaleString()}</span>}
-        </button>
+        </Button>
       )}
     </div>
   )

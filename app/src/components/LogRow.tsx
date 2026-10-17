@@ -9,6 +9,7 @@
  */
 
 import { formatClock } from '../lib/format.js'
+import { Button } from './Button.js'
 import { columnValue, highlight } from '../lib/query.js'
 import type { Line } from '../lib/types.js'
 
@@ -148,15 +149,15 @@ export function LogRow({ line, expanded, selected, active, needles, columns, onT
           </dl>
 
           <div class="row-actions">
-            <button
-              class="row-action"
+            <Button
+              variant="outline"
               onClick={() => navigator.clipboard?.writeText(line.text)}
             >
               Copy
-            </button>
-            <button class="row-action" onClick={onContext}>
+            </Button>
+            <Button variant="outline" onClick={onContext}>
               Show context
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -194,22 +195,24 @@ function Leaf({ label, field, value, active, filterable = true, onFilter }: Leaf
         */}
         {filterable && !nested && (
           <span class="leaf-actions">
-            <button
+            <Button
+              size="sm"
               class="leaf-filter"
               title={`Filter to ${field}=${String(value)}`}
               aria-label={`Filter to ${field} equals ${String(value)}`}
               onClick={() => onFilter({ field, op: '=', value: String(value), negated: false })}
             >
               ⊕
-            </button>
-            <button
+            </Button>
+            <Button
+              size="sm"
               class="leaf-filter"
               title={`Exclude ${field}=${String(value)}`}
               aria-label={`Exclude ${field} equals ${String(value)}`}
               onClick={() => onFilter({ field, op: '=', value: String(value), negated: true })}
             >
               ⊖
-            </button>
+            </Button>
           </span>
         )}
       </dd>

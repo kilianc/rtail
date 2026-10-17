@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'preact/hooks'
 import { api, type Field, type FieldValue, type Params } from '../lib/api.js'
+import { Button } from './Button.js'
 
 interface Props {
   fields: Field[]
@@ -143,14 +144,16 @@ function FieldGroup({ field, params, open, active, column, onToggle, onToggleCol
         menu: promoting a field is a thing you do while scanning the list of
         fields, which is exactly when you are already looking at this row.
       */}
-      <button
-        class={`explorer-column ${column ? 'on' : ''}`}
+      <Button
+        variant="icon"
+        size="sm"
+        on={column}
+        class="explorer-column"
         title={column ? `Remove the ${field.name} column` : `Show ${field.name} as a column`}
-        aria-pressed={column}
         onClick={onToggleColumn}
       >
         ⊞
-      </button>
+      </Button>
 
       <button class="explorer-head" aria-expanded={open} onClick={onToggle}>
         <span class="explorer-name">{field.name}</span>
@@ -203,14 +206,16 @@ function FieldGroup({ field, params, open, active, column, onToggle, onToggleCol
                 <span class="explorer-count">{value.count.toLocaleString()}</span>
               </button>
 
-              <button
+              <Button
+                variant="icon"
+                size="sm"
                 class="explorer-exclude"
                 title={`Exclude ${field.name}=${value.value}`}
                 aria-label={`Exclude ${value.value}`}
                 onClick={() => onFilter(field.name, value.value, true)}
               >
                 ⊖
-              </button>
+              </Button>
             </div>
           ))}
         </div>

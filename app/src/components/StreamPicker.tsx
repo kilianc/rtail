@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useRef, useState } from 'preact/hooks'
+import { Button } from './Button.js'
 import { Popover } from './Popover.js'
 
 interface Props {
@@ -74,31 +75,44 @@ export function StreamPicker({ streams, active, favorites, onSelect, onToggleFav
 
           <ul class="stream-list">
             <li>
-              <button
-                class={`stream-item ${null === active ? 'selected' : ''}`}
+              <Button
+                size="sm"
+                on={null === active}
+                class="stream-item"
                 onClick={() => {
                   onSelect(null)
                   setOpen(false)
                 }}
               >
                 All streams
-              </button>
+              </Button>
             </li>
 
             {ordered.map((stream) => (
               <li key={stream}>
-                <button
-                  class={`stream-item ${stream === active ? 'selected' : ''}`}
+                <Button
+                  size="sm"
+                  on={stream === active}
+                  class="stream-item"
                   onClick={() => {
                     onSelect(stream)
                     setOpen(false)
                   }}
                 >
                   {stream}
-                </button>
+                </Button>
 
-                <button
-                  class={`stream-fav ${favorites.includes(stream) ? 'on' : ''}`}
+                {/*
+                  The glyph itself changes with the state — an outline star
+                  and a filled one — so the icon name is the state rather
+                  than something `on` recolours.
+                */}
+                <Button
+                  variant="icon"
+                  size="sm"
+                  icon={favorites.includes(stream) ? 'fav-on' : 'fav-off'}
+                  on={favorites.includes(stream)}
+                  class="stream-fav"
                   aria-label={
                     favorites.includes(stream) ? 'Remove from favourites' : 'Add to favourites'
                   }

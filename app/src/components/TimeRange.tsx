@@ -9,6 +9,7 @@
 
 import { useRef, useState } from 'preact/hooks'
 import { PRESETS, isRelative, label, resolve, type Range } from '../lib/timerange.js'
+import { Button } from './Button.js'
 import { Popover } from './Popover.js'
 
 interface Props {
@@ -42,13 +43,14 @@ export function TimeRange({ range, onChange }: Props) {
           <h4>Relative</h4>
           <div class="timerange-presets">
             {PRESETS.map((preset) => (
-              <button
+              <Button
                 key={preset.short}
-                class={preset.range.from === range.from && '' === range.to ? 'selected' : ''}
+                size="sm"
+                on={preset.range.from === range.from && '' === range.to}
                 onClick={() => pick(preset.range)}
               >
                 {preset.label}
-              </button>
+              </Button>
             ))}
           </div>
 
@@ -56,9 +58,9 @@ export function TimeRange({ range, onChange }: Props) {
           <Absolute range={range} onApply={pick} />
 
           {!isRelative(range) && (
-            <button class="timerange-reset" onClick={() => pick(PRESETS[2].range)}>
+            <Button variant="outline" block onClick={() => pick(PRESETS[2].range)}>
               Back to live
-            </button>
+            </Button>
           )}
         </Popover>
       )}
@@ -99,8 +101,9 @@ function Absolute({ range, onApply }: { range: Range; onApply: (range: Range) =>
         <input ref={end} type="datetime-local" defaultValue={local(resolved.to)} />
       </label>
 
-      <button
-        class="timerange-apply"
+      <Button
+        variant="solid"
+        block
         onClick={() => {
           const from = start.current?.value
           const to = end.current?.value
@@ -110,7 +113,7 @@ function Absolute({ range, onApply }: { range: Range; onApply: (range: Range) =>
         }}
       >
         Apply
-      </button>
+      </Button>
     </div>
   )
 }

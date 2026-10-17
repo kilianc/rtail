@@ -29,11 +29,11 @@
  * prop would be the same mistake committed in a newer place.
  */
 
-import type { ComponentChildren, JSX } from 'preact'
+import type { ComponentChildren, JSX, Ref } from 'preact'
 
 type Variant = 'solid' | 'outline' | 'ghost' | 'icon'
 
-interface Props extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, 'size' | 'icon'> {
+interface Props extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, 'size' | 'icon' | 'ref'> {
   variant?: Variant
   /** `md` is a control (22px); `sm` is a row (20px). */
   size?: 'sm' | 'md'
@@ -48,6 +48,18 @@ interface Props extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, 'size'
   on?: boolean
   /** Fills the inline size of its container. */
   block?: boolean
+  /*!
+   * A ref to the <button> itself, for callers that must measure it.
+   *
+   * Not `ref`, and `ref` is deliberately removed from the props above so that
+   * writing it is a type error rather than a silent one. Preact pulls `ref`
+   * off a function component's props and binds it to the component instance,
+   * so `<Button ref={x}>` compiles, runs, and leaves x.current holding
+   * something with no getBoundingClientRect — which is exactly how the two
+   * popovers anchored to this would have broken, at runtime, in a way no test
+   * here would catch.
+   */
+  elementRef?: Ref<HTMLButtonElement>
   children?: ComponentChildren
 }
 
@@ -57,6 +69,7 @@ export function Button({
   icon,
   on,
   block,
+  elementRef,
   class: extra,
   type,
   children,
@@ -76,6 +89,7 @@ export function Button({
 
   return (
     <button
+      ref={elementRef}
       // Buttons inside the query pane sit within no form, but the ones in the
       // time-range popover do — and a bare <button> there submits it and
       // reloads the page. Defaulting to "button" makes that unrepresentable.

@@ -13,6 +13,7 @@ import type { ComponentChildren } from 'preact'
 import { useRef, useState } from 'preact/hooks'
 import { FONT_FAMILY_COUNT, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../lib/prefs.js'
 import type { Prefs, Theme } from '../lib/types.js'
+import { Button } from './Button.js'
 import { Popover } from './Popover.js'
 
 declare const __VERSION__: string
@@ -59,25 +60,32 @@ export function TopBar({ prefs, live, scanned, children, onChangePrefs, onToggle
           {scanned && !live && <span class="topbar-scanned">{scanned}</span>}
 
           <div class="topbar-actions">
-            <button
-              ref={infoRef}
-              class="btn btn-info"
+            <Button
+              elementRef={infoRef}
+              variant="icon"
+              icon="info"
               aria-label="About rTail"
               aria-expanded={'info' === open}
               onClick={() => toggle('info')}
             />
 
+            {/*
+              An anchor, not a button, because it navigates — so it spells the
+              classes out. They are the same contract Button emits, and this is
+              the only place that has to know it.
+            */}
             <a
-              class="btn btn-github"
+              class="btn btn-icon btn-md btn-icon-github"
               aria-label="rTail on GitHub"
               href="https://github.com/kilianc/rtail"
               target="_blank"
               rel="noreferrer"
             />
 
-            <button
-              ref={settingsRef}
-              class="btn btn-settings"
+            <Button
+              elementRef={settingsRef}
+              variant="icon"
+              icon="settings"
               aria-label="Settings"
               aria-expanded={'settings' === open}
               onClick={() => toggle('settings')}
@@ -103,7 +111,7 @@ export function TopBar({ prefs, live, scanned, children, onChangePrefs, onToggle
           </div>
 
           <a
-            class="btn btn-issue"
+            class="btn btn-outline btn-md btn-block"
             href="https://github.com/kilianc/rtail/issues"
             target="_blank"
             rel="noreferrer"
@@ -117,19 +125,23 @@ export function TopBar({ prefs, live, scanned, children, onChangePrefs, onToggle
         <Popover anchor={settingsRef.current} class="popover-settings" onClose={() => setOpen(null)}>
           <h4>Font size</h4>
           <div class="btn-group">
-            <button
-              class="btn btn-font-smaller"
+            <Button
+              variant="icon"
+              icon="font-smaller"
               aria-label="Decrease font size"
               disabled={prefs.fontSize <= FONT_SIZE_MIN}
               onClick={() => onChangePrefs({ fontSize: Math.max(FONT_SIZE_MIN, prefs.fontSize - 1) })}
             />
-            <button
-              class={`btn btn-font-reset ${4 === prefs.fontSize ? 'selected' : ''}`}
+            <Button
+              variant="icon"
+              icon="font-reset"
+              on={4 === prefs.fontSize}
               aria-label="Reset font size"
               onClick={() => onChangePrefs({ fontSize: 4 })}
             />
-            <button
-              class="btn btn-font-bigger"
+            <Button
+              variant="icon"
+              icon="font-bigger"
               aria-label="Increase font size"
               disabled={prefs.fontSize >= FONT_SIZE_MAX}
               onClick={() => onChangePrefs({ fontSize: Math.min(FONT_SIZE_MAX, prefs.fontSize + 1) })}
@@ -139,23 +151,27 @@ export function TopBar({ prefs, live, scanned, children, onChangePrefs, onToggle
           <h4>Font family</h4>
           <div class="btn-group six-grid">
             {Array.from({ length: FONT_FAMILY_COUNT }, (_, index) => index + 1).map((n) => (
-              <button
+              <Button
                 key={n}
-                class={`btn btn-font-${n} font-family-${n} ${n === prefs.fontFamily ? 'selected' : ''}`}
+                variant="icon"
+                on={n === prefs.fontFamily}
+                class={`btn-swatch font-family-${n}`}
                 aria-label={`Font family ${n}`}
                 onClick={() => onChangePrefs({ fontFamily: n })}
               >
                 Ag
-              </button>
+              </Button>
             ))}
           </div>
 
           <h4>Theme</h4>
           <div class="btn-group">
             {(['dark', 'light'] as Theme[]).map((theme) => (
-              <button
+              <Button
                 key={theme}
-                class={`btn btn-theme-${theme} ${theme === prefs.theme ? 'selected' : ''}`}
+                variant="icon"
+                icon={`theme-${theme}`}
+                on={theme === prefs.theme}
                 aria-label={`${theme} theme`}
                 onClick={() => onChangePrefs({ theme })}
               />
