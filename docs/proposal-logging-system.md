@@ -471,22 +471,45 @@ fsync boundary, assert catalog and disk agree) rather than hoping.
 P0 is worth doing first and alone: it de-risks the Go port while the surface
 area is 330 lines, and it ships something immediately.
 
-### 8.3 Decisions I need from you
+### 8.3 Decisions — settled
 
-1. **cgo/DuckDB — yes or no?** Everything downstream depends on it. "No" means
-   no SQL, or a second process, and I'd argue the feature is not worth having
-   without it.
-2. **Preact + compat, or move to React 19?** Low stakes.
-3. **Licence.** MIT as today invites a hyperscaler to run our SaaS. AGPL or BSL
-   protects the business and costs some adoption. This has to be decided
-   *before* the first commit of new code, not after.
-4. **Does the OSS single-node version stay fully featured forever?** My
-   recommendation is yes — the moat is multi-tenancy, S3, and operations, not
-   features. Crippled OSS kills the funnel.
+All four are answered. Kept here with their answers rather than deleted,
+because the reasoning explains why the code looks the way it does.
+
+1. **cgo/DuckDB — yes or no?** *Yes.* Everything downstream depended on it.
+   The cost landed where it was expected: no static binary, a per-platform
+   build matrix, and a glibc base image instead of distroless.
+2. **Preact + compat, or move to React 19?** *Preact.* Low stakes, and it
+   stayed.
+3. **Licence.** *AGPL-3.0*, applied in `3e8804c`, and kept.
+
+   The original argument was commercial — MIT invites a hyperscaler to run
+   our SaaS, AGPL protects the business. That argument is now void: see the
+   note on §9 below. The licence survives it on the other reason, which was
+   always the better one. Copyleft keeps improvements public and means nobody
+   can take this closed. For a tool whose entire promise is that your logs
+   stay yours in a format that outlives the tool, a licence that can be closed
+   downstream would undercut the product itself.
+
+   The cost is real and worth stating plainly: AGPL is banned by policy inside
+   a lot of companies, so this trades some adoption for that guarantee. That
+   is the trade, made deliberately.
+4. **Does the OSS single-node version stay fully featured forever?** *Moot,
+   and in the strongest way.* There is no other version. Nothing is withheld
+   because there is nowhere to withhold it to.
 
 ---
 
 ## 9. The SaaS
+
+> **Superseded.** rTail v2 is free software, not a commercial product. This
+> section is kept as written because the architecture it describes is real —
+> files, a catalog and stateless query genuinely do disaggregate, and the
+> `storage.Backend` seam that §9.1 argued for exists and costs nothing to
+> leave in place. What is void is everything that follows from there being a
+> business: the positioning, the pricing, the funnel, and the reading of the
+> licence in §8.3. Treat the rest of this section as a record of a path not
+> taken.
 
 ### 9.1 Why the architecture already is the product
 
