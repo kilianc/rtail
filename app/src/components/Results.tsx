@@ -12,6 +12,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { useVirtual } from '../lib/virtual.js'
+import { formatBytes } from '../lib/format.js'
+import type { Scanned } from '../lib/api.js'
 import type { Line } from '../lib/types.js'
 import { Button } from './Button.js'
 import { LogRow, type FilterAction } from './LogRow.js'
@@ -21,6 +23,8 @@ interface Props {
   /** Streaming, as opposed to a finished historical page. */
   live: boolean
   loading: boolean
+  /** What the last historical query touched, for the cost readout. */
+  scanned: Scanned | null
   /** Fields the current query mentions. */
   active: string[]
   /** Substrings to mark in each message. */
@@ -50,6 +54,7 @@ export function Results({
   lines,
   live,
   loading,
+  scanned,
   active,
   needles,
   columns,
@@ -172,31 +177,67 @@ export function Results({
    */
   const template = [
     'var(--caret-w)',
-    'var(--sev-w)',
+    // Timestamp before severity: time is what you scan a log by, so it sits
+    // closest to the caret, and the severity column reads as an annotation on
+    // the line rather than as its primary key.
     'var(--gutter-w)',
+    'var(--sev-w)',
     ...columns.map(() => 'minmax(5rem, 10rem)'),
     '1fr'
   ].join(' ')
 
-  if (0 === lines.length) {
-    return (
-      <div class="results" style={{ '--row-template': template } as never}>
-        <div class="results-empty">
-          {loading ? (
-            <p>Searching…</p>
-          ) : (
-            <>
-              <div class="results-empty-mark" />
-              <p>{emptyHint ?? 'No matching events'}</p>
-            </>
-          )}
-        </div>
-      </div>
-    )
+  const follow = () => {
+    setFollowing(true)
+    onResume()
+    virtual.scrollToEnd()
   }
 
   return (
     <div class="results" style={{ '--row-template': template } as never}>
+      {/*
+        What the last query cost, on one line above the columns.
+        
+        A search interface that hides how much work it just did teaches nobody
+        why one query is instant and another is not — and the count of what
+        came back is the first thing anyone looks for, so it leads.
+      */}
+      <div class="results-stats">
+        <span class="results-matched">
+          <strong>{lines.length.toLocaleString()}</strong> {live ? 'lines' : 'matched'}
+          {hasMore && !live ? '+' : ''}
+        </span>
+
+        {!live && scanned && (
+          <>
+            <span class="results-dot" aria-hidden="true">·</span>
+            <span>{scanned.files.toLocaleString()} {1 === scanned.files ? 'file' : 'files'}</span>
+            <span class="results-dot" aria-hidden="true">·</span>
+            <span>{formatBytes(scanned.bytes)} in {scanned.millis.toLocaleString()} ms</span>
+          </>
+        )}
+
+        <span class="results-gap" />
+
+        {/*
+          Following is a state of this pane, so its switch lives in this
+          pane's own header rather than floating over the rows. The pending
+          count rides on it: while the feed is held, the number is the reason
+          you would press it.
+        */}
+        {live && (
+          <Button
+            variant="outline"
+            size="sm"
+            on={following && !paused}
+            title={paused ? 'Resume the feed' : 'Follow the tail'}
+            onClick={follow}
+          >
+            following
+            {pending > 0 && <span class="results-pending">{pending.toLocaleString()}</span>}
+          </Button>
+        )}
+      </div>
+
       {/*
         A sticky column header, as Cloud Logging has. It is not decoration: a
         dense table of timestamps and text needs its columns named once, and
@@ -205,9 +246,9 @@ export function Results({
       */}
       <div class="results-header">
         <span class="results-col-caret" />
-        {/* Abbreviated: the column is one chip wide, and "Severity" is not. */}
-        <span class="results-col-level" title="Severity">Sev</span>
         <span class="results-col-time">Timestamp</span>
+        {/* Abbreviated: the column is three characters wide, and "Severity" is not. */}
+        <span class="results-col-level" title="Severity">Sev</span>
 
         {columns.map((field) => (
           <span key={field} class="results-col-added" title={field}>
@@ -227,50 +268,72 @@ export function Results({
         <span class="results-col-summary">Summary</span>
       </div>
 
-      <div class="results-scroll" ref={virtual.scrollRef}>
-        <div class="results-spacer" style={{ height: `${virtual.total}px` }}>
-          {lines.slice(virtual.start, virtual.end).map((line, index) => (
-            <div
-              key={line.key}
-              class="results-row"
-              ref={virtual.measure(virtual.start + index)}
-              style={{ transform: `translateY(${virtual.offsets[index]}px)` }}
-            >
-              <LogRow
-                line={line}
-                expanded={expanded.has(line.key)}
-                selected={virtual.start + index === selected}
-                active={active}
-                needles={needles}
-                columns={columns}
-                onToggle={() => {
-                  setSelected(virtual.start + index)
-                  toggle(line.key)
-                }}
-                onFilter={onFilter}
-                onContext={() => onContext(line)}
-              />
-            </div>
-          ))}
+      {0 === lines.length ? (
+        <div class="results-empty">
+          {loading ? (
+            <p>Searching…</p>
+          ) : (
+            <>
+              <div class="results-empty-mark" />
+              <p>{emptyHint ?? 'No matching events'}</p>
+            </>
+          )}
         </div>
+      ) : (
+        <div class="results-scroll" ref={virtual.scrollRef}>
+          <div class="results-spacer" style={{ height: `${virtual.total}px` }}>
+            {lines.slice(virtual.start, virtual.end).map((line, index) => (
+              <div
+                key={line.key}
+                class="results-row"
+                ref={virtual.measure(virtual.start + index)}
+                style={{ transform: `translateY(${virtual.offsets[index]}px)` }}
+              >
+                <LogRow
+                  line={line}
+                  expanded={expanded.has(line.key)}
+                  selected={virtual.start + index === selected}
+                  active={active}
+                  needles={needles}
+                  columns={columns}
+                  onToggle={() => {
+                    setSelected(virtual.start + index)
+                    toggle(line.key)
+                  }}
+                  onFilter={onFilter}
+                  onContext={() => onContext(line)}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
-        {hasMore && !live && (
-          <Button size="sm" block disabled={loading} onClick={onLoadMore}>
-            {loading ? 'Loading…' : 'Load older events'}
-          </Button>
-        )}
-      </div>
+      {/*
+        The footer says how the page was cut, because keyset pagination is why
+        the next page is instant and why it cannot skip to page nine — and
+        "older" is the only control that makes sense next to that sentence.
+      */}
+      {!live && lines.length > 0 && (
+        <div class="results-footer">
+          <span>keyset (ts, seq) · {lines.length.toLocaleString()} loaded</span>
+          <span class="results-gap" />
+          {hasMore && (
+            <Button variant="outline" size="sm" disabled={loading} onClick={onLoadMore}>
+              {loading ? 'loading…' : 'older'}
+            </Button>
+          )}
+        </div>
+      )}
 
+      {/*
+        One floating control, and only when the tail has run away from you:
+        the header switch is where following is turned on, but when you are
+        a thousand rows up it is off-screen, and the jump has to be where
+        your eyes are.
+      */}
       {live && (paused || !following) && (
-        <Button
-          variant="solid"
-          class="results-follow"
-          onClick={() => {
-            setFollowing(true)
-            onResume()
-            virtual.scrollToEnd()
-          }}
-        >
+        <Button variant="solid" class="results-follow" onClick={follow}>
           {paused ? 'Resume' : 'Jump to latest'}
           {pending > 0 && <span class="results-pending">{pending.toLocaleString()}</span>}
         </Button>

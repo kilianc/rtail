@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'preact/hooks'
 import { api, type Field, type FieldValue, type Params } from '../lib/api.js'
+import { formatCount } from '../lib/format.js'
 import { Button } from './Button.js'
 
 interface Props {
@@ -29,11 +30,35 @@ interface Props {
 /** Fields worth opening first — the ones a person almost always wants. */
 const FAVOURED = ['level', 'service', 'stream', 'host', 'status', 'env', 'region']
 
+/*!
+ * The envelope keys worth listing.
+ *
+ * `ts` and `seq` are on every record by construction and have no distribution
+ * to explore — a sidebar entry for "every line has a timestamp" is a row of
+ * noise — so the section is the four that genuinely vary.
+ */
+const ENVELOPE = ['stream', 'host', 'level', 'is_json']
+
+/*!
+ * Severity order, worst first.
+ *
+ * The breakdown is sorted by this rather than by count, because the question
+ * it answers is "how bad is it" — and sorted by frequency the healthy case
+ * puts INFO on top and buries the twelve errors at the bottom, which is the
+ * one line anybody opened the panel to see.
+ */
+const SEVERITY = [
+  'EMERGENCY', 'FATAL', 'ALERT', 'CRITICAL', 'ERROR', 'WARN',
+  'NOTICE', 'INFO', 'DEBUG', 'TRACE'
+]
+
+/** How much of this field is in the current result set, lifetime if unknown. */
+const weight = (field: Field) => field.matches ?? field.occurrences ?? 0
+
 export function FieldExplorer({ fields, params, active, columns, onFilter, onToggleColumn }: Props) {
   const [open, setOpen] = useState<string[]>(() =>
     fields.filter((field) => FAVOURED.includes(field.name)).slice(0, 3).map((field) => field.name)
   )
-  const [filter, setFilter] = useState('')
 
   /*!
    * Deduplicated by name, envelope first.
@@ -54,52 +79,126 @@ export function FieldExplorer({ fields, params, active, columns, onFilter, onTog
   }
 
   const ranked = [...unique.values()]
-    .filter((field) => 'envelope' !== field.kind || ['level', 'stream', 'host'].includes(field.name))
-    .filter((field) => field.name.toLowerCase().includes(filter.toLowerCase()))
+    .filter((field) => 'envelope' !== field.kind || ENVELOPE.includes(field.name))
     .sort((a, b) => {
       const favour = Number(FAVOURED.includes(b.name)) - Number(FAVOURED.includes(a.name))
       if (favour) return favour
-      return (b.occurrences ?? 0) - (a.occurrences ?? 0) || a.name.localeCompare(b.name)
+      // By what is in the current result set, where that is known: ranking a
+      // sidebar by lifetime volume puts a field with nothing in the window
+      // at the top, which is the opposite of helpful.
+      return weight(b) - weight(a) || a.name.localeCompare(b.name)
     })
+
+  /*!
+   * Two sections, promoted above envelope.
+   *
+   * They are two different kinds of fact. The envelope is the shape rTail
+   * imposes and is the same on every install; the promoted keys are whatever
+   * this system happens to log, which is the part worth reading. Labelling
+   * them says which is which without a legend.
+   */
+  const promoted = ranked.filter((field) => 'envelope' !== field.kind)
+  const envelope = ranked.filter((field) => 'envelope' === field.kind)
+
+  const group = (field: Field) => (
+    <FieldGroup
+      key={field.name}
+      field={field}
+      params={params}
+      open={open.includes(field.name)}
+      active={active.includes(field.name)}
+      column={columns.includes(field.name)}
+      onToggleColumn={() => onToggleColumn(field.name)}
+      onToggle={() =>
+        setOpen((current) =>
+          current.includes(field.name)
+            ? current.filter((name) => name !== field.name)
+            : [...current, field.name]
+        )
+      }
+      onFilter={onFilter}
+    />
+  )
 
   return (
     <aside class="explorer">
-      <div class="explorer-title">Log fields</div>
-
-      <div class="explorer-search">
-        <input
-          type="text"
-          placeholder="Filter fields"
-          aria-label="Filter fields"
-          value={filter}
-          onInput={(event) => setFilter(event.currentTarget.value)}
-        />
+      <div class="explorer-title">
+        <span>fields</span>
+        <span class="explorer-gap" />
+        <span class="explorer-total">{ranked.length}</span>
       </div>
+
+      <Severities params={params} onFilter={onFilter} />
 
       <div class="explorer-list">
         {0 === ranked.length && <p class="explorer-empty">No fields yet</p>}
 
-        {ranked.map((field) => (
-          <FieldGroup
-            key={field.name}
-            field={field}
-            params={params}
-            open={open.includes(field.name)}
-            active={active.includes(field.name)}
-            column={columns.includes(field.name)}
-            onToggleColumn={() => onToggleColumn(field.name)}
-            onToggle={() =>
-              setOpen((current) =>
-                current.includes(field.name)
-                  ? current.filter((name) => name !== field.name)
-                  : [...current, field.name]
-              )
-            }
-            onFilter={onFilter}
-          />
-        ))}
+        {promoted.length > 0 && <h4 class="explorer-section">Promoted</h4>}
+        {promoted.map(group)}
+
+        {envelope.length > 0 && <h4 class="explorer-section">Envelope</h4>}
+        {envelope.map(group)}
       </div>
     </aside>
+  )
+}
+
+/*!
+ * The severity breakdown, pinned above the field list.
+ *
+ * Level is the one field everybody checks first, and checking it by expanding
+ * a row in a list of forty is three interactions for the question the screen
+ * opens with. Pinned, with a share bar each, it answers "how bad is it" before
+ * anything is clicked — and each row is still a filter.
+ */
+function Severities({
+  params,
+  onFilter
+}: {
+  params: Params
+  onFilter: (field: string, value: string, negated: boolean) => void
+}) {
+  const [values, setValues] = useState<FieldValue[]>([])
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    api
+      .fields({ ...params, field: 'level', top: 5 }, controller.signal)
+      .then((response) =>
+        setValues(
+          [...response.values].sort((a, b) => {
+            const rank = (value: FieldValue) => {
+              const at = SEVERITY.indexOf(value.value.toUpperCase())
+              return at < 0 ? SEVERITY.length : at
+            }
+
+            return rank(a) - rank(b) || b.count - a.count
+          })
+        )
+      )
+      .catch(() => setValues([]))
+
+    return () => controller.abort()
+  }, [params.q, params.lang, params.stream, params.from, params.to])
+
+  if (0 === values.length) return null
+
+  return (
+    <div class="explorer-levels">
+      {values.map((value) => (
+        <button
+          key={value.value}
+          class={`explorer-level level-${value.value.toLowerCase()}`}
+          title={`Filter to level=${value.value}`}
+          onClick={() => onFilter('level', value.value, false)}
+        >
+          <span class="explorer-level-name">{value.value || '(none)'}</span>
+          <span class="explorer-level-count">{value.count.toLocaleString()}</span>
+          <span class="explorer-level-bar" style={{ '--share': `${value.share * 100}%` } as never} />
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -138,11 +237,48 @@ function FieldGroup({ field, params, open, active, column, onToggle, onToggleCol
   }, [open, field.name, params.q, params.stream, params.from, params.to])
 
   return (
-    <section class={`explorer-field ${open ? 'open' : ''} ${active ? 'active' : ''}`}>
+    <section class={`explorer-field ${open ? 'open' : ''} ${active ? 'active' : ''} ${column ? 'pinned' : ''}`}>
+      <button class="explorer-head" aria-expanded={open} onClick={onToggle}>
+        <span class="explorer-name">{field.name}</span>
+
+        {/*
+          The count is scoped to the query when the server could count it, and
+          falls back to the lifetime tally when it could not. Scoped is the
+          number the panel is actually asked for — a field with four million
+          lifetime records and none in the last ten minutes was reading as the
+          most interesting thing in the list. Zero is rendered rather than
+          hidden: "this field exists here and none of your matches have it" is
+          worth knowing, and it is why the field is at the bottom.
+
+          Envelope fields have no lifetime tally at all — they are on every
+          record by construction, so the catalog does not count them — so with
+          no scoped count either, the kind stands in rather than leaving half
+          the column blank, which reads as data failing to load.
+        */}
+        <span
+          class={`explorer-kind kind-${field.kind}`}
+          title={
+            undefined !== field.matches
+              ? `${field.matches.toLocaleString()} matching · ${field.occurrences.toLocaleString()} all time · ${field.kind}`
+              : field.occurrences
+                ? `${field.occurrences.toLocaleString()} records, all time · ${field.kind}`
+                : `on every record · ${field.kind}`
+          }
+        >
+          {undefined !== field.matches
+            ? formatCount(field.matches)
+            : field.occurrences
+              ? formatCount(field.occurrences)
+              : field.kind}
+        </span>
+      </button>
+
       {/*
-        The column toggle rides on the section header rather than hiding in a
-        menu: promoting a field is a thing you do while scanning the list of
-        fields, which is exactly when you are already looking at this row.
+        Pinning a field as a column is an action on the row, so it appears on
+        the row — on hover, or permanently once the column is pinned. It used
+        to sit in a gutter of its own in front of every name, which indented
+        the whole list past an empty square and read as a checkbox nobody had
+        ever ticked.
       */}
       <Button
         variant="icon"
@@ -154,34 +290,6 @@ function FieldGroup({ field, params, open, active, column, onToggle, onToggleCol
       >
         ⊞
       </Button>
-
-      <button class="explorer-head" aria-expanded={open} onClick={onToggle}>
-        <span class="explorer-name">{field.name}</span>
-
-        {/*
-          The count, not the type — which is what the real panel shows, and it
-          is the more useful of the two here: the type is already in the
-          autocomplete, whereas "how much of this is there" is the question the
-          panel exists to answer. The type stays available on hover.
-        */}
-        {/*
-          Envelope fields carry no occurrence count — they are on every record
-          by construction, so the catalog does not tally them. Falling back to
-          the kind keeps the column from being blank for half the list, which
-          reads as data failing to load rather than as a count that does not
-          apply.
-        */}
-        <span
-          class={`explorer-kind kind-${field.kind}`}
-          title={
-            field.occurrences
-              ? `${field.occurrences.toLocaleString()} records, all time · ${field.kind}`
-              : `on every record · ${field.kind}`
-          }
-        >
-          {field.occurrences ? field.occurrences.toLocaleString() : field.kind}
-        </span>
-      </button>
 
       {open && (
         <div class="explorer-values">

@@ -17,3 +17,6 @@ web/dist/*
 # Durable storage for `make dev`: parquet files and the catalog, rebuilt
 # from the demo streams on every run and never worth keeping.
 .dev-data
+
+# Playwright's run report, written wherever the browser tests are run from.
+test-results

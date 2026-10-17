@@ -16,7 +16,6 @@ import { absolute, formatStamp, type Range } from '../lib/timerange.js'
 
 interface Props {
   collapsed: boolean
-  onToggle: () => void
   buckets: Bucket[]
   intervalMs: number
   range: { from: Date; to: Date }
@@ -35,7 +34,7 @@ function levelClass(level: string): string {
   return level.toLowerCase()
 }
 
-export function Histogram({ collapsed, onToggle, buckets, intervalMs, range, loading, onSelect }: Props) {
+export function Histogram({ collapsed, buckets, intervalMs, range, loading, onSelect }: Props) {
   const surface = useRef<HTMLDivElement>(null)
   const dragging = useRef<{ from: number; to: number } | null>(null)
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null)
@@ -48,10 +47,6 @@ export function Histogram({ collapsed, onToggle, buckets, intervalMs, range, loa
     [buckets]
   )
 
-  const total = useMemo(
-    () => buckets.reduce((sum, bucket) => sum + bucket.total, 0),
-    [buckets]
-  )
 
   /*!
    * Bars are positioned by timestamp rather than by index.
@@ -147,36 +142,32 @@ export function Histogram({ collapsed, onToggle, buckets, intervalMs, range, loa
   const hovered = null !== hover ? bars.find((bar) => hover * 100 >= bar.left && hover * 100 < bar.left + bar.width) : undefined
 
   /*!
-   * Collapsed to its header by default, as the reference is.
+   * Open by default, and folded from the top bar rather than from a header of
+   * its own.
    *
-   * The chart is the best way to find a spike and the worst use of eighty
-   * pixels when you already know what you are looking for — which is most
-   * visits. Tucking it into a header keeps it one click away without spending
-   * a tenth of the window on it, and the count stays on the bar so the header
-   * still answers "how much matched".
+   * It had a disclosure row above it — a strip of chrome whose only job was to
+   * say "Timeline" and hold a caret, permanently spending a line of the window
+   * to describe the thing directly below it. The toggle belongs with the other
+   * view switches in the top bar, which leaves the chart itself to be chart.
    */
-  return (
-    <div class={`histogram ${collapsed ? 'collapsed' : ''} ${loading ? 'loading' : ''}`}>
-      <button class="histogram-header" aria-expanded={!collapsed} onClick={onToggle}>
-        <i class="histogram-caret" aria-hidden="true" />
-        <span class="histogram-title">Timeline</span>
-        <span class="histogram-summary">
-          {total.toLocaleString()} {1 === total ? 'event' : 'events'}
-        </span>
-      </button>
+  if (collapsed) return null
 
-      {!collapsed && (
-      <div class="histogram-body">
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((at) => timeAt(at))
+
+  return (
+    <div class={`histogram ${loading ? 'loading' : ''}`}>
       {/*
-        A scale, so the chart says how big the spike actually is. Three rules
-        and one number is the least that turns a row of bars into something you
-        can read a quantity off — without it the tallest bar means "the most",
-        and nothing more.
+        One line of scale, in words: what is being counted, over what bucket,
+        and how tall the tallest bar is. It replaced a three-number axis down
+        the left edge, which cost a gutter to say the same thing less clearly —
+        the number anyone reads off a histogram is the peak.
       */}
-      <div class="histogram-scale" aria-hidden="true">
-        <span>{peak.toLocaleString()}</span>
-        <span>{Math.round(peak / 2).toLocaleString()}</span>
-        <span>0</span>
+      <div class="histogram-head">
+        <span class="histogram-metric">count / {bucketLabel(intervalMs)}</span>
+        <span class="histogram-dot" aria-hidden="true">·</span>
+        <span class="histogram-hint">drag to zoom</span>
+        <span class="histogram-gap" />
+        <span class="histogram-peak">peak {peak.toLocaleString()}</span>
       </div>
 
       <div
@@ -186,10 +177,6 @@ export function Histogram({ collapsed, onToggle, buckets, intervalMs, range, loa
         onMouseMove={onMouseMove}
         onMouseLeave={() => setHover(null)}
       >
-        <div class="histogram-grid" aria-hidden="true">
-          <i /><i /><i />
-        </div>
-
         {bars.map((bar) => (
           <div
             key={bar.bucket.ts}
@@ -221,18 +208,35 @@ export function Histogram({ collapsed, onToggle, buckets, intervalMs, range, loa
         )}
       </div>
 
-      <div class="histogram-axis">
-        <span>{formatStamp(range.from)}</span>
-        <span class="histogram-count">
-          {Math.round(intervalMs / 1000)}s buckets
-        </span>
-        <span>{formatStamp(range.to)}</span>
+      {/*
+        Five evenly spaced ticks rather than the two ends. The window is the
+        thing being navigated, and reading "about a third of the way along" off
+        two labels is arithmetic nobody should be doing mid-incident.
+      */}
+      <div class="histogram-axis" aria-hidden="true">
+        {ticks.map((at, index) => (
+          <span key={index}>{formatStamp(at)}</span>
+        ))}
       </div>
-      </div>
-      )}
     </div>
   )
 }
+
+/*!
+ * The bucket width, as a human says it.
+ *
+ * The server picks a bucket from the window, so this is read, never chosen —
+ * and "count / 1m" is the sentence that makes a bar height mean something.
+ */
+function bucketLabel(ms: number): string {
+  const seconds = Math.max(1, Math.round(ms / 1000))
+
+  if (seconds < 60) return `${seconds}s`
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`
+  if (seconds < 86400) return `${Math.round(seconds / 3600)}h`
+  return `${Math.round(seconds / 86400)}d`
+}
+
 
 /** Splits a bucket into stacked shares, worst on top. */
 function stack(bucket: Bucket): { level: string; share: number }[] {

@@ -637,3 +637,100 @@ func niceInterval(d time.Duration) time.Duration {
 
 	return steps[len(steps)-1]
 }
+
+/*!
+ * FieldCounts counts how many matching records carry each of the given fields.
+ *
+ * The explorer's per-field number used to come straight from the catalog,
+ * which tallies every record ever written. That is a different question from
+ * the one the sidebar is asked: "how much of this is in what I am looking at".
+ * A field with four million lifetime occurrences and none in the last ten
+ * minutes read as the most interesting thing on the list.
+ *
+ * One statement with one count() per field rather than a query each: the file
+ * set and the predicate are identical for all of them, so the expensive part —
+ * opening and filtering the Parquet — is done once.
+ */
+func (e *Engine) FieldCounts(ctx context.Context, req Request, fields []string) (map[string]int64, error) {
+	if 0 == len(fields) {
+		return map[string]int64{}, nil
+	}
+
+	plan, err := e.Plan(ctx, req.Stream, req.From, req.To, append(e.referenced(req), fields...))
+	if nil != err {
+		return nil, err
+	}
+
+	predicate, err := e.predicate(req, plan)
+	if nil != err {
+		return nil, err
+	}
+
+	where := []string{"ts >= ? AND ts <= ?"}
+	args := []any{plan.From, plan.To}
+
+	if "" != req.Stream {
+		where = append(where, "stream = ?")
+		args = append(args, req.Stream)
+	}
+
+	where = append(where, predicate.Expr)
+	args = append(args, predicate.Args...)
+
+	/*!
+	 * Fields the resolver cannot name are skipped rather than counted as
+	 * zero. "Not in any file this plan reads" and "in the files and never
+	 * set" are both legitimately zero, but a field the resolver rejects is
+	 * one we cannot ask about at all, and reporting that as zero would be
+	 * asserting something we did not measure.
+	 */
+	projections := make([]string, 0, len(fields))
+	names := make([]string, 0, len(fields))
+
+	for _, field := range fields {
+		expr, _, ok := plan.Resolver.Resolve(field)
+		if !ok {
+			continue
+		}
+
+		projections = append(projections, fmt.Sprintf("count(%s)", expr))
+		names = append(names, field)
+	}
+
+	if 0 == len(names) {
+		return map[string]int64{}, nil
+	}
+
+	statement := fmt.Sprintf(
+		"SELECT %s FROM %s WHERE %s",
+		strings.Join(projections, ", "),
+		e.Source(plan),
+		strings.Join(where, "\n\t\t  AND "),
+	)
+
+	rows, done, err := e.query(ctx, statement, args...)
+	if nil != err {
+		return nil, err
+	}
+	defer done()
+
+	counts := make(map[string]int64, len(names))
+
+	if rows.Next() {
+		cells := make([]int64, len(names))
+		dest := make([]any, len(names))
+		for i := range cells {
+			dest[i] = &cells[i]
+		}
+
+		if err := rows.Scan(dest...); nil != err {
+			return nil, err
+		}
+
+		for i, name := range names {
+			counts[name] = cells[i]
+		}
+	}
+
+	return counts, rows.Err()
+}

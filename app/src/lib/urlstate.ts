@@ -40,10 +40,11 @@ export const DEFAULT_STATE: ViewState = {
   live: true,
   columns: [],
   lang: 'rql',
-  // Tucked away by default, as the reference does it: the chart is the best
-  // way to find a spike and the worst use of eighty pixels once you already
-  // know what you are looking for.
-  timeline: false
+  // Open by default. It is the navigation — a spike is something you see and
+  // drag across rather than something you have to already suspect — so the
+  // screen that answers "what happened" has it on. It still folds away, and
+  // the URL remembers that it was folded.
+  timeline: true
 }
 
 export function read(): ViewState {
@@ -69,7 +70,7 @@ export function read(): ViewState {
     // stays readable — `cols=service,latency_ms` says what it is at a glance.
     columns: (params.get('cols') ?? '').split(',').map((name) => name.trim()).filter(Boolean),
     lang: 'sql' === params.get('lang') ? 'sql' : 'rql',
-    timeline: '1' === params.get('chart')
+    timeline: '0' !== params.get('chart')
   }
 }
 
@@ -82,7 +83,7 @@ export function write(state: ViewState): void {
   if (state.range.to) params.set('to', state.range.to)
   if (!state.live) params.set('live', 'false')
   if (state.columns.length) params.set('cols', state.columns.join(','))
-  if (state.timeline) params.set('chart', '1')
+  if (!state.timeline) params.set('chart', '0')
   if ('sql' === state.lang) params.set('lang', 'sql')
 
   const next = `#/${params}`

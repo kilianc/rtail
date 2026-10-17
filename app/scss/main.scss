@@ -233,7 +233,7 @@
     display: flex;
     flex-shrink: 0;
     gap: var(--space-1);
-    margin-inline-start: auto;
+    padding-inline-start: var(--space-2);
   }
 
   .query-row {
@@ -557,12 +557,24 @@
     }
   }
 
-  .topbar-scanned {
-    color: var(--faint-foreground);
+  .topbar-gap { flex: 1 1 auto; }
+
+  // How much log there is, beside the links out.
+  .topbar-store {
+    align-items: baseline;
+    color: var(--muted-foreground);
+    display: flex;
     flex-shrink: 0;
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
+    gap: var(--space-1);
+
+    // It is the first thing to go on a narrow window: it is context, and the
+    // controls beside it are the job.
+    @media (max-width: 900px) { display: none; }
   }
+
+  .topbar-dot { color: var(--faint-foreground); }
 
   // ** the command bar — the hero control, and sized like one **
 
@@ -722,16 +734,23 @@
 
   .command-examples {
     display: flex;
-    gap: var(--space-3);
+    gap: var(--space-2);
     min-inline-size: 0;
     overflow: hidden;
 
     // An example is as long as it is; the row elides rather than wraps.
+    //
+    // Dashed, because these are not commands — they are text that will be
+    // written into the editor above. A solid border would make them read as
+    // three more buttons in a footer that already has four.
     .btn {
+      border: var(--hairline) dashed var(--border);
       min-inline-size: 0;
       overflow: hidden;
-      padding-inline: 0;
+      padding-inline: var(--space-2);
       text-overflow: ellipsis;
+
+      &:hover { border-color: var(--border-strong); }
     }
   }
 
@@ -947,117 +966,47 @@
 
   // ** histogram — the navigation, not decoration **
 
-  // Two columns: a narrow scale, then the plot. Both rows of the axis line up
-  // under the plot rather than under the whole panel.
   /*!
-   * The timeline header — the whole panel when collapsed.
-   */
-  .histogram-header {
-    align-items: center;
-    color: var(--foreground);
-    display: flex;
-    font-size: var(--text-sm);
-    gap: var(--space-2);
-    inline-size: 100%;
-    min-block-size: var(--row-h);
-    padding-inline: var(--space-2);
-
-    &:hover { background: var(--subtle); }
-  }
-
-  .histogram-caret {
-    color: var(--faint-foreground);
-    display: flex;
-
-    &::after { @include chevron; }
-  }
-
-  .histogram:not(.collapsed) .histogram-caret::after { transform: rotate(45deg); }
-
-  .histogram-summary {
-    color: var(--muted-foreground);
-    font-size: var(--text-sm);
-    font-variant-numeric: tabular-nums;
-    margin-inline-start: auto;
-  }
-
-  /*!
-   * The scale sits in its own narrow track, the chart takes the rest.
+   * The chart, and nothing around it.
    *
-   * Declared rather than left to `grid-auto-flow`, which had been sizing the
-   * first track to whatever it liked and pushing the chart into the right half
-   * of the panel with an empty gutter beside it. The axis spans both tracks so
-   * its end labels line up with the ends of the bars.
-   */
-  .histogram-body {
-    column-gap: var(--space-2);
-    display: grid;
-    grid-template-columns: auto 1fr;
-    padding: 0 var(--space-2) var(--space-1);
-    row-gap: var(--space-1);
-  }
-
-  .histogram-axis { grid-column: 2; }
-
-  /*!
-   * One column, not two.
-   *
-   * It was `auto 1fr`, which put the chart in the second track — beside the
-   * "Timeline" header rather than under it, with the width of the label as a
-   * gap down the left. Collapsed that looked deliberate, because the second
-   * track was empty; expanded it looked broken.
+   * It had a disclosure header of its own — a row whose entire content was
+   * the word "Timeline" and a caret — and a three-number scale down the left
+   * edge. Both went: the fold moved to the top bar beside the other view
+   * switches, and the scale became one word of prose above the plot, which is
+   * the only number anyone reads off a histogram anyway.
    */
   .histogram {
     background: var(--card);
     border-block-end: var(--hairline) solid var(--border);
-    display: grid;
-    gap: var(--space-1);
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-2) var(--space-3) var(--space-3);
     transition: opacity .16s ease;
 
     &.loading { opacity: .45; }
   }
 
-  // The y scale: three numbers against the three gridlines.
-  .histogram-scale {
-    block-size: var(--chart-h);
-    color: var(--faint-foreground);
+  // What is counted, over what bucket, and how tall the tallest bar is.
+  .histogram-head {
+    align-items: baseline;
+    color: var(--muted-foreground);
     display: flex;
-    flex-direction: column;
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
+    gap: var(--space-2);
+    padding-block-end: var(--space-1);
+  }
+
+  .histogram-dot { color: var(--faint-foreground); }
+  .histogram-gap { flex: 1 1 auto; }
+
+  .histogram-peak {
     font-variant-numeric: tabular-nums;
-    justify-content: space-between;
-    text-align: end;
-    // Half a line, so each number sits centred on its rule instead of resting
-    // on top of it.
-    transform: translateY(-0.45em);
   }
 
   .histogram-surface {
     block-size: var(--chart-h);
+    border-block-end: var(--hairline) solid var(--border);
     cursor: crosshair;
     position: relative;
     user-select: none;
-  }
-
-  // Three rules behind the bars: top, middle, and the baseline. They are what
-  // let a spike be read as a quantity rather than just as "the tall one".
-  .histogram-grid {
-    display: flex;
-    flex-direction: column;
-    inset: 0;
-    justify-content: space-between;
-    pointer-events: none;
-    position: absolute;
-
-    i {
-      background: var(--chart-grid);
-      block-size: var(--hairline);
-      display: block;
-      inline-size: 100%;
-    }
-
-    i:last-child { background: var(--border); }
   }
 
   .histogram-bar {
@@ -1079,8 +1028,12 @@
     min-block-size: 2px;
     transition: filter .1s ease;
 
+    // A line with no severity is still traffic, so it is drawn as traffic.
+    // It was the same grey as the gridlines, which made a stream that never
+    // sets a level look like an empty chart.
     &.level-none,
-    &.level-other,
+    &.level-other { background: var(--chart-bar); }
+
     &.level-trace,
     &.level-debug { background: var(--border); }
 
@@ -1132,14 +1085,12 @@
 
   .histogram-axis {
     color: var(--faint-foreground);
-    grid-column: 2;
     display: flex;
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     justify-content: space-between;
+    padding-block-start: var(--space-1);
   }
-
-  .histogram-count { color: var(--muted-foreground); }
 
   // ** field explorer **
 
@@ -1156,23 +1107,98 @@
     align-items: center;
     block-size: var(--bar-h);
     border-block-end: var(--hairline) solid var(--border);
-    color: var(--foreground);
+    color: var(--muted-foreground);
     display: flex;
     font-size: var(--text-md);
-    font-weight: 500;
-    padding-inline: var(--space-4);
+    gap: var(--space-2);
+    padding-inline: var(--space-3);
   }
 
-  .explorer-search {
+  .explorer-gap { flex: 1 1 auto; }
+
+  .explorer-total {
+    color: var(--muted-foreground);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /*!
+   * The severity breakdown, pinned above the list.
+   *
+   * It is the one distribution every visit starts with, and it was three
+   * clicks down a list of forty fields. Each row is a count and a share bar,
+   * and the whole row is the filter.
+   */
+  .explorer-levels {
     border-block-end: var(--hairline) solid var(--border);
-    padding-inline: var(--space-4);
+    display: grid;
+    padding: var(--space-2) var(--space-3);
+    row-gap: var(--space-1);
+  }
 
-    input {
-      @include field(var(--bar-h));
-      inline-size: 100%;
+  .explorer-level {
+    align-items: baseline;
+    column-gap: var(--space-2);
+    display: grid;
+    font-size: var(--text-sm);
+    grid-template-columns: 1fr auto;
+    text-align: start;
 
-      &:focus { @include field-focus; }
+    &:hover .explorer-level-name { color: var(--foreground); }
+  }
+
+  .explorer-level-name {
+    color: var(--muted-foreground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: color .12s ease;
+  }
+
+  .explorer-level-count {
+    color: var(--muted-foreground);
+    font-variant-numeric: tabular-nums;
+  }
+
+  // The bar spans both tracks under its label, so the two numbers stay
+  // aligned and the proportion is read off the width rather than the digits.
+  .explorer-level-bar {
+    background: var(--border);
+    block-size: 3px;
+    border-radius: var(--radius-xs);
+    grid-column: 1 / -1;
+    margin-block-start: 2px;
+    position: relative;
+
+    &::after {
+      background: currentcolor;
+      border-radius: inherit;
+      content: "";
+      inset: 0;
+      inline-size: var(--share, 0%);
+      position: absolute;
     }
+  }
+
+  // Severity colours the row, which is why the bar can use currentcolor.
+  .explorer-level {
+    &.level-error, &.level-critical, &.level-alert,
+    &.level-emergency, &.level-fatal { color: var(--level-error); }
+    &.level-warn { color: var(--level-warn); }
+    &.level-info, &.level-notice { color: var(--primary); }
+    &.level-debug, &.level-trace { color: var(--faint-foreground); }
+  }
+
+  .explorer-level-name { color: currentcolor; }
+
+  // The two kinds of key, labelled. The envelope is rTail's own shape and the
+  // same on every install; the promoted keys are whatever this system logs.
+  .explorer-section {
+    color: var(--faint-foreground);
+    font-size: var(--text-xs);
+    font-weight: 400;
+    letter-spacing: .06em;
+    padding: var(--space-2) var(--space-3) var(--space-1);
+    text-transform: uppercase;
   }
 
   .explorer-list {
@@ -1203,7 +1229,7 @@
   .explorer-column:focus-visible { opacity: 1; }
 
   // The header and its toggle share a row.
-  .explorer-field { display: grid; grid-template-columns: var(--space-5) 1fr; }
+  .explorer-field { display: grid; grid-template-columns: 1fr var(--space-5); }
   .explorer-values { grid-column: 1 / -1; }
 
   .explorer-head {
@@ -1215,23 +1241,27 @@
     font-size: var(--text-md);
     gap: var(--space-2);
     inline-size: 100%;
-    padding-inline: 0 var(--space-2);
+    padding-inline: var(--space-3) var(--space-2);
     text-align: start;
     transition: background-color .12s ease;
 
     &:hover { background: var(--subtle); }
 
-    // The same chevron the log rows use, in its own fixed cell so the labels
-    // beside it start on one line whether a section is open or shut.
-    &::before {
-      @include chevron;
-      color: var(--faint-foreground);
-      flex-shrink: 0;
-      margin-inline-end: var(--space-1);
-    }
   }
 
-  .explorer-field.open .explorer-head::before { transform: rotate(45deg); }
+  // Open is said by the values being there, and by the row keeping the
+  // hover wash. A caret in front of every name cost a gutter down the whole
+  // list to decorate a row whose disclosure is already visible.
+  .explorer-field.open .explorer-head { background: var(--subtle); }
+
+  // Mentioned by the query: the one row on the list the query is about.
+  .explorer-field.active .explorer-head {
+    background: var(--primary-wash);
+    box-shadow: inset 2px 0 0 var(--primary);
+  }
+
+  .explorer-field.active .explorer-name,
+  .explorer-field.active .explorer-kind { color: var(--primary); }
 
   .explorer-name {
     color: var(--foreground);
@@ -1242,7 +1272,6 @@
     white-space: nowrap;
   }
 
-  .explorer-field.active .explorer-name { color: var(--foreground); font-weight: 550; }
 
   .explorer-kind {
     color: var(--faint-foreground);
@@ -1271,8 +1300,8 @@
     gap: var(--space-2);
     min-inline-size: 0;
     overflow: hidden;
-    // Indented past the section caret, so values read as children of it.
-    padding-inline: var(--space-6) var(--space-2);
+    // Indented past the field name, so values read as children of it.
+    padding-inline: var(--space-5) var(--space-2);
     position: relative;
     text-align: start;
 
@@ -1317,11 +1346,41 @@
   .results {
     background: var(--card);
     display: grid;
-    grid-template-rows: auto 1fr;
+    // Stats, columns, rows, footer. The middle track is the only one that
+    // grows, so the two chrome rows stay put while the list scrolls.
+    grid-template-rows: auto auto 1fr auto;
     min-block-size: 0;
     overflow: hidden;
     position: relative;
   }
+
+  /*!
+   * What the last query cost, and what came back.
+   *
+   * A search interface that hides how much work it just did teaches nobody
+   * why one query is instant and another is not — so the file count, the
+   * bytes and the milliseconds are on the screen, next to the number of
+   * matches they bought.
+   */
+  .results-stats,
+  .results-footer {
+    align-items: center;
+    background: var(--card);
+    color: var(--muted-foreground);
+    display: flex;
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    gap: var(--space-2);
+    min-block-size: var(--bar-h);
+    padding-inline: var(--space-3);
+  }
+
+  .results-stats { border-block-end: var(--hairline) solid var(--border); }
+  .results-footer { border-block-start: var(--hairline) solid var(--border); }
+
+  .results-matched strong { color: var(--foreground); font-weight: 500; }
+  .results-dot { color: var(--faint-foreground); }
+  .results-gap { flex: 1 1 auto; }
 
   // The sticky column header. Same grid as a row, so the columns line up
   // without either side hard-coding a width.
@@ -1339,7 +1398,7 @@
     display: grid;
     gap: var(--space-2);
     // Set on .results, so both read one value and cannot fall out of step.
-    grid-template-columns: var(--row-template, var(--caret-w) var(--sev-w) var(--gutter-w) 1fr);
+    grid-template-columns: var(--row-template, var(--caret-w) var(--gutter-w) var(--sev-w) 1fr);
     padding-inline: var(--space-2);
   }
 
@@ -1504,6 +1563,13 @@
   // ** one row — a Material table row **
 
   .row {
+    // A hairline under every row, a shade below the panel borders.
+    //
+    // Without it the list is one undifferentiated block of text and a
+    // wrapped summary silently reads as two events. It is deliberately the
+    // --muted grey rather than --border: the rule has to separate lines
+    // without drawing a table.
+    border-block-end: var(--hairline) solid var(--muted);
     cursor: pointer;
     font-family: var(--mono);
     font-size: var(--mono-size);
@@ -1639,11 +1705,51 @@
     cursor: default;
     display: grid;
     gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
-    padding-inline-start: calc(var(--space-3) + var(--space-4) + var(--space-6) + var(--space-6));
+    padding: var(--space-2) var(--space-3) var(--space-3);
+    // Indented one caret-width, so the detail hangs off the row's disclosure
+    // rather than off the summary column. It used to start under the summary
+    // — four columns in from the left — which left a third of the width empty
+    // and pushed the promoted keys off the edge of a narrow pane.
+    padding-inline-start: calc(var(--caret-w) + var(--space-3));
   }
 
-  .row-fields { display: grid; }
+  /*!
+   * The expanded row, in two equal columns.
+   *
+   * Two tracks rather than a flex-wrap: equal halves keep the two lists
+   * reading as a pair, where flexing to content sent the promoted keys to
+   * the far edge of a wide pane with a hand-span of nothing between them.
+   * Below 640px the second track drops under the first instead of both being
+   * squeezed too narrow to read a trace id in.
+   */
+  .row-detail-grid {
+    display: grid;
+    gap: var(--space-3) var(--space-6);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+
+    @media (max-width: 640px) { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  .row-fields {
+    display: grid;
+    min-inline-size: 0;
+  }
+
+  .row-fields-head {
+    color: var(--faint-foreground);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    letter-spacing: var(--tracking-wide);
+    margin: 0 0 var(--space-1) 0;
+    padding-inline: var(--space-2);
+    text-transform: uppercase;
+  }
+
+  .row-fields-empty {
+    color: var(--faint-foreground);
+    margin: 0;
+    padding-inline: var(--space-2);
+  }
 
   .leaf {
     display: grid;

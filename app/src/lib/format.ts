@@ -125,3 +125,36 @@ export function buildFilter(pattern: string): (line: Line) => boolean {
     return () => true
   }
 }
+
+/*!
+ * Bytes, as a sentence rather than a number.
+ *
+ * The scan cost is reported so a slow query explains itself, and "41 MB" does
+ * that where "43,008,000" does not — nobody counts digits mid-incident.
+ */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1024
+  let unit = 0
+
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
+}
+
+/*!
+ * A count, abbreviated — 1.2k, 4.1M.
+ *
+ * The explorer's count column is eight characters wide at most, and a field
+ * with four million records has to fit in it beside its name.
+ */
+export function formatCount(value: number): string {
+  if (value < 1000) return String(value)
+  if (value < 1_000_000) return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}k`
+  return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}M`
+}

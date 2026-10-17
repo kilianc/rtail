@@ -134,6 +134,23 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 		"streams": len(streams),
 	}
 
+	/*!
+	 * What is in the store, as three numbers.
+	 *
+	 * The UI prints them in the top bar, which is the only place anybody is
+	 * told how much log they actually have. It is one indexed aggregate over
+	 * the catalog, not a scan, so it costs nothing to ask on a timer.
+	 */
+	if nil != s.opts.Catalog {
+		if stats, err := s.opts.Catalog.Stats(r.Context()); nil == err {
+			payload["store"] = map[string]int64{
+				"files": stats.Files,
+				"rows":  stats.Rows,
+				"bytes": stats.Bytes,
+			}
+		}
+	}
+
 	if nil != s.opts.UDP {
 		payload["udp"] = map[string]uint64{
 			"received": s.opts.UDP.Received.Load(),

@@ -12,6 +12,8 @@
 import type { ComponentChildren } from 'preact'
 import { useRef, useState } from 'preact/hooks'
 import { FONT_FAMILY_COUNT, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../lib/prefs.js'
+import type { Store } from '../lib/api.js'
+import { formatBytes, formatCount } from '../lib/format.js'
 import type { Prefs, Theme } from '../lib/types.js'
 import { Button } from './Button.js'
 import { Popover } from './Popover.js'
@@ -21,15 +23,19 @@ declare const __VERSION__: string
 interface Props {
   prefs: Prefs
   live: boolean
-  scanned: string
+  /** Whether the timeline is showing. */
+  timeline: boolean
+  /** What is in the store, for the readout. */
+  store: Store | null
   children?: ComponentChildren
   onChangePrefs: (patch: Partial<Prefs>) => void
   onToggleLive: () => void
+  onToggleTimeline: () => void
 }
 
 type OpenPanel = 'info' | 'settings' | null
 
-export function TopBar({ prefs, live, scanned, children, onChangePrefs, onToggleLive }: Props) {
+export function TopBar({ prefs, live, timeline, store, children, onChangePrefs, onToggleLive, onToggleTimeline }: Props) {
   const [open, setOpen] = useState<OpenPanel>(null)
   const infoRef = useRef<HTMLButtonElement>(null)
   const settingsRef = useRef<HTMLButtonElement>(null)
@@ -57,7 +63,32 @@ export function TopBar({ prefs, live, scanned, children, onChangePrefs, onToggle
             {live ? 'Live' : 'History'}
           </button>
 
-          {scanned && !live && <span class="topbar-scanned">{scanned}</span>}
+          {/*
+            The timeline's switch, beside the live switch, because they are
+            the same kind of control: what this window is showing. It used to
+            be a disclosure row above the chart, which spent a line of the
+            window saying the word "Timeline".
+          */}
+          <Button variant="outline" size="sm" on={timeline} onClick={onToggleTimeline}>
+            timeline
+          </Button>
+
+          <span class="topbar-gap" />
+
+          {/*
+            How much log there is. It is the only thing on this bar that is
+            about the install rather than the question being asked, which is
+            why it sits apart from the controls, next to the links out.
+          */}
+          {store && (
+            <span class="topbar-store">
+              {formatCount(store.rows)} lines
+              <span class="topbar-dot" aria-hidden="true">·</span>
+              {formatBytes(store.bytes)}
+              <span class="topbar-dot" aria-hidden="true">·</span>
+              {store.files.toLocaleString()} {1 === store.files ? 'file' : 'files'}
+            </span>
+          )}
 
           <div class="topbar-actions">
             <Button

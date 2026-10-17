@@ -267,7 +267,11 @@ func (s *Server) schema(w http.ResponseWriter, r *http.Request) {
 		Kind        string `json:"kind"`
 		Polymorphic bool   `json:"polymorphic,omitempty"`
 		Occurrences int64  `json:"occurrences"`
-		Stream      string `json:"stream"`
+		// Matches is how many records in the *current* query carry the key.
+		// Occurrences stays lifetime, because autocomplete wants to offer a
+		// key that exists even when the window on screen has none of it.
+		Matches *int64 `json:"matches,omitempty"`
+		Stream  string `json:"stream"`
 	}
 
 	fields := make([]fieldJSON, 0, len(keys)+len(envelopeFields))
@@ -315,6 +319,37 @@ func (s *Server) schema(w http.ResponseWriter, r *http.Request) {
 
 	for _, name := range order {
 		fields = append(fields, *merged[name])
+	}
+
+	/*!
+	 * Counted against the query on screen, when there is an engine to ask.
+	 *
+	 * This is one Parquet scan on top of the search the UI has already run,
+	 * and the alternative was a sidebar of lifetime totals beside a result set
+	 * of ten minutes — numbers answering a question nobody asked.
+	 *
+	 * Every field gets a number once the scan succeeds, including the ones the
+	 * resolver could not name: a key absent from every file this query reads
+	 * is carried by none of the matching records, so zero is measured rather
+	 * than assumed. A failed scan leaves `matches` off entirely instead, which
+	 * is the one case where the count is genuinely unknown — the lifetime
+	 * tallies are still true, so the response goes out without it rather than
+	 * erroring the sidebar away.
+	 */
+	if nil != s.opts.Engine {
+		names := make([]string, 0, len(fields))
+		for _, field := range fields {
+			names = append(names, field.Name)
+		}
+
+		if req, err := s.searchRequest(r); nil == err {
+			if counts, err := s.opts.Engine.FieldCounts(r.Context(), req, names); nil == err {
+				for i := range fields {
+					count := counts[fields[i].Name]
+					fields[i].Matches = &count
+				}
+			}
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"fields": fields})

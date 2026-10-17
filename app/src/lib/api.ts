@@ -19,6 +19,13 @@ export interface Scanned {
   to: string
 }
 
+/** The whole catalog, in three numbers. */
+export interface Store {
+  files: number
+  rows: number
+  bytes: number
+}
+
 export interface SearchResponse {
   records: WireLine[]
   cursor?: string
@@ -46,7 +53,10 @@ export interface Field {
   name: string
   kind: string
   polymorphic?: boolean
+  /** Every record ever written, across all time. Drives autocomplete. */
   occurrences: number
+  /** Records matching the query on screen. Absent when nothing counted it. */
+  matches?: number
   stream: string
 }
 
@@ -134,11 +144,15 @@ export const api = {
     return fetch(`/v1/fields?${query}`, { signal }).then(unwrap<{ values: FieldValue[] }>)
   },
 
-  schema: (stream: string | null, signal?: AbortSignal) => {
-    const query = new URLSearchParams()
-    if (stream) query.set('stream', stream)
-    return fetch(`/v1/schema?${query}`, { signal }).then(unwrap<{ fields: Field[] }>)
-  },
+  // Takes the full query, not just the stream: the key inventory is
+  // lifetime, but each key's `matches` is counted against what is on screen.
+  schema: (params: Params, signal?: AbortSignal) =>
+    get<{ fields: Field[] }>('/v1/schema', params, signal),
+
+  // What is in the store, for the top bar's readout. /healthz is open, so
+  // this is also how the UI knows the server is still there.
+  health: (signal?: AbortSignal) =>
+    fetch('/healthz', { signal }).then(unwrap<{ store?: Store }>),
 
   streams: (signal?: AbortSignal) =>
     fetch('/v1/streams', { signal }).then(unwrap<{ streams: string[] }>),

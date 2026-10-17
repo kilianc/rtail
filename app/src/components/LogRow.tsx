@@ -68,6 +68,10 @@ export function LogRow({ line, expanded, selected, active, needles, columns, onT
   const level = (line.level ?? '').toUpperCase()
   const clock = formatClock(line.timestamp)
 
+  const promoted = Object.entries(line.fields ?? {})
+    .filter(([key]) => !LIFTED.has(key))
+    .sort(([a], [b]) => a.localeCompare(b))
+
   return (
     <div
       class={`row ${expanded ? 'expanded' : ''} ${selected ? 'selected' : ''} level-${level.toLowerCase() || 'none'}`}
@@ -80,16 +84,16 @@ export function LogRow({ line, expanded, selected, active, needles, columns, onT
         */}
         <i class="row-caret" aria-hidden="true" />
 
-        <span class="row-level" title={level || undefined}>
-          <i class="row-chip" aria-hidden="true">{ABBREV[level] ?? (level ? level.slice(0, 3) : '—')}</i>
-          <span class="sr-only">{level || 'no severity'}</span>
-        </span>
-
         <time class="row-time" dateTime={new Date(line.timestamp).toISOString()}>
           {clock.date && <span class="row-date">{clock.date}</span>}
           {clock.time}
           <span class="row-ms">.{clock.ms}</span>
         </time>
+
+        <span class="row-level" title={level || undefined}>
+          <i class="row-chip" aria-hidden="true">{ABBREV[level] ?? (level ? level.slice(0, 3) : '—')}</i>
+          <span class="sr-only">{level || 'no severity'}</span>
+        </span>
 
         {/*
           Promoted columns sit between the timestamp and the summary, in the
@@ -109,21 +113,34 @@ export function LogRow({ line, expanded, selected, active, needles, columns, onT
 
       {expanded && (
         <div class="row-detail" onClick={(event) => event.stopPropagation()}>
-          <dl class="row-fields">
-            <Leaf
-              label="timestamp"
-              value={new Date(line.timestamp).toISOString()}
-              field="ts"
-              active={active}
-              onFilter={onFilter}
-              filterable={false}
-            />
+          {/*
+            Two columns, envelope on the left and promoted keys on the right,
+            because they are two different kinds of fact and were reading as
+            one undifferentiated list. The envelope is fixed and present on
+            every record; the promoted keys are whatever this line happened to
+            carry, which is the thing worth scanning. Side by side, the shape
+            of the record is legible at a glance — and on a narrow pane the
+            two stack rather than squeezing.
+          */}
+          <div class="row-detail-grid">
+            <dl class="row-fields">
+              <h5 class="row-fields-head">Envelope</h5>
 
-            <Leaf label="stream" value={line.streamid} field="stream" active={active} onFilter={onFilter} />
+              <Leaf
+                label="timestamp"
+                value={new Date(line.timestamp).toISOString()}
+                field="ts"
+                active={active}
+                onFilter={onFilter}
+                filterable={false}
+              />
 
-            {level && <Leaf label="level" value={level} field="level" active={active} onFilter={onFilter} />}
+              <Leaf label="stream" value={line.streamid} field="stream" active={active} onFilter={onFilter} />
 
-            {line.host && <Leaf label="host" value={line.host} field="host" active={active} onFilter={onFilter} />}
+              {level && <Leaf label="level" value={level} field="level" active={active} onFilter={onFilter} />}
+
+              {line.host && <Leaf label="host" value={line.host} field="host" active={active} onFilter={onFilter} />}
+            </dl>
 
             {/*
               Promoted keys the envelope already carries are skipped. A payload
@@ -133,20 +150,27 @@ export function LogRow({ line, expanded, selected, active, needles, columns, onT
               The envelope's is the one a query resolves to, so it is the one
               shown.
             */}
-            {Object.entries(line.fields ?? {})
-              .filter(([key]) => !LIFTED.has(key))
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([key, value]) => (
-                <Leaf
-                  key={key}
-                  label={key}
-                  field={key}
-                  value={value}
-                  active={active}
-                  onFilter={onFilter}
-                />
-              ))}
-          </dl>
+            <dl class="row-fields">
+              <h5 class="row-fields-head">Promoted columns</h5>
+
+              {promoted.length > 0 ? (
+                promoted.map(([key, value]) => (
+                  <Leaf
+                    key={key}
+                    label={key}
+                    field={key}
+                    value={value}
+                    active={active}
+                    onFilter={onFilter}
+                  />
+                ))
+              ) : (
+                // A plain-text line has none, and saying so beats an empty
+                // column that reads as something failing to load.
+                <p class="row-fields-empty">none — this line is not JSON</p>
+              )}
+            </dl>
+          </div>
 
           <div class="row-actions">
             <Button

@@ -208,6 +208,56 @@ func TestFieldValuesRankByFrequency(t *testing.T) {
 	}
 }
 
+/*!
+ * The explorer's per-field count is of the current query, not of all history,
+ * which is the whole reason FieldCounts exists rather than reading the
+ * catalog's lifetime tally.
+ */
+func TestFieldCountsAreScopedToTheQuery(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+	h.ingest(t, "s", []string{
+		`{"service":"api","region":"eu","msg":"a"}`,
+		`{"service":"api","msg":"b"}`,
+		`{"service":"worker","region":"us","msg":"c"}`,
+		`{"msg":"plain"}`,
+	})
+
+	all, err := h.engine.FieldCounts(ctx, request(""), []string{"service", "region", "msg"})
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 3 != all["service"] || 2 != all["region"] || 4 != all["msg"] {
+		t.Errorf("unfiltered = %+v, want service 3, region 2, msg 4", all)
+	}
+
+	filtered, err := h.engine.FieldCounts(ctx, request(`service="api"`), []string{"service", "region", "msg"})
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 2 != filtered["service"] || 1 != filtered["region"] || 2 != filtered["msg"] {
+		t.Errorf("filtered = %+v, want service 2, region 1, msg 2", filtered)
+	}
+}
+
+// A field no file carries is measured as zero rather than reported as unknown:
+// no matching record has it, which is what the sidebar is asking.
+func TestFieldCountsOnAnUnknownFieldIsZero(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+	h.ingest(t, "s", []string{`{"msg":"a"}`})
+
+	counts, err := h.engine.FieldCounts(ctx, request(""), []string{"nope"})
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 0 != counts["nope"] {
+		t.Errorf("counts = %+v, want zero", counts)
+	}
+}
+
 func TestFieldValuesOnAnUnknownFieldIsEmpty(t *testing.T) {
 	ctx := context.Background()
 

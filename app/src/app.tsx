@@ -19,7 +19,7 @@ import { Results } from './components/Results.js'
 import { StreamPicker } from './components/StreamPicker.js'
 import { TimeRange } from './components/TimeRange.js'
 import { TopBar } from './components/TopBar.js'
-import { api, QueryError, type Bucket, type Field, type Params } from './lib/api.js'
+import { api, QueryError, type Bucket, type Field, type Params, type Scanned, type Store } from './lib/api.js'
 import { connect, type Connection } from './lib/connection.js'
 import { formatLine } from './lib/format.js'
 import { loadPrefs, savePrefs } from './lib/prefs.js'
@@ -49,7 +49,8 @@ export function App() {
   const [cursor, setCursor] = useState<string | undefined>()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<{ message: string; position?: number } | null>(null)
-  const [scanned, setScanned] = useState<string>('')
+  const [scanned, setScanned] = useState<Scanned | null>(null)
+  const [store, setStore] = useState<Store | null>(null)
 
   /*!
    * Holding the feed.
@@ -186,6 +187,29 @@ export function App() {
     }
   }, [view.live, view.stream, view.query])
 
+  /*!
+   * How much log there is, on a slow timer.
+   *
+   * It is the one number that is about the install rather than the query, so
+   * it sits in the top bar and refreshes on its own — a minute is often
+   * enough, because the answer changes by compaction and ingest, not by
+   * anything the person is doing.
+   */
+  useEffect(() => {
+    const controller = new AbortController()
+
+    const load = () =>
+      api.health(controller.signal).then((response) => setStore(response.store ?? null)).catch(() => {})
+
+    load()
+    const timer = window.setInterval(load, 60_000)
+
+    return () => {
+      controller.abort()
+      window.clearInterval(timer)
+    }
+  }, [])
+
   // The stream list still has to arrive when the tail is not running.
   useEffect(() => {
     if (view.live) return
@@ -196,17 +220,21 @@ export function App() {
     return () => controller.abort()
   }, [view.live])
 
-  // Autocomplete needs the key inventory, which is per stream.
+  /*!
+   * Autocomplete needs the key inventory, which is per stream — and the
+   * explorer needs each key's count *within the current query*, which is why
+   * this re-runs on the query and the window too and not only on the stream.
+   */
   useEffect(() => {
     const controller = new AbortController()
 
     api
-      .schema(view.stream, controller.signal)
+      .schema(params, controller.signal)
       .then((response) => setFields(response.fields))
       .catch(() => setFields([]))
 
     return () => controller.abort()
-  }, [view.stream])
+  }, [params.q, params.lang, params.stream, params.from, params.to])
 
   /*!
    * runSearch replaces the result list with a page of history.
@@ -231,9 +259,7 @@ export function App() {
 
         setLines((current) => (append ? [...current, ...page] : page))
         setCursor(response.cursor)
-        setScanned(
-          `${response.scanned.files} ${1 === response.scanned.files ? 'file' : 'files'} · ${response.scanned.millis}ms`
-        )
+        setScanned(response.scanned)
       } catch (err) {
         if (controller.signal.aborted) return
 
@@ -377,9 +403,11 @@ export function App() {
       <TopBar
         prefs={prefs}
         live={view.live}
-        scanned={scanned}
+        timeline={view.timeline}
+        store={store}
         onChangePrefs={(patch) => setPrefs((current) => ({ ...current, ...patch }))}
         onToggleLive={toggleLive}
+        onToggleTimeline={() => setView((current) => ({ ...current, timeline: !current.timeline }))}
       >
         <StreamPicker
           streams={streams}
@@ -420,7 +448,6 @@ export function App() {
 
       <Histogram
         collapsed={!view.timeline}
-        onToggle={() => setView((current) => ({ ...current, timeline: !current.timeline }))}
         buckets={buckets}
         intervalMs={interval}
         range={resolved}
@@ -442,6 +469,7 @@ export function App() {
           lines={lines}
           live={view.live}
           loading={loading}
+          scanned={scanned}
           active={active}
           needles={needles}
           columns={view.columns}
