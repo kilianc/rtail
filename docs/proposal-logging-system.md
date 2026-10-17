@@ -481,19 +481,32 @@ because the reasoning explains why the code looks the way it does.
    build matrix, and a glibc base image instead of distroless.
 2. **Preact + compat, or move to React 19?** *Preact.* Low stakes, and it
    stayed.
-3. **Licence.** *AGPL-3.0*, applied in `3e8804c`, and kept.
+3. **Licence.** *Apache-2.0.* v1 was MIT, `3e8804c` made v2 AGPL-3.0, and
+   that is reversed.
 
    The original argument was commercial — MIT invites a hyperscaler to run
-   our SaaS, AGPL protects the business. That argument is now void: see the
-   note on §9 below. The licence survives it on the other reason, which was
-   always the better one. Copyleft keeps improvements public and means nobody
-   can take this closed. For a tool whose entire promise is that your logs
-   stay yours in a format that outlives the tool, a licence that can be closed
-   downstream would undercut the product itself.
+   our SaaS, AGPL protects the business. It is void: there is no business, as
+   the note on §9 below records.
 
-   The cost is real and worth stating plainly: AGPL is banned by policy inside
-   a lot of companies, so this trades some adoption for that guarantee. That
-   is the trade, made deliberately.
+   It was briefly kept on a second argument, that copyleft keeps improvements
+   public and a tool promising your logs outlive it should not be closable
+   downstream. That argument does not hold, and this entry said it did. **The
+   format promise is kept by the format, not the licence** — a proprietary
+   fork cannot make anybody's existing Parquet unreadable, because Parquet is
+   an open standard, §3.4's layout is documented and the catalog is SQLite.
+   The data guarantee and the code licence are independent, and conflating
+   them was the mistake.
+
+   What remains is cost with no benefit beside it: AGPL is banned by policy
+   inside a number of large companies, which for a commercial project is a
+   feature — it routes them to a commercial licence — and with no commercial
+   licence to route them to, it buys nothing. The timing decides it: Apache
+   code can move into a GPLv3 or AGPL project later and copyleft cannot move
+   back, so with no CLA, outside AGPL contributions would make the choice
+   permanent. Apache rather than MIT for the patent grant and the explicit
+   trademark reservation.
+
+   [`COPYRIGHT.md`](../COPYRIGHT.md) carries this for readers.
 4. **Does the OSS single-node version stay fully featured forever?** *Moot,
    and in the strongest way.* There is no other version. Nothing is withheld
    because there is nowhere to withhold it to.

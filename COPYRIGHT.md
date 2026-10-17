@@ -1,46 +1,88 @@
 # Licensing
 
-rTail **v2 and later** is licensed under the
-[GNU Affero General Public License, version 3](LICENSE).
+rTail is licensed under the [Apache License 2.0](LICENSE).
 
-rTail **v1.x** (everything up to and including `v0.2.1`, and the entire history
-on `main` before the v2 branch) was released under the MIT licence and stays
-that way. Nothing about this change makes an older release less permissive —
-if you are using v1, the MIT terms you accepted still apply, forever.
+rTail **v1.x** (everything up to and including `v0.2.1`, and the history on
+`main` before the v2 branch) was released under the MIT licence and stays that
+way. Nothing here makes an older release less permissive — if you are using v1,
+the MIT terms you accepted still apply, forever.
 
-## What AGPL means for you
+rTail **v2** was briefly licensed under AGPL-3.0, between commits `3e8804c` and
+the one that carries this file. If you took a copy in that window, that copy is
+AGPL and you may keep using it on those terms; you may also simply take the
+Apache-licensed version, which is strictly more permissive. Nobody is worse off
+either way.
 
-- **Self-hosting is free and unrestricted.** Run it on your own machines, for
-  your own logs, internally, commercially, at any scale. You owe nothing and
-  you have nothing to publish.
-- **Modify it freely.** Change anything you like for your own use.
-- **The one obligation:** if you offer a modified rTail *to others over a
-  network as a service*, you must make your modified source available to those
-  users. That is the whole point of the A in AGPL, and it is the only thing it
-  adds over GPL.
+## What Apache-2.0 means for you
 
-If that obligation is a problem for something you want to do, get in touch —
-a commercial licence is available.
+- **Run it, anywhere, for anything.** Your machines, your customers' machines,
+  inside a product you sell. Commercially, at any scale.
+- **Modify it freely**, and you owe nobody your changes.
+- **Offer it as a service** if you want to, modified or not, with no obligation
+  to publish anything.
+- **There is a patent grant** (§3). Contributors grant you a licence to their
+  patent claims covering their contributions, and it terminates only if you
+  sue someone over the software — which is the protection MIT does not give.
+- **The obligations are small:** keep the licence and copyright notices, state
+  what you changed in files you modified, and do not use the project's
+  trademarks to imply endorsement (§6 withholds those explicitly).
 
-## Why the change
+There is nothing to buy, no feature held back for a paid tier, and no
+enterprise edition. There is no other version of rTail.
 
-rTail v2 is a log storage and search engine, which is a product category with a
-well-established pattern: a company takes the open source project, runs it as a
-managed service, contributes nothing back, and outcompetes the original authors
-using their own code. AGPL does not prevent competition; it requires that
-anyone competing on this codebase does so with their cards face up.
+## Why this, and why it changed twice
 
-Adoption cost is real and understood. The alternative considered was BSL, which
-would have barred hosted offerings outright for a term of years. AGPL was
-chosen because it keeps rTail genuinely open source by the OSI definition,
-which BSL is not.
+**v1 was MIT.** `3e8804c` relicensed v2 to AGPL-3.0 for a commercial reason: v2
+was going to have a hosted service behind it, and AGPL was chosen so a better
+resourced company could not run the project as a managed service, contribute
+nothing back, and outcompete the authors with their own code.
 
-## Contributor note
+**There is no business.** rTail is free software, with no hosted service and
+nothing to sell, so the argument AGPL was chosen to win is not being fought.
+§9 of [the design proposal](docs/proposal-logging-system.md) records that path
+and is marked superseded.
 
-The MIT-licensed contributions in the v1 history remain under MIT. New
-contributions to the v2 branch are accepted under AGPL-3.0.
+The licence was kept at AGPL for a while on a second argument — that copyleft
+keeps improvements public, and that a tool promising your logs outlive it
+should not be closable downstream. That argument does not survive examination:
 
-If you contributed to rTail before the v2 branch and object to your work being
-carried into an AGPL codebase, open an issue and it will be removed or
-rewritten. MIT permits the relicensing of derivative works, so this is a
-courtesy rather than an obligation — but it is one worth extending.
+- **The format promise is kept by the format, not the licence.** A proprietary
+  fork cannot make anybody's existing Parquet unreadable. Parquet is an open
+  standard, the on-disk layout is documented, and the catalog is SQLite. Your
+  data survives a closed fork exactly as well as it survives rTail being
+  abandoned — which is the scenario the promise was written against. Tying the
+  data guarantee to the code licence conflated two independent things.
+- **AGPL's cost is concrete and buys nothing here.** It is banned by policy
+  inside a number of large companies — Google's published policy is the
+  clearest example — which for a commercial project is a feature, because it
+  routes those companies to a commercial licence. With no commercial licence to
+  route them to, it is cost with no corresponding benefit.
+- **The decision is one-way.** Apache code can be taken into a GPLv3 or AGPL
+  project later; copyleft cannot move back. And without a CLA, once there are
+  outside AGPL contributions the choice becomes permanent. Choosing the
+  reversible option while it is still reversible is the whole argument.
+
+Apache rather than MIT for the patent grant, and because §6 withholds trademark
+rights explicitly rather than leaving it to be argued.
+
+Somebody else running a hosted rTail is welcome, and Apache-2.0 means they need
+nobody's permission. The only reservation is the one §6 makes: run the
+software, do not use the project's name in a way that implies it is ours.
+
+## Contributing
+
+Contributions are accepted under Apache-2.0, certified by a
+[Developer Certificate of Origin](https://developercertificate.org/) sign-off:
+
+    git commit -s
+
+That line asserts you wrote the patch or have the right to submit it. It is not
+a copyright assignment and it gives the project no rights over your work beyond
+the licence everyone already has — which is exactly why it is a DCO and not a
+CLA. A CLA exists so a project can relicense contributions later, usually to
+sell them; there is nothing here to sell, so asking for one would be taking
+something for no reason.
+
+The MIT-licensed contributions in the v1 history remain under MIT. Nothing
+about moving v2 to Apache-2.0 affects them, and because both MIT and Apache-2.0
+are permissive, no contributor's position is narrowed by the change.

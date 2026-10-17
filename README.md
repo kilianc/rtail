@@ -4,7 +4,7 @@
 [![NPM version](https://img.shields.io/npm/v/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
 [![NPM downloads](https://img.shields.io/npm/dm/rtail.svg?style=flat-square)](https://www.npmjs.com/package/rtail)
 [![GitHub Stars](https://img.shields.io/github/stars/kilianc/rtail.svg?style=flat-square)](https://github.com/kilianc/rtail)
-[![License](https://img.shields.io/badge/license-AGPL--3.0-04cd7e.svg?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-04cd7e.svg?style=flat-square)](LICENSE)
 [![Gitter](https://img.shields.io/badge/≡_gitter-join_chat_➝-04cd7e.svg?style=flat-square)](https://gitter.im/kilianc/rtail?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 ## Terminal output to the browser in seconds, using UNIX pipes.
@@ -624,14 +624,15 @@ Dropped, and why:
 
 ## License
 
-rTail **v2 and later** is licensed under the **GNU Affero General Public
-License v3** — see [`LICENSE`](LICENSE) and [`COPYRIGHT.md`](COPYRIGHT.md).
+rTail is licensed under the **Apache License 2.0** — see [`LICENSE`](LICENSE)
+and [`COPYRIGHT.md`](COPYRIGHT.md).
 
-**Self-hosting is free and unrestricted**, commercially and at any scale. The
-only obligation AGPL adds is that if you offer a *modified* rTail to others
-over a network as a service, you make those modifications available to its
-users. If that is a problem for what you want to build, get in touch — a
-commercial licence is available.
+Run it, modify it, ship it inside your own product, commercially, at any
+scale. Keep the notice, say what you changed, and the patent grant in §3
+covers you. There is nothing to buy and no feature held back for a paid tier,
+because there is no paid tier.
 
 rTail **v1.x remains under the MIT licence** it was released with. That does
-not change retroactively; if you are on v1, the terms you accepted still apply.
+not change retroactively; if you are on v1, the terms you accepted still
+apply. v2 spent part of its life under AGPL-3.0; that is reversed, and
+[`COPYRIGHT.md`](COPYRIGHT.md) has the reasoning.
