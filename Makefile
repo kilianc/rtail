@@ -144,5 +144,5 @@ deps:
 
 clean: down
 	rm -rf node_modules bin app/css app/bundle.js app/bundle.js.map \
-	       .gocache .gomodcache
+	       .gocache .gomodcache .dev-data
 	rm -rf web/dist && mkdir -p web/dist && touch web/dist/.gitkeep

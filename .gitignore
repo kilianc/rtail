@@ -13,3 +13,7 @@ bin
 # in git or `go:embed all:dist` fails to compile on a fresh clone.
 web/dist/*
 !web/dist/.gitkeep
+
+# Durable storage for `make dev`: parquet files and the catalog, rebuilt
+# from the demo streams on every run and never worth keeping.
+.dev-data

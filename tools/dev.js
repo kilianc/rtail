@@ -46,18 +46,54 @@ run('node', [path('tools/build.js'), '--watch'], { stdio: 'inherit' })
 
 console.log(`==> starting rtail-server on 0.0.0.0:${PORT} (udp ${UDP_PORT})`)
 
-// 0.0.0.0 so the port is reachable from the host through Docker's NAT.
+/*!
+ * 0.0.0.0 so the port is reachable from the host through Docker's NAT, and
+ * --insecure because the server refuses that without a token.
+ *
+ * The refusal is right on a host and the wrong question in here: a container's
+ * loopback is its own, so binding 127.0.0.1 would make the published port
+ * unreachable and 0.0.0.0 means "reachable through whatever -p published",
+ * not "public". The runtime image answers it the same way with
+ * RTAIL_INSECURE=true; this is the development half of that.
+ */
 const server = run(SERVER, [
   '--web-root', path('app'),
   '--web-host', '0.0.0.0',
   '--web-port', PORT,
   '--udp-host', '0.0.0.0',
-  '--udp-port', UDP_PORT
+  '--udp-port', UDP_PORT,
+  /*!
+   * Durable storage, in development, by default.
+   *
+   * Without --data the server is memory-only: no catalog, so the field
+   * explorer is empty, the histogram is flat and every search answers "search
+   * needs durable storage". That is three of the four things on the screen
+   * switched off in the command you run to look at the product — and it reads
+   * as a broken UI rather than as a mode. `make clean` removes the directory.
+   */
+  '--data', path('.dev-data'),
+  '--insecure'
 ], { stdio: 'inherit' })
 
 server.on('error', (err) => {
   if ('ENOENT' === err.code) {
     console.error(`\n  ${SERVER} is missing. Build it first:\n\n    make server\n`)
+    shutdown()
+  }
+})
+
+/*!
+ * If the server dies, stop — do not go on to print "rTail is up".
+ *
+ * It exited immediately when --insecure was missing and this script announced
+ * a URL anyway, so the first symptom of a broken server was a browser that
+ * would not connect to something the terminal said was running. A dev script
+ * that lies about the state of the thing it started is worse than one that
+ * crashes.
+ */
+server.on('exit', (code) => {
+  if (0 !== code && null !== code) {
+    console.error(`\n  rtail-server exited with code ${code}; stopping.\n`)
     shutdown()
   }
 })
