@@ -45,17 +45,22 @@ interface Props {
 }
 
 /*!
- * Severity glyphs, copied off a real Logs Explorer.
+ * Severity, abbreviated to three characters.
  *
- * A round badge with a symbol rather than a lettered square: `i` for the
- * routine levels, `!` once something is wrong and `!!` when it is worse. The
- * shape carries as much as the colour, which is what keeps the column
- * readable at 22px and for anyone who cannot separate the reds from the greys.
+ * This was a round badge carrying `i` / `!` / `!!` before, on the reasoning
+ * that a shape survives being read by someone who cannot separate the reds
+ * from the greys. The reasoning was right and the glyph was the wrong answer
+ * to it: `!` meant both ERROR and WARN, so the two levels people most need to
+ * tell apart were the two the shape could not distinguish.
+ *
+ * Three letters carry the distinction in the text itself, so the colour is
+ * confirmation rather than the only signal — and in a monospace column they
+ * are exactly as scannable as a badge, for less ink.
  */
-const GLYPHS: Record<string, string> = {
-  EMERGENCY: '!!', ALERT: '!!', CRITICAL: '!!', FATAL: '!!',
-  ERROR: '!', WARN: '!',
-  NOTICE: 'i', INFO: 'i', DEBUG: 'i', TRACE: 'i'
+const ABBREV: Record<string, string> = {
+  EMERGENCY: 'EMG', ALERT: 'ALR', CRITICAL: 'CRT', FATAL: 'FTL',
+  ERROR: 'ERR', WARN: 'WRN',
+  NOTICE: 'NTC', INFO: 'INF', DEBUG: 'DBG', TRACE: 'TRC'
 }
 
 export function LogRow({ line, expanded, selected, active, needles, columns, onToggle, onFilter, onContext }: Props) {
@@ -75,7 +80,7 @@ export function LogRow({ line, expanded, selected, active, needles, columns, onT
         <i class="row-caret" aria-hidden="true" />
 
         <span class="row-level" title={level || undefined}>
-          <i class="row-chip" aria-hidden="true">{GLYPHS[level] ?? 'i'}</i>
+          <i class="row-chip" aria-hidden="true">{ABBREV[level] ?? (level ? level.slice(0, 3) : '—')}</i>
           <span class="sr-only">{level || 'no severity'}</span>
         </span>
 

@@ -77,11 +77,21 @@
   --mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 
-  --text-xs: 10.5px;
-  --text-sm: 11.5px;
-  --text-md: 12px;
-  --text-lg: 14px;
-  --mono-size: 12px;
+  /*!
+   * One step down, everywhere.
+   *
+   * The scale was a point too large for a console: at 12px the log lines fill
+   * their 19px rhythm edge to edge and the screen reads as text rather than as
+   * a table. Dropping to 11px leaves air inside the row without changing the
+   * row — every fixed height below stays exactly as it was, so nothing in the
+   * grid moves. 9.5px is the floor: below it the uppercase column labels blur
+   * and the letter-spacing stops rescuing them.
+   */
+  --text-xs: 9.5px;
+  --text-sm: 10.5px;
+  --text-md: 11px;
+  --text-lg: 12.5px;
+  --mono-size: 11px;
 
   --tracking-tight: 0;
   --tracking-wide: 0.06em;
@@ -101,6 +111,9 @@
 
   --subtle: #292a2d;
   --subtle-strong: #35363a;
+  // A translucent lift, for states that must stack on top of a colour the row
+  // already has rather than replace it.
+  --raise: rgba(232, 234, 237, 0.04);
 
   // ** hairlines **
   --border: #3c4043;
@@ -132,6 +145,9 @@
   --primary-foreground: #202124;
   --primary-subtle: #283142;
   --primary-glow: rgba(138, 180, 248, 0.24);
+  // Selection, at the same strength as --level-error-wash, so a selected
+  // error row reads as both rather than as one overwriting the other.
+  --primary-wash: rgba(138, 180, 248, 0.05);
   --ring: rgba(138, 180, 248, 0.5);
 
   // ** live **
@@ -179,6 +195,7 @@
 
   --subtle: #f8f9fa;
   --subtle-strong: #f1f3f4;
+  --raise: rgba(32, 33, 36, 0.04);
 
   --border: #dadce0;
   --border-strong: #bdc1c6;
@@ -191,7 +208,10 @@
   --level-error: #d93025;
   --level-error-bg: #fce8e6;
   --level-error-wash: rgba(217, 48, 37, 0.04);
-  --level-warn: #e37400;
+  // A stop darker than Google's own #e37400. Severity is drawn as text now
+  // rather than as a filled badge, and #e37400 on white is 3.3:1 — readable
+  // as a 14px label, not as an 11px one in a column of thousands.
+  --level-warn: #b06000;
   --level-warn-bg: #feefe3;
   --level-info: #1a73e8;
   --level-info-bg: #e8f0fe;
@@ -203,6 +223,7 @@
   --primary-foreground: #ffffff;
   --primary-subtle: #e8f0fe;
   --primary-glow: rgba(26, 115, 232, 0.24);
+  --primary-wash: rgba(26, 115, 232, 0.05);
   --ring: rgba(26, 115, 232, 0.5);
 
   --live: #1e8e3e;

@@ -1407,10 +1407,17 @@
   }
 
   // Matched text, marked in the summary the way the reference does it.
+  // Amber rather than blue. Blue is selection, and a marked term inside a
+  // selected row was the same colour as the row around it — the one place the
+  // single-accent rule had to give, since severity never appears in the
+  // message text and so cannot be confused with it.
   mark {
-    background: var(--primary-subtle);
+    background: var(--level-warn-bg);
     border-radius: var(--radius-xs);
-    box-shadow: inset 0 -1px 0 var(--primary);
+    // The tint and the rule carry the signal; the text keeps the row's own
+    // colour, because amber-on-amber is under 4.5:1 in the light theme and a
+    // marked term is exactly the text you most need to be able to read.
+    box-shadow: inset 0 -1px 0 var(--level-warn);
     color: inherit;
     padding: 0 1px;
   }
@@ -1485,12 +1492,34 @@
     font-size: var(--mono-size);
     transition: background-color .08s ease;
 
-    &:hover { background: var(--subtle); }
+    // Hover is the same translucent lift, for the same reason: a solid
+    // --subtle erased the severity wash the moment the pointer crossed a row.
+    &:hover { background-image: linear-gradient(var(--raise), var(--raise)); }
 
-    &.selected { background: var(--primary-subtle); }
+    /*!
+     * Selection and expansion stack on the row's colour; they do not replace it.
+     *
+     * Both were solid backgrounds, and both erased the severity wash under
+     * them — selecting or opening an error row made it stop looking like an
+     * error, which is the one row on the screen whose colour is load-bearing.
+     *
+     * Selection draws entirely in box-shadow: the marker, and a second inset
+     * with enough spread to flood the row behind its text. A shadow costs no
+     * width, so nothing in the grid moves when a row is picked, and it leaves
+     * background-image free for the state below.
+     *
+     * Expansion lifts the row with a translucent layer over whatever colour is
+     * already there, so the two states compose instead of fighting: an open,
+     * selected error row reads as all three at once.
+     */
+    &.selected {
+      box-shadow:
+        inset var(--marker-w) 0 0 var(--primary),
+        inset 0 0 0 999px var(--primary-wash);
+    }
 
     &.expanded {
-      background: var(--subtle);
+      background-image: linear-gradient(var(--raise), var(--raise));
 
       .row-caret::after { transform: rotate(45deg); }
     }
@@ -1517,30 +1546,28 @@
 
   .row:hover .row-caret { color: var(--muted-foreground); }
 
+  /*!
+   * The severity cell: three letters, aligned with its header.
+   *
+   * It centred its badge while the header label beside it started at the
+   * column's inset, so "Sev" and the thing it named were the only pair in the
+   * table that did not line up. Start-aligning with the same inset every other
+   * cell uses makes the column structural rather than approximately right.
+   */
   .row-level {
     align-items: baseline;
     display: flex;
-    justify-content: center;
+    padding-inline-start: var(--space-2);
   }
 
-  // The severity chip: a letter in a tinted pill, which survives being scanned
-  // down a thousand rows in a way a bare colour does not.
-  // A round badge, as the real one draws it.
+  // Three letters in the severity colour. No pill, no badge: in a monospace
+  // column the letters are already a fixed-width block, so a shape around
+  // them adds ink without adding information.
   .row-chip {
-    align-items: center;
-    background: var(--level-info);
-    block-size: 14px;
-    border-radius: 50%;
-    color: var(--background);
-    display: flex;
+    color: var(--level-info);
     flex-shrink: 0;
-    font-size: 9px;
     font-style: normal;
-    font-weight: 700;
-    inline-size: 14px;
-    justify-content: center;
-    letter-spacing: -0.05em;
-    transform: translateY(2px);
+    font-weight: 500;
   }
 
   .row-time {
@@ -1565,7 +1592,7 @@
 
   .row-raw { color: var(--muted-foreground); }
 
-  .row.level-warn .row-chip { background: var(--level-warn); }
+  .row.level-warn .row-chip { color: var(--level-warn); }
 
   // Errors wash the whole row. A screen full of them should look wrong before
   // you have read a word of it.
@@ -1576,18 +1603,16 @@
   .row.level-fatal {
     background: var(--level-error-wash);
 
-    .row-chip { background: var(--level-error); }
-
-    &:hover { background: var(--subtle-strong); }
+    .row-chip { color: var(--level-error); }
   }
 
   .row.level-debug,
   .row.level-trace {
     .row-message { color: var(--muted-foreground); }
-    .row-chip { background: var(--level-debug); }
+    .row-chip { color: var(--level-debug); }
   }
 
-  .row.level-none .row-chip { background: var(--border-strong); }
+  .row.level-none .row-chip { color: var(--border-strong); }
 
   // ** the expanded row **
 
