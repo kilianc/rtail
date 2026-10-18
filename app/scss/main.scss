@@ -2026,7 +2026,9 @@
   }
 
   .leaf-key {
-    color: var(--faint-foreground);
+    // Muted, not faint: faint is the ENVELOPE / PROMOTED heading's weight,
+    // and using it here flattened the heading into its own list.
+    color: var(--muted-foreground);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2039,12 +2041,18 @@
     min-inline-size: 0;
   }
 
+  /*!
+   * A scalar value, in the foreground colour whatever its type.
+   *
+   * Numbers were cyan here and booleans magenta, which read as severity on a
+   * panel where severity is the one thing colour already means: `is_json
+   * true` came up violet on every row, louder than the error it sat under.
+   * Type is legible from the value itself — a bare 404 is not a string — so
+   * the ink was spent saying something the glyphs already said.
+   */
   .leaf-scalar {
     color: var(--foreground);
     overflow-wrap: anywhere;
-
-    &.type-number { color: var(--ansi-cyan); }
-    &.type-boolean { color: var(--ansi-magenta); }
   }
 
   /*!
@@ -2068,12 +2076,19 @@
     gap: var(--space-1);
     opacity: 0;
     transition: opacity .12s ease;
+
+    // A field already pinned keeps its ⊞ on: the state is the point, and
+    // hiding it until hover makes the one control that has a state the one
+    // you cannot see the state of.
+    &.kept { opacity: 1; }
   }
 
   // Two glyphs that sit against the value they filter on, so they give up
   // the standard inline padding.
   .leaf-filter {
     padding-inline: 2px;
+
+    &.on { color: var(--primary); }
   }
 
   // Flush with the keys above them: the detail already carries the indent,

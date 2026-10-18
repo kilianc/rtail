@@ -405,6 +405,7 @@ export function Results({
                     toggle(line.key)
                   }}
                   onFilter={onFilter}
+                  onPin={onDropColumn}
                   onContext={() => onContext(line)}
                 />
               </div>

@@ -44,6 +44,8 @@ interface Props {
   numeric: string[]
   onToggle: () => void
   onFilter: (action: FilterAction) => void
+  /** Pin this field out of the summary and into a column of its own. */
+  onPin: (field: string) => void
   onContext: () => void
 }
 
@@ -77,7 +79,7 @@ function groupDigits(value: number): string {
   return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, '_')
 }
 
-export function LogRow({ line, expanded, selected, active, needles, columns, numeric, onToggle, onFilter, onContext }: Props) {
+export function LogRow({ line, expanded, selected, active, needles, columns, numeric, onToggle, onFilter, onPin, onContext }: Props) {
   const level = (line.level ?? '').toUpperCase()
   const clock = formatClock(line.timestamp)
 
@@ -153,13 +155,16 @@ export function LogRow({ line, expanded, selected, active, needles, columns, num
                 value={new Date(line.timestamp).toISOString()}
                 field="ts"
                 active={active}
+                columns={columns}
                 onFilter={onFilter}
+                onPin={onPin}
                 filterable={false}
+                pinnable={false}
               />
 
-              <Leaf label="stream" value={line.streamid} field="stream" active={active} onFilter={onFilter} />
+              <Leaf label="stream" value={line.streamid} field="stream" active={active} columns={columns} onFilter={onFilter} onPin={onPin} />
 
-              {line.host && <Leaf label="host" value={line.host} field="host" active={active} onFilter={onFilter} />}
+              {line.host && <Leaf label="host" value={line.host} field="host" active={active} columns={columns} onFilter={onFilter} onPin={onPin} />}
 
               {/*
                 The pagination key, grouped with underscores rather than
@@ -171,7 +176,9 @@ export function LogRow({ line, expanded, selected, active, needles, columns, num
                 value={groupDigits(line.seq)}
                 field="seq"
                 active={active}
+                columns={columns}
                 onFilter={onFilter}
+                onPin={onPin}
                 filterable={false}
               />
 
@@ -180,8 +187,11 @@ export function LogRow({ line, expanded, selected, active, needles, columns, num
                 value={'object' === line.type}
                 field="is_json"
                 active={active}
+                columns={columns}
                 onFilter={onFilter}
+                onPin={onPin}
                 filterable={false}
+                pinnable={false}
               />
             </dl>
 
@@ -210,7 +220,9 @@ export function LogRow({ line, expanded, selected, active, needles, columns, num
                     field={key}
                     value={value}
                     active={active}
+                    columns={columns}
                     onFilter={onFilter}
+                    onPin={onPin}
                   />
                 ))
               ) : (
@@ -260,12 +272,26 @@ interface LeafProps {
   field: string
   value: unknown
   active: string[]
+  /** Fields already pinned as columns, so the pin can read as a toggle. */
+  columns: string[]
   filterable?: boolean
+  /*!
+   * Whether this key can become a column.
+   *
+   * `ts` and `is_json` cannot: the first is already the row's leftmost column
+   * and the second is a property of the record rather than a value in it, so
+   * neither resolves through `columnValue`. Everything else does, `seq`
+   * included, which is why pinnable is not simply filterable under a second
+   * name.
+   */
+  pinnable?: boolean
   onFilter: (action: FilterAction) => void
+  onPin: (field: string) => void
 }
 
-function Leaf({ label, field, value, active, filterable = true, onFilter }: LeafProps) {
+function Leaf({ label, field, value, active, columns, filterable = true, pinnable = true, onFilter, onPin }: LeafProps) {
   const nested = null !== value && 'object' === typeof value
+  const pinned = columns.includes(field)
 
   return (
     <div class={`leaf ${active.includes(field) ? 'active' : ''}`}>
@@ -283,8 +309,28 @@ function Leaf({ label, field, value, active, filterable = true, onFilter }: Leaf
           clicking `req` is ambiguous, and offering a filter that quietly
           matches on serialized JSON text would be worse than offering none.
         */}
-        {filterable && !nested && (
-          <span class="leaf-actions">
+        {(pinnable || (filterable && !nested)) && (
+          <span class={classes('leaf-actions', pinned && 'kept')}>
+            {pinnable && (
+              /*
+                The same ⊞ the explorer pins with, offered where the value
+                actually is. The design drew this as a `pin field as column`
+                button under the record, which had no field to act on — the
+                record carries a dozen, and the one you mean is the one your
+                eye is already on.
+              */
+              <Button
+                size="sm"
+                class={classes('leaf-filter', pinned && 'on')}
+                title={pinned ? `Unpin the ${field} column` : `Pin ${field} as a column`}
+                aria-label={pinned ? `Unpin the ${field} column` : `Pin ${field} as a column`}
+                aria-pressed={pinned}
+                onClick={() => onPin(field)}
+              >
+                ⊞
+              </Button>
+            )}
+            {filterable && !nested && (<>
             <Button
               size="sm"
               class="leaf-filter"
@@ -303,6 +349,7 @@ function Leaf({ label, field, value, active, filterable = true, onFilter }: Leaf
             >
               ⊖
             </Button>
+            </>)}
           </span>
         )}
       </dd>
