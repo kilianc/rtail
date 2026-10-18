@@ -11,7 +11,7 @@
 
 import type { ComponentChildren } from 'preact'
 import { useRef, useState } from 'preact/hooks'
-import { FONT_FAMILY_COUNT, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../lib/prefs.js'
+import { FONT_FAMILY_COUNT, FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../lib/prefs.js'
 import type { Store } from '../lib/api.js'
 import { formatBytes, formatCount } from '../lib/format.js'
 import type { Prefs, Theme } from '../lib/types.js'
@@ -149,12 +149,19 @@ export function TopBar({ prefs, live, timeline, store, children, onChangePrefs, 
 
           <div class="shortcuts">
             <h4>Shortcuts</h4>
+            {/*
+              What the keys actually do. This claimed `return` ran the query,
+              which is the one thing it does not: in the editor it starts a
+              new line, and on the list it opens the selected row. ⌘⏎ runs —
+              the chip on the Run button has said so all along.
+            */}
             <dl>
               <dt>/</dt><dd>focus the query</dd>
               <dt>⌘K</dt><dd>focus the query</dd>
-              <dt>return</dt><dd>run it</dd>
-              <dt>j / k</dt><dd>move between events</dd>
-              <dt>esc</dt><dd>collapse everything</dd>
+              <dt>⌘ return</dt><dd>run the query</dd>
+              <dt>return</dt><dd>open the row</dd>
+              <dt>j / k</dt><dd>move between rows</dd>
+              <dt>esc</dt><dd>close everything</dd>
             </dl>
           </div>
 
@@ -193,9 +200,9 @@ export function TopBar({ prefs, live, timeline, store, children, onChangePrefs, 
             <Button
               variant="icon"
               class="btn-letter"
-              on={4 === prefs.fontSize}
+              on={FONT_SIZE_DEFAULT === prefs.fontSize}
               aria-label="Reset font size"
-              onClick={() => onChangePrefs({ fontSize: 4 })}
+              onClick={() => onChangePrefs({ fontSize: FONT_SIZE_DEFAULT })}
             >
               A
             </Button>

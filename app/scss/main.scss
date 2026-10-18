@@ -2206,11 +2206,12 @@
     }
 
     // A fixed key column, so the descriptions start on one line rather than
-    // stepping in and out with the width of each key.
+    // stepping in and out with the width of each key. 64px, which is what
+    // the longest of them — a modifier and a named key — actually needs.
     dl {
       display: grid;
       gap: 2px var(--space-2);
-      grid-template-columns: calc(var(--space-6) * 2 + var(--space-2)) 1fr;
+      grid-template-columns: calc(var(--space-6) * 2 + var(--space-4)) 1fr;
     }
 
     // Plain text, not a drawn keycap. The whole interface is monospace, so a

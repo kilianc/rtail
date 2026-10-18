@@ -26,13 +26,23 @@ export const FONT_SIZE_MIN = 1
 export const FONT_SIZE_MAX = 7
 export const FONT_FAMILY_COUNT = 6
 
+/*!
+ * The size "reset" goes back to.
+ *
+ * Exported rather than written at the button, which held a 4 from when the
+ * interface was set in 14px. The default moved to 11px and the button did
+ * not, so "reset" made the app bigger than it had ever been and only lit up
+ * at a size nothing else called default.
+ */
+export const FONT_SIZE_DEFAULT = 1
+
 const DEFAULTS: Prefs = {
   theme: 'dark',
   fontFamily: 1,
   // 11px — the size the whole interface is set in. It used to start at 14px,
   // which made the log rows the only thing on the screen in a different size
   // from everything around them.
-  fontSize: 1,
+  fontSize: FONT_SIZE_DEFAULT,
   favorites: []
 }
 
