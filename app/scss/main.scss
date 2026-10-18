@@ -351,7 +351,6 @@
   // variants below only ever need `:not(:disabled)` on their hover.
   .btn-sm {
     block-size: var(--row-h);
-    font-size: var(--text-xs);
   }
 
   .btn-block { inline-size: 100%; }
@@ -359,15 +358,26 @@
   // The one action a view is for.
   .btn-solid {
     background: var(--primary);
+    border-color: transparent;
     color: var(--primary-foreground);
+    gap: 7px;
+    padding-inline: 9px;
 
     &:hover:not(:disabled) { background: var(--primary-hover); }
 
     // The shortcut, so the convention is discoverable rather than folklore.
+    // Drawn as a key — a notch darker than the button it sits on — rather
+    // than as the label at 60% opacity, which read as something disabled.
     kbd {
+      background: rgb(0 0 0 / .22);
+      border-radius: var(--radius-xs);
       font-family: inherit;
       font-size: var(--text-xs);
-      opacity: .6;
+      // The body leading, so the key is a key rather than a strip: the
+      // button is 22px and this fills all but a pixel of it, as it does in
+      // the reference.
+      line-height: var(--line-h);
+      padding-inline: 3px;
     }
   }
 
@@ -812,7 +822,7 @@
       border: var(--hairline) dashed var(--border);
       min-inline-size: 0;
       overflow: hidden;
-      padding-inline: var(--space-2);
+      padding-inline: 6px;
       text-overflow: ellipsis;
 
       &:hover { border-color: var(--border-strong); }
@@ -884,17 +894,20 @@
 
   .timerange {
     align-items: center;
-    background: var(--card);
-    block-size: var(--command-h);
-    border: var(--hairline) solid var(--input);
-    border-radius: var(--radius-sm);
+    background: none;
+    // A control, at the control height. It had been set to --command-h, the
+    // height of a query *line*, which made it the tallest thing in the
+    // footer and four pixels out of step with the button beside it.
+    block-size: var(--control-h);
+    border: var(--hairline) solid var(--border);
+    border-radius: var(--radius-md);
     color: var(--foreground);
     display: flex;
     flex-shrink: 0;
-    font-size: var(--text-sm);
-    gap: var(--space-2);
+    font-size: var(--text-md);
+    gap: 6px;
     line-height: 1;
-    padding-inline: var(--space-2);
+    padding-inline: 7px;
     transition: background-color .14s ease, border-color .14s ease;
 
     &:hover { border-color: var(--border-strong); }
@@ -906,8 +919,10 @@
     &::after {
       @include chevron(5px, 1.5px);
       color: var(--muted-foreground);
+      // The flex gap already spaces it; a margin on top of that is the gap
+      // twice, which is why this control measured five pixels wide of the
+      // reference with everything else about it matching.
       margin-block-start: -3px;
-      margin-inline-start: 6px;
       transform: rotate(45deg);
     }
   }
@@ -1281,23 +1296,49 @@
     padding: var(--space-2) var(--space-3);
   }
 
-  // The column toggle, revealed on hover so the list stays quiet at rest —
-  // and always shown once it is on, because a toggle you cannot see is one
-  // you cannot discover you left on.
+  /*!
+   * One right-hand slot, holding the count or the control.
+   *
+   * The toggle had a 20px track of its own at the end of the row, which gave
+   * it an edge no other element on the screen shares: the counts stopped 28px
+   * short of the sidebar's border while the severity block above them stopped
+   * at 8px, and a pinned field hung a small blue square off the far edge,
+   * aligned with nothing. They are the same slot now — the count at rest, the
+   * toggle while the row is pointed at or pinned — so the column reads as one
+   * straight edge whatever state a row is in, and the count is a tooltip away
+   * when the toggle is standing in front of it.
+   */
+  .explorer-field { position: relative; }
+
   .explorer-column {
-    inline-size: var(--space-5);
+    block-size: var(--row-h);
+    inset-block-start: 0;
+    inset-inline-end: 0;
+    justify-content: end;
     opacity: 0;
-    transition: opacity .12s ease, background-color .14s ease, color .14s ease;
+    // The glyph's right edge lands where the digits end, not where the hit
+    // area does: the padding is inside the button so the target stays 20px
+    // tall and comfortably wide.
+    padding-inline: var(--space-2);
+    position: absolute;
+    transition: opacity .12s ease, color .14s ease;
 
     &.on { opacity: 1; }
+
+    // It sits over the row's own background, so it brings none of its own —
+    // a filled chip here would read as a second, smaller row.
+    &,
+    &:hover { background: none; }
   }
 
   .explorer-field:hover .explorer-column,
   .explorer-column:focus-visible { opacity: 1; }
 
-  // The header and its toggle share a row.
-  .explorer-field { display: grid; grid-template-columns: 1fr var(--space-5); }
-  .explorer-values { grid-column: 1 / -1; }
+  // The count steps aside rather than being overlapped.
+  .explorer-field:hover .explorer-kind,
+  .explorer-field.pinned .explorer-kind { opacity: 0; }
+
+  .explorer-kind { transition: opacity .12s ease; }
 
   .explorer-head {
     align-items: center;
