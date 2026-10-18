@@ -120,7 +120,7 @@ describe('TopBar', () => {
       click('.btn-info')
 
       assert.ok(dom.container.querySelector('.popover-info'))
-      assert.equal(byLabel('About rTail').getAttribute('aria-expanded'), 'true')
+      assert.equal(byLabel('About rtail').getAttribute('aria-expanded'), 'true')
     })
 
     test('shows the build version, substituted at bundle time', () => {

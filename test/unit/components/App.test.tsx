@@ -89,7 +89,7 @@ describe('App', () => {
     start()
 
     assert.ok(dom.container.querySelector('.stream-empty'))
-    assert.equal(dom.document.title, 'rTail')
+    assert.equal(dom.document.title, 'rtail')
   })
 
   test('lists streams as the server announces them', async () => {
@@ -146,7 +146,7 @@ describe('App', () => {
     await waitFor(() => streamLinks().includes('api'), 'the stream to appear')
     await click(dom.container.querySelector('.stream-section a'))
 
-    assert.equal(dom.document.title, 'rTail : api')
+    assert.equal(dom.document.title, 'rtail : api')
     assert.equal(dom.window.location.hash, '#/streams/api')
   })
 
@@ -175,7 +175,7 @@ describe('App', () => {
 
     await waitFor(() => renderedLines().includes('line two'), 'the routed stream to render')
 
-    assert.equal(dom.document.title, 'rTail : two')
+    assert.equal(dom.document.title, 'rtail : two')
   })
 
   test('pauses when the viewport is scrolled, and stops receiving', async () => {

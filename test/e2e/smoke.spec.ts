@@ -41,7 +41,7 @@ test('renders a line piped through the client', async ({ page }) => {
   await page.getByRole('link', { name: stream }).click()
 
   await expect(page.locator('.stream-line-content')).toHaveText('hello from the pipe')
-  await expect(page).toHaveTitle(`rTail : ${stream}`)
+  await expect(page).toHaveTitle(`rtail : ${stream}`)
 })
 
 test('opens a stream from a deep link', async ({ page }) => {
@@ -298,7 +298,7 @@ test('collapses the timestamp column', async ({ page }) => {
 test('reports the build version', async ({ page }) => {
   await page.goto('/')
 
-  await page.getByLabel('About rTail').click()
+  await page.getByLabel('About rtail').click()
 
   // __VERSION__ is substituted by esbuild at bundle time; if that ever broke,
   // this would read "Version undefined".

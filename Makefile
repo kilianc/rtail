@@ -1,4 +1,4 @@
-# rTail — local development.
+# rtail — local development.
 #
 # Everything runs inside the pinned toolchain container defined in
 # tools/Dockerfile, so no Node.js or npm is required on the host.
