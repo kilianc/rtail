@@ -452,9 +452,6 @@
   .btn-icon-info::after { @include icon('btn-info'); }
   .btn-icon-github::after { @include icon('btn-github'); }
   .btn-icon-settings::after { @include icon('btn-settings'); }
-  .btn-icon-font-smaller::after { @include icon('icn-font-decrease'); }
-  .btn-icon-font-reset::after { @include icon('icn-font-reset'); }
-  .btn-icon-font-bigger::after { @include icon('icn-font-increase'); }
   .btn-icon-theme-dark::after { @include icon('icn-theme-dark'); }
   .btn-icon-theme-light::after { @include icon('icn-theme-light'); }
   .btn-icon-close::after { @include icon-common('icn-close-date', contain); }
@@ -468,6 +465,38 @@
     font-size: var(--text-md);
 
     &::after { content: none; }
+  }
+
+  /*!
+   * The three font-size controls: one letter, three jobs.
+   *
+   * They were three drawn glyphs, and because each had been exported on a
+   * Sketch artboard of its own width — 34, 27 and 36 units for the same
+   * 25-unit A — masking them into one square slot scaled the letter to a
+   * different size in every button and put each on a different baseline. The
+   * row read as three unrelated letters.
+   *
+   * Drawn as text instead, the size is one token and the baseline is the
+   * font's. The sign is taken out of flow so the letter is centred against
+   * nothing in all three cells, rather than being pushed off-centre in the
+   * two that have company — which is the alignment the group is actually
+   * judged on.
+   */
+  .btn-letter {
+    font-size: var(--text-md);
+    line-height: 1;
+
+    &::after { content: none; }
+
+    sup {
+      font-size: var(--text-xs);
+      // Level with the letter's cap, so it reads as a mark on the A rather
+      // than a hyphen after it.
+      inset-block-start: 1px;
+      inset-inline-end: 3px;
+      line-height: 1;
+      position: absolute;
+    }
   }
 
   // ** top bar: stream picker **

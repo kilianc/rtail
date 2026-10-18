@@ -172,28 +172,42 @@ export function TopBar({ prefs, live, timeline, store, children, onChangePrefs, 
       {'settings' === open && (
         <Popover anchor={settingsRef.current} class="popover-settings" onClose={() => setOpen(null)}>
           <h4>Size</h4>
+          {/*
+            One letter at one size across all three, with the sign as a mark
+            beside it. They used to be three drawn glyphs, and because each
+            was exported on an artboard of its own width the same A was
+            masked to a different size in each button and sat on a different
+            baseline — the row read as three letters that had nothing to do
+            with one another.
+          */}
           <div class="btn-group">
             <Button
               variant="icon"
-              icon="font-smaller"
+              class="btn-letter"
               aria-label="Decrease font size"
               disabled={prefs.fontSize <= FONT_SIZE_MIN}
               onClick={() => onChangePrefs({ fontSize: Math.max(FONT_SIZE_MIN, prefs.fontSize - 1) })}
-            />
+            >
+              A<sup aria-hidden="true">−</sup>
+            </Button>
             <Button
               variant="icon"
-              icon="font-reset"
+              class="btn-letter"
               on={4 === prefs.fontSize}
               aria-label="Reset font size"
               onClick={() => onChangePrefs({ fontSize: 4 })}
-            />
+            >
+              A
+            </Button>
             <Button
               variant="icon"
-              icon="font-bigger"
+              class="btn-letter"
               aria-label="Increase font size"
               disabled={prefs.fontSize >= FONT_SIZE_MAX}
               onClick={() => onChangePrefs({ fontSize: Math.min(FONT_SIZE_MAX, prefs.fontSize + 1) })}
-            />
+            >
+              A<sup aria-hidden="true">+</sup>
+            </Button>
           </div>
 
           <h4>Face</h4>
