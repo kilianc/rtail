@@ -423,6 +423,8 @@ function scalar(value: unknown): string {
 export interface Token {
   kind: 'field' | 'op' | 'value' | 'string' | 'plain'
   text: string
+  /** Offset of this run in the query, so a parse error can be pointed at. */
+  at: number
 }
 
 /*!
@@ -448,31 +450,31 @@ export function tokenize(query: string): Token[] {
     const [text, string, op, space, word] = match
 
     if (undefined !== string) {
-      tokens.push({ kind: 'string', text })
+      tokens.push({ kind: 'string', text, at: match.index })
       afterOp = false
       continue
     }
 
     if (undefined !== op) {
-      tokens.push({ kind: 'op', text })
+      tokens.push({ kind: 'op', text, at: match.index })
       afterOp = true
       continue
     }
 
     if (undefined !== space) {
-      tokens.push({ kind: 'plain', text })
+      tokens.push({ kind: 'plain', text, at: match.index })
       continue
     }
 
     // Boolean glue is punctuation wearing letters, and reads as the operator
     // it is rather than as a field nobody has.
     if (/^(AND|OR|NOT)$/i.test(word)) {
-      tokens.push({ kind: 'op', text })
+      tokens.push({ kind: 'op', text, at: match.index })
       afterOp = false
       continue
     }
 
-    tokens.push({ kind: afterOp ? 'value' : 'field', text })
+    tokens.push({ kind: afterOp ? 'value' : 'field', text, at: match.index })
     afterOp = false
   }
 

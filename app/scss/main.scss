@@ -912,14 +912,18 @@
   .command-error {
     color: var(--level-error);
     font-size: var(--text-xs);
+    margin: 0;
     padding-block-start: var(--space-1);
+    // Clear of the line-number gutter, so the message starts where the query
+    // does rather than under its line numbers.
     padding-inline-start: var(--space-8);
-    position: relative;
   }
 
-  .command-caret {
-    inset-inline-start: calc(var(--space-8) + var(--space-3) + var(--at) * 1ch);
-    position: absolute;
+  // The run the parser stopped on, marked in place. A wavy underline is the
+  // one decoration that cannot be mistaken for syntax colour.
+  .tok-bad {
+    text-decoration: underline wavy var(--level-error);
+    text-underline-offset: 3px;
   }
 
   // ** time range **

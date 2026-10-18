@@ -29,7 +29,7 @@ import type { ComponentChildren } from 'preact'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { Field } from '../lib/api.js'
 import { Button } from './Button.js'
-import { complete, tokenize, type Completion } from '../lib/query.js'
+import { complete, tokenize, type Completion, type Token } from '../lib/query.js'
 
 /** Shown under an empty editor, and inserted on click. */
 const EXAMPLES = ['level>=ERROR', 'service=api latency_ms>500']
@@ -173,6 +173,10 @@ export function CommandBar({
     }
   }
 
+  /** True for the run holding the offset the parser stopped at. */
+  const bad = (token: Token, at: number | undefined) =>
+    undefined !== at && at >= token.at && at < token.at + token.text.length
+
   const sync = (event: Event) => {
     setCursor((event.currentTarget as HTMLTextAreaElement).selectionStart ?? 0)
   }
@@ -206,10 +210,23 @@ export function CommandBar({
             colouring it with an rQL tokeniser would be confidently wrong
             about half of what it highlighted.
           */}
+          {/*
+            The run the parser stopped on is underlined where it sits, rather
+            than pointed at from below. The editor is a fixed three-line box,
+            so a caret under the error line landed two lines away from the
+            character it meant — and on top of the message, which shared its
+            line. Marking the token needs no column arithmetic and survives a
+            query that wraps.
+          */}
           <pre class="command-ink" aria-hidden="true">
             {'rql' === lang
               ? tokenize(value).map((token, index) => (
-                  <span key={index} class={`tok-${token.kind}`}>{token.text}</span>
+                  <span
+                    key={index}
+                    class={`tok-${token.kind}${bad(token, error?.position) ? ' tok-bad' : ''}`}
+                  >
+                    {token.text}
+                  </span>
                 ))
               : value}
             {/* A trailing newline is collapsed by `pre`; this keeps the last
@@ -331,22 +348,7 @@ export function CommandBar({
         </ul>
       )}
 
-      {error && (
-        <div class="command-error">
-          {/*
-            The caret sits under the character the parser stopped at, but only
-            on a single-line query: past a newline the offset no longer maps to
-            a column, and a caret pointing at the wrong character is worse than
-            none. The message still says what went wrong either way.
-          */}
-          {undefined !== error.position && !value.includes('\n') && (
-            <span class="command-caret" style={{ '--at': error.position } as never}>
-              ↑
-            </span>
-          )}
-          {error.message}
-        </div>
-      )}
+      {error && <p class="command-error">{error.message}</p>}
     </div>
   )
 }

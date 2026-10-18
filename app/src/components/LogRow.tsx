@@ -87,7 +87,7 @@ export function LogRow({ line, expanded, selected, active, needles, columns, num
 
   return (
     <div
-      class={`row ${expanded ? 'expanded' : ''} ${selected ? 'selected' : ''} level-${level.toLowerCase() || 'none'}`}
+      class={classes('row', expanded && 'expanded', selected && 'selected', `level-${level.toLowerCase() || 'none'}`)}
       onClick={onToggle}
     >
       <div class="row-head">
@@ -122,7 +122,7 @@ export function LogRow({ line, expanded, selected, active, needles, columns, num
           return (
             <span
               key={field}
-              class={`row-cell ${numeric.includes(field) ? 'numeric' : ''} ${value ? '' : 'empty'}`}
+              class={classes('row-cell', numeric.includes(field) && 'numeric', !value && 'empty')}
               title={value || `no ${field}`}
             >
               {value || '—'}
@@ -241,6 +241,18 @@ export function LogRow({ line, expanded, selected, active, needles, columns, num
       )}
     </div>
   )
+}
+
+/*!
+ * A class list without the holes.
+ *
+ * Template strings left an empty slot for every condition that was false, so
+ * a plain row's class attribute read `row   level-none` — three spaces for
+ * two states it does not have. Harmless to the browser, and noise to anyone
+ * who opens the inspector.
+ */
+function classes(...parts: (string | false | undefined)[]): string {
+  return parts.filter(Boolean).join(' ')
 }
 
 interface LeafProps {
