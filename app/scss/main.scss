@@ -1328,8 +1328,12 @@
     &.level-error, &.level-critical, &.level-alert,
     &.level-emergency, &.level-fatal { color: var(--level-error); }
     &.level-warn { color: var(--level-warn); }
-    &.level-info, &.level-notice { color: var(--primary); }
-    &.level-debug, &.level-trace { color: var(--faint-foreground); }
+    // The same two tokens the severity chips use. These read --primary and
+    // --faint-foreground, so the explorer's INFO bar was the accent blue
+    // while the INF chip beside it was the level blue, and DEBUG was a
+    // shade lighter here than in the rows it counted.
+    &.level-info, &.level-notice { color: var(--level-info); }
+    &.level-debug, &.level-trace { color: var(--level-debug); }
   }
 
   .explorer-level-name { color: currentcolor; }

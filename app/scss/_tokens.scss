@@ -225,18 +225,30 @@
   --shadow-md: 0 1px 2px rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
   --shadow-lg: 0 4px 8px 3px rgba(60, 64, 67, 0.15), 0 1px 3px rgba(60, 64, 67, 0.3);
 
-  --level-error: #d93025;
-  --level-error-bg: #fce8e6;
-  --level-error-wash: rgba(217, 48, 37, 0.04);
+  /*!
+   * Severity, desaturated for white.
+   *
+   * These were the dark theme's hues taken to their Material 500/700 values —
+   * #d93025, #b06000, #1a73e8 — which on a white pane read as alert colours
+   * rather than as a column of labels: a page of INFO was a page of saturated
+   * blue, and the ERR that mattered had nothing left to be louder than. At
+   * roughly 40% saturation they stay as far apart from each other as before
+   * while sitting back into the surface, and they are *more* legible for it —
+   * each clears 5.8:1 against white where the saturated set barely cleared
+   * 4.5:1.
+   */
+  --level-error: #9c4740;
+  --level-error-bg: #f5ebea;
+  --level-error-wash: rgba(156, 71, 64, 0.05);
   // A stop darker than Google's own #e37400. Severity is drawn as text now
   // rather than as a filled badge, and #e37400 on white is 3.3:1 — readable
   // as a 14px label, not as an 11px one in a column of thousands.
-  --level-warn: #b06000;
-  --level-warn-bg: #feefe3;
-  --level-info: #1a73e8;
-  --level-info-bg: #e8f0fe;
+  --level-warn: #825d35;
+  --level-warn-bg: #f4ede6;
+  --level-info: #426794;
+  --level-info-bg: #ebeff5;
   --level-debug: #5f6368;
-  --level-debug-bg: #f1f3f4;
+  --level-debug-bg: #f4f5f6;
 
   --primary: #1a73e8;
   --primary-hover: #1765cc;
@@ -251,8 +263,11 @@
   --live-glow: rgba(30, 142, 62, 0.4);
   --live-ring: rgba(30, 142, 62, 0.18);
 
-  --chart-bar: #8ab4f8;
-  --chart-bar-hover: #669df6;
+  // Routine traffic, a shade back from --level-info rather than the dark
+  // theme's accent blue reused on white. At #8ab4f8 the INFO band was the
+  // brightest thing in a chart whose whole point is that the error band is.
+  --chart-bar: #93a9c4;
+  --chart-bar-hover: #7e97b6;
   --chart-grid: #f1f3f4;
 
   --ansi-black: #5f6368;
