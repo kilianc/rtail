@@ -39,9 +39,9 @@ export type Theme = 'dark' | 'light'
 
 export interface Prefs {
   theme: Theme
-  /** 1-based index into the monospace stacks in _fonts.scss. */
+  /** 1-based index into the monospace stacks in styles/fonts.css. */
   fontFamily: number
-  /** 1-based index into the font sizes in _fonts.scss. */
+  /** 1-based index into the font sizes in styles/fonts.css. */
   fontSize: number
   favorites: string[]
 }
