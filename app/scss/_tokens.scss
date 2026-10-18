@@ -97,7 +97,9 @@
    * and the letter-spacing stops rescuing them.
    */
   --text-xs: 9.5px;
-  --text-sm: 11px;
+  // The system board's "10.5 / dense controls" tier. It was 11px, a copy
+  // of --text-md, so the scale had four names and three sizes.
+  --text-sm: 10.5px;
   --text-md: 11px;
   --text-lg: 12.5px;
   --mono-size: 11px;

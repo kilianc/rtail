@@ -1528,9 +1528,11 @@
   // asked for.
   .explorer-share { display: none; }
 
+  // Body size, not the dense-control size: the main board draws the field
+  // list at 11px, the same as everything else in the sidebar.
   .explorer-label {
     color: var(--foreground);
-    font-size: var(--text-sm);
+    font-size: var(--text-md);
     overflow: hidden;
     position: relative;
     text-overflow: ellipsis;
