@@ -103,6 +103,8 @@ export function TopBar({ prefs, live, timeline, store, children, onChangePrefs, 
             docs
           </a>
 
+          <span class="topbar-rule" aria-hidden="true" />
+
           <div class="topbar-actions">
             <Button
               elementRef={infoRef}
@@ -140,15 +142,17 @@ export function TopBar({ prefs, live, timeline, store, children, onChangePrefs, 
 
       {'info' === open && (
         <Popover anchor={infoRef.current} class="popover-info" onClose={() => setOpen(null)}>
-          <div class="rtail-logo" />
-          <div class="version">Version {__VERSION__}</div>
+          <div class="popover-brand">
+            <span class="topbar-mark">rtail</span>
+            <span class="version">{__VERSION__}</span>
+          </div>
 
           <div class="shortcuts">
             <h4>Shortcuts</h4>
             <dl>
-              <dt>/</dt><dd>focus the filter</dd>
-              <dt>⌘K</dt><dd>focus the filter</dd>
-              <dt>⏎</dt><dd>run the query</dd>
+              <dt>/</dt><dd>focus the query</dd>
+              <dt>⌘K</dt><dd>focus the query</dd>
+              <dt>⏎</dt><dd>run it</dd>
               <dt>j / k</dt><dd>move between events</dd>
               <dt>⎋</dt><dd>collapse everything</dd>
             </dl>
@@ -160,14 +164,14 @@ export function TopBar({ prefs, live, timeline, store, children, onChangePrefs, 
             target="_blank"
             rel="noreferrer"
           >
-            Report issue
+            report an issue
           </a>
         </Popover>
       )}
 
       {'settings' === open && (
         <Popover anchor={settingsRef.current} class="popover-settings" onClose={() => setOpen(null)}>
-          <h4>Font size</h4>
+          <h4>Size</h4>
           <div class="btn-group">
             <Button
               variant="icon"
@@ -192,7 +196,7 @@ export function TopBar({ prefs, live, timeline, store, children, onChangePrefs, 
             />
           </div>
 
-          <h4>Font family</h4>
+          <h4>Face</h4>
           <div class="btn-group six-grid">
             {Array.from({ length: FONT_FAMILY_COUNT }, (_, index) => index + 1).map((n) => (
               <Button

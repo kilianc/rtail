@@ -1969,12 +1969,19 @@
 
     .popover-info {
       gap: var(--space-2);
-      justify-items: center;
-      padding: var(--space-3);
+      padding: var(--space-2);
+
+      // The mark and the build on one line, left-aligned with the list under
+      // them. It had been centred over a left-aligned table, which gave the
+      // panel two axes and no reason for either.
+      .popover-brand {
+        align-items: baseline;
+        display: flex;
+        gap: 6px;
+      }
 
       .version {
-        color: var(--faint-foreground);
-        font-size: var(--text-sm);
+        color: var(--muted-foreground);
         font-variant-numeric: tabular-nums;
       }
 
@@ -1982,16 +1989,14 @@
         align-items: center;
         block-size: var(--control-h);
         border: var(--hairline) solid var(--border);
-        border-radius: var(--radius-sm);
-        color: var(--foreground);
+        border-radius: var(--radius-md);
+        color: var(--muted-foreground);
         display: flex;
-        font-size: var(--text-sm);
-        font-weight: 500;
         inline-size: 100%;
         justify-content: center;
-        transition: background-color .14s ease;
+        transition: background-color .14s ease, color .14s ease;
 
-        &:hover { background: var(--subtle); }
+        &:hover { background: var(--subtle); color: var(--foreground); }
       }
     }
 
@@ -2041,12 +2046,17 @@
 
     .popover-settings {
       gap: var(--space-2);
-      padding: var(--space-3);
+      justify-items: start;
+      padding: var(--space-2);
+
+      // Each group is a label and its control, 4px apart, with 8px between
+      // groups — so the panel reads as three settings rather than six rows.
+      h4 { margin-block-end: calc(var(--space-1) - var(--space-2)); }
 
       h4 {
         color: var(--faint-foreground);
         font-size: var(--text-xs);
-        font-weight: 500;
+        font-weight: 400;
         letter-spacing: var(--tracking-wide);
         text-transform: uppercase;
       }
@@ -2055,23 +2065,45 @@
 
   // ** segmented control, used by the settings popover **
 
+  /*!
+   * A segmented track: one border, one rule between positions.
+   *
+   * It had been a recessed slab with 2px of padding and a lifted, shadowed
+   * segment — a control three times the height of everything else in the
+   * panel, in a product whose every other control is a 20px box with a
+   * hairline. One border and a divider says the same thing at the size the
+   * rest of the interface is drawn at.
+   */
   .btn-group {
-    background: var(--muted);
+    align-self: start;
+    border: var(--hairline) solid var(--border);
     border-radius: var(--radius-md);
     display: flex;
-    gap: 2px;
-    padding: 2px;
+    overflow: hidden;
 
+    // The faces are a row of their own boxes rather than one track: they are
+    // six samples, not six positions of one switch.
     &.six-grid {
+      border: 0;
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-1);
+      grid-template-columns: repeat(6, 1fr);
+      overflow: visible;
     }
 
-    // Segments divide the track between them rather than each being a
-    // square, so the icon variant's fixed width is given back here.
     .btn {
-      flex: 1;
+      block-size: var(--row-h);
+      border-radius: 0;
       inline-size: auto;
+      min-inline-size: 26px;
+    }
+
+    .btn + .btn { border-inline-start: var(--hairline) solid var(--border); }
+
+    &.six-grid .btn {
+      border: var(--hairline) solid var(--border);
+      border-radius: var(--radius-md);
+      min-inline-size: 0;
     }
 
     /*!
@@ -2083,9 +2115,16 @@
      * accent colour here would read as one of three links.
      */
     .btn.on {
-      background: var(--card);
-      box-shadow: var(--shadow-sm);
+      background: var(--subtle-strong);
       color: var(--foreground);
+    }
+
+    // A chosen face is the one thing in this panel that is a choice about
+    // appearance rather than about size, so it is the one that gets colour.
+    &.six-grid .btn.on {
+      background: var(--primary-subtle);
+      border-color: var(--primary);
+      color: var(--primary);
     }
   }
 
@@ -2097,32 +2136,32 @@
     h4 {
       color: var(--faint-foreground);
       font-size: var(--text-xs);
-      font-weight: 500;
+      font-weight: 400;
       letter-spacing: var(--tracking-wide);
-      margin-block-end: var(--space-2);
+      margin-block-end: var(--space-1);
       text-transform: uppercase;
     }
 
+    // A fixed key column, so the descriptions start on one line rather than
+    // stepping in and out with the width of each key.
     dl {
       display: grid;
-      gap: var(--space-2) var(--space-3);
-      grid-template-columns: auto 1fr;
+      gap: 2px var(--space-2);
+      grid-template-columns: calc(var(--space-6) * 2 + var(--space-2)) 1fr;
     }
 
+    // Plain text, not a drawn keycap. The whole interface is monospace, so a
+    // key is already a fixed-width block of characters in a column of its
+    // own; a border round each one doubled the panel's height to say what
+    // the alignment was saying anyway.
     dt {
-      background: var(--muted);
-      border: var(--hairline) solid var(--border);
-      border-radius: var(--radius-xs);
       color: var(--foreground);
       font-family: var(--mono);
-      font-size: var(--text-xs);
-      padding: 1px var(--space-2);
-      text-align: center;
     }
 
     dd {
       color: var(--muted-foreground);
-      font-size: var(--text-sm);
+      margin: 0;
     }
   }
 }
