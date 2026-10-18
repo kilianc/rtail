@@ -380,6 +380,7 @@
     background: var(--primary);
     border-color: transparent;
     color: var(--primary-foreground);
+    font-weight: 500;
     gap: 7px;
     padding-inline: 9px;
 
@@ -432,7 +433,9 @@
   // A glyph in a square hit area.
   .btn-icon {
     block-size: var(--hit);
-    color: var(--faint-foreground);
+    // --muted, not --faint: the board draws these at #9aa0a6, the same grey
+    // as the text beside them, and --faint is the heading weight below it.
+    color: var(--muted-foreground);
     inline-size: var(--hit);
     padding-inline: 0;
     position: relative;
@@ -648,7 +651,9 @@
     @media (max-width: 900px) { display: none; }
   }
 
-  .topbar-dot { color: var(--faint-foreground); }
+  // The separator between two facts, a step below both. The board uses
+  // #5f6368 here, which is --border-strong, not the --faint it had.
+  .topbar-dot { color: var(--border-strong); }
 
   // ** the command bar — the hero control, and sized like one **
 
@@ -825,7 +830,10 @@
     align-items: center;
     display: flex;
     flex-shrink: 0;
-    gap: var(--space-1);
+    // The same 8px every other pair on this footer is set at; 4px put the
+    // range picker and Run query closer to each other than either was to
+    // anything else, which read as one control.
+    gap: var(--space-2);
     margin-inline-start: auto;
   }
 
@@ -1578,7 +1586,7 @@
   .results-footer { border-block-start: var(--hairline) solid var(--border); }
 
   .results-matched strong { color: var(--foreground); font-weight: 500; }
-  .results-dot { color: var(--faint-foreground); }
+  .results-dot { color: var(--border-strong); }
   .results-gap { flex: 1 1 auto; }
 
   // The sticky column header. Same grid as a row, so the columns line up
@@ -1622,17 +1630,19 @@
     white-space: nowrap;
   }
 
-  // Vertical rules between the header cells, which is how the real table
-  // separates its columns — and the reason its dense rows still parse as a
-  // grid rather than as three streams of text. The rule is drawn in the gap,
-  // so it costs the cell no width and cannot push the columns out of step.
-  .results-col-level,
-  .results-col-time,
-  .results-col-added,
-  .results-col-summary {
-    box-shadow: inset var(--hairline) 0 0 var(--border);
-    padding-inline-start: var(--space-2);
-  }
+  /*!
+   * No vertical rules between the header cells.
+   *
+   * There were, on the reasoning that a real table draws them. The board
+   * draws none: the 8px column gap and the monospace grid already separate
+   * the columns, and a rule in every gutter is five more verticals on a
+   * screen whose only other vertical is the selection marker.
+   *
+   * They cost more than ink. Each rule needed 8px of inset to clear it, and
+   * the rows had to carry the same inset to stay aligned with their header —
+   * so SEV and SUMMARY sat 8px right of the track the board puts them in,
+   * all the way down the table.
+   */
 
   // An added column header: the field name, and the way to take it away.
   .results-col-added {
@@ -1740,11 +1750,11 @@
   mark {
     background: var(--level-warn-bg);
     border-radius: var(--radius-xs);
-    // The tint and the rule carry the signal; the text keeps the row's own
-    // colour, because amber-on-amber is under 4.5:1 in the light theme and a
-    // marked term is exactly the text you most need to be able to read.
-    box-shadow: inset 0 -1px 0 var(--level-warn);
-    color: inherit;
+    // Amber on amber, as the board has it. This kept the row's own colour
+    // and carried an underline instead, because #b06000 on #feefe3 was
+    // 4.13:1 — but the light theme's warn is #825d35 on #f4ede6 since it was
+    // desaturated, which is 5.08:1, so the reason is gone and so is the rule.
+    color: var(--level-warn);
     padding: 0 1px;
   }
 
@@ -1890,7 +1900,6 @@
   .row-level {
     align-items: baseline;
     display: flex;
-    padding-inline-start: var(--space-2);
   }
 
   // Three letters in the severity colour. No pill, no badge: in a monospace
@@ -1913,14 +1922,26 @@
   .row-date { margin-inline-end: var(--space-1); }
   .row-ms { color: var(--faint-foreground); }
 
+  /*!
+   * The summary: one line, always.
+   *
+   * It was `pre-wrap`, so a 600-character message became a 60px row — three
+   * lines of one record in a table whose whole claim is 38 of them per 900px,
+   * and a height the virtualizer estimates at 20. `text-overflow: ellipsis`
+   * was declared beside it and could never fire, because nothing overflows a
+   * box it is free to grow.
+   *
+   * `pre` rather than `nowrap`: a log line's runs of spaces are often the
+   * only column structure it has, and collapsing them turns an aligned
+   * fixed-width report into one run of words. The whole value is a click
+   * away in the detail panel either way.
+   */
   .row-message {
     color: var(--foreground);
     min-inline-size: 0;
-    padding-inline-start: var(--space-2);
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: pre-wrap;
-    word-break: break-word;
+    white-space: pre;
   }
 
   .row-raw { color: var(--muted-foreground); }
