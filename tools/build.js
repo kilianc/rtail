@@ -6,14 +6,13 @@
  *   node tools/build.js --dist     minified, into web/dist/ for the Go binary
  *
  * Replaces the gulp pipeline (gulp 3 cannot run on Node >= 12) with the
- * esbuild and dart-sass APIs directly.
+ * esbuild API directly.
  */
 
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { watch } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import * as esbuild from 'esbuild'
-import * as sass from 'sass'
 
 const root = new URL('../', import.meta.url)
 const path = (rel) => fileURLToPath(new URL(rel, root))
@@ -28,22 +27,41 @@ const isWatch = args.has('--watch')
 const outDir = isDist ? path('web/dist') : path('app')
 const pkg = JSON.parse(await readFile(path('package.json'), 'utf8'))
 
-/**
- * Compile the stylesheets.
+/*!
+ * The stylesheets, concatenated in cascade order.
+ *
+ * This was dart-sass. What it was actually being asked to do, by the end, was
+ * resolve four `@use` lines and strip `//` comments: the source had no
+ * `@extend`, no `@function`, no `@if`, no `math.*`, and its nesting, its
+ * custom properties and its `@layer` blocks are all plain CSS now. So the
+ * stylesheets are plain CSS, and this is the whole build.
+ *
+ * Order matters and is the order Sass emitted. The four partials are
+ * unlayered, which puts them above every `@layer` in main.css — the same
+ * cascade the `@use` lines produced, kept deliberately rather than by
+ * accident of file order.
+ *
+ * `url()` paths are left exactly as written. They are relative to the output
+ * file, not the source, and both sit one level under app/ — so `../images/x`
+ * resolves from app/styles/ while editing and from app/css/ once built.
  */
+const SHEETS = ['tokens', 'fonts', 'ansi', 'highlightjs', 'main']
+
 async function buildCss() {
-  const result = sass.compile(path('app/scss/main.scss'), {
-    style: isDist ? 'compressed' : 'expanded',
-    sourceMap: !isDist,
-    quietDeps: true
-  })
+  const parts = await Promise.all(
+    SHEETS.map((name) => readFile(path(`app/styles/${name}.css`), 'utf8'))
+  )
+
+  const source = parts.join('\n')
+
+  // esbuild's CSS minifier, on a string: no bundling, so nothing resolves or
+  // rewrites a url() behind our back.
+  const css = isDist
+    ? (await esbuild.transform(source, { loader: 'css', minify: true })).code
+    : source
 
   await mkdir(`${outDir}/css`, { recursive: true })
-  await writeFile(`${outDir}/css/main.css`, result.css)
-
-  return result.loadedUrls
-    .filter((url) => 'file:' === url.protocol)
-    .map((url) => fileURLToPath(url))
+  await writeFile(`${outDir}/css/main.css`, css)
 }
 
 /**
@@ -92,19 +110,19 @@ if (isWatch) {
   const context = await esbuild.context(jsOptions)
   await context.watch()
 
-  // dart-sass has no watch API. The stylesheet directory is flat, so a plain
-  // non-recursive directory watch covers every partial — and watching the
-  // directory rather than each file means edits that replace a file (most
-  // editors save atomically via rename) still register.
+  // The stylesheet directory is flat, so a plain non-recursive directory
+  // watch covers every sheet — and watching the directory rather than each
+  // file means edits that replace a file (most editors save atomically via
+  // rename) still register.
   let pending = null
-  watch(path('app/scss'), () => {
+  watch(path('app/styles'), () => {
     clearTimeout(pending)
     pending = setTimeout(async () => {
       try {
         await buildCss()
         console.log('css rebuilt')
       } catch (err) {
-        console.error('sass error:', err.message)
+        console.error('css error:', err.message)
       }
     }, 50)
   })

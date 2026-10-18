@@ -1,28 +1,21 @@
-// **
-// rTail webapp styles
-//
-// Modelled on Google Cloud's Logs Explorer: a query box with a Run button, a
-// severity histogram under it, a Log fields panel down the left, and a dense
-// results table with a sticky header and rows that expand in place.
-//
-// Monospace throughout. Nearly everything on this screen is an identifier —
-// field names, stream names, severities, counts, timestamps — and setting
-// those in a proportional face makes every column of them ragged.
-//
-// Cascade is ordered with @layer, so component rules never need to out-specify
-// the reset and nothing depends on source order.
-// **
-
-@use 'tokens' as *;
-@use 'fonts';
-@use 'ansi';
-@use 'highlightjs';
+/*
+ * rTail webapp styles
+ *
+ * Modelled on Google Cloud's Logs Explorer: a query box with a Run button, a
+ * severity histogram under it, a Log fields panel down the left, and a dense
+ * results table with a sticky header and rows that expand in place.
+ *
+ * Monospace throughout. Nearly everything on this screen is an identifier —
+ * field names, stream names, severities, counts, timestamps — and setting
+ * those in a proportional face makes every column of them ragged.
+ *
+ * Cascade is ordered with @layer, so component rules never need to out-specify
+ * the reset and nothing depends on source order.
+ */
 
 @layer reset, base, layout, components;
 
-// **
-// reset
-// **
+/* reset */
 
 @layer reset {
   *,
@@ -41,9 +34,11 @@
     list-style: none;
   }
 
-  // Available to a screen reader, invisible to everyone else. Severity is
-  // spelled out here for every row even when the dot is the only visible
-  // marker, so colour is never the sole carrier of meaning.
+  /*
+   * Available to a screen reader, invisible to everyone else. Severity is
+   * spelled out here for every row even when the dot is the only visible
+   * marker, so colour is never the sole carrier of meaning.
+   */
   .sr-only {
     block-size: 1px;
     clip-path: inset(50%);
@@ -57,7 +52,7 @@
     font-family: inherit;
   }
 
-  // Form controls do not inherit typography from their ancestors.
+  /* Form controls do not inherit typography from their ancestors. */
   :where(button, input, select, textarea) {
     font: inherit;
   }
@@ -102,9 +97,7 @@
   }
 }
 
-// **
-// base
-// **
+/* base */
 
 @layer base {
   html,
@@ -117,8 +110,10 @@
     color: var(--foreground);
     font-family: var(--mono);
     font-size: var(--text-md);
-    // One leading for the whole interface, and it is the log row's. Every
-    // strip of chrome is then a whole number of lines tall by construction.
+    /*
+     * One leading for the whole interface, and it is the log row's. Every
+     * strip of chrome is then a whole number of lines tall by construction.
+     */
     line-height: var(--line-h);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -137,7 +132,7 @@
     color: var(--foreground);
   }
 
-  // ** scrollbars — thin, monochrome, rounded **
+  /* ** scrollbars — thin, monochrome, rounded ** */
   * {
     scrollbar-color: var(--border-strong) transparent;
     scrollbar-width: thin;
@@ -184,9 +179,7 @@
   }
 }
 
-// **
-// layout
-// **
+/* layout */
 
 @layer layout {
   /*!
@@ -209,10 +202,12 @@
     background: var(--card);
     border-block-end: var(--hairline) solid var(--border);
     display: flex;
-    // The row wraps rather than running off the window. Nothing in here can
-    // be made narrower — a stream's name, a toggle and three icons are all
-    // as short as they go — so when they stop fitting, the only honest
-    // answer is a second line.
+    /*
+     * The row wraps rather than running off the window. Nothing in here can
+     * be made narrower — a stream's name, a toggle and three icons are all
+     * as short as they go — so when they stop fitting, the only honest
+     * answer is a second line.
+     */
     flex-wrap: wrap;
     gap: var(--space-2);
     padding-inline: var(--space-2);
@@ -225,8 +220,10 @@
     display: flex;
     flex-shrink: 0;
 
-    // On a narrow window it is the one thing here that identifies nothing
-    // the reader does not already know.
+    /*
+     * On a narrow window it is the one thing here that identifies nothing
+     * the reader does not already know.
+     */
     @media (max-width: 760px) { display: none; }
   }
 
@@ -245,7 +242,7 @@
     padding-inline-end: var(--space-1);
   }
 
-  // The vertical rules that group the bar: brand | query controls | context.
+  /* The vertical rules that group the bar: brand | query controls | context. */
   .topbar-rule {
     background: var(--border);
     block-size: var(--space-4);
@@ -269,8 +266,10 @@
     min-inline-size: 0;
   }
 
-  // One flexible gap, wherever the right-hand group starts. Two `auto` margins
-  // would split the free space between them instead of pushing one group over.
+  /*
+   * One flexible gap, wherever the right-hand group starts. Two `auto` margins
+   * would split the free space between them instead of pushing one group over.
+   */
   .topbar-actions {
     align-items: center;
     display: flex;
@@ -286,8 +285,10 @@
     padding: var(--space-2);
   }
 
-  // Flush panes divided by rules rather than floating cards: a console packs
-  // the window, and gaps between panels are space not spent on log lines.
+  /*
+   * Flush panes divided by rules rather than floating cards: a console packs
+   * the window, and gaps between panels are space not spent on log lines.
+   */
   .explorer-split {
     display: grid;
     grid-template-columns: var(--sidebar-w) 1fr;
@@ -312,14 +313,14 @@
   }
 }
 
-// **
-// components
-// **
+/* components */
 
 @layer components {
-  // ** the brand mark **
+  /* ** the brand mark ** */
   .rtail-logo {
-    @include icon-common('logo-rtail', contain);
+    --icon-src: url('../images/common/logo-rtail.svg');
+    --icon-size: contain;
+
     block-size: var(--space-5);
     inline-size: calc(var(--space-6) * 2);
   }
@@ -354,9 +355,11 @@
     color: var(--muted-foreground);
     display: inline-flex;
     flex-shrink: 0;
-    // `font: inherit`, as the reference has it: a control sitting in a row of
-    // 11px text is 11px text with a border round it, and half a pixel of
-    // difference is just enough to see without being legible as a decision.
+    /*
+     * `font: inherit`, as the reference has it: a control sitting in a row of
+     * 11px text is 11px text with a border round it, and half a pixel of
+     * difference is just enough to see without being legible as a decision.
+     */
     font-size: var(--text-md);
     font-weight: 400;
     gap: var(--space-2);
@@ -367,15 +370,17 @@
     white-space: nowrap;
   }
 
-  // The reset layer already dims and un-points a disabled control, so the
-  // variants below only ever need `:not(:disabled)` on their hover.
+  /*
+   * The reset layer already dims and un-points a disabled control, so the
+   * variants below only ever need `:not(:disabled)` on their hover.
+   */
   .btn-sm {
     block-size: var(--row-h);
   }
 
   .btn-block { inline-size: 100%; }
 
-  // The one action a view is for.
+  /* The one action a view is for. */
   .btn-solid {
     background: var(--primary);
     border-color: transparent;
@@ -386,23 +391,27 @@
 
     &:hover:not(:disabled) { background: var(--primary-hover); }
 
-    // The shortcut, so the convention is discoverable rather than folklore.
-    // Drawn as a key — a notch darker than the button it sits on — rather
-    // than as the label at 60% opacity, which read as something disabled.
+    /*
+     * The shortcut, so the convention is discoverable rather than folklore.
+     * Drawn as a key — a notch darker than the button it sits on — rather
+     * than as the label at 60% opacity, which read as something disabled.
+     */
     kbd {
       background: rgb(0 0 0 / .22);
       border-radius: var(--radius-xs);
       font-family: inherit;
       font-size: var(--text-xs);
-      // The body leading, so the key is a key rather than a strip: the
-      // button is 22px and this fills all but a pixel of it, as it does in
-      // the reference.
+      /*
+       * The body leading, so the key is a key rather than a strip: the
+       * button is 22px and this fills all but a pixel of it, as it does in
+       * the reference.
+       */
       line-height: var(--line-h);
       padding-inline: 3px;
     }
   }
 
-  // A secondary action that still needs an edge.
+  /* A secondary action that still needs an edge. */
   .btn-outline {
     background: var(--card);
     border-color: var(--border);
@@ -412,15 +421,17 @@
       color: var(--foreground);
     }
 
-    // :not(:disabled) on the hover above weighs three classes, so the on-state
-    // has to match it or hovering a pressed toggle would quietly un-press it.
+    /*
+     * :not(:disabled) on the hover above weighs three classes, so the on-state
+     * has to match it or hovering a pressed toggle would quietly un-press it.
+     */
     &.on:not(:disabled) {
       border-color: var(--primary);
       color: var(--primary);
     }
   }
 
-  // A quiet action inside something else.
+  /* A quiet action inside something else. */
   .btn-ghost {
     &:hover:not(:disabled) {
       background: var(--subtle);
@@ -430,11 +441,13 @@
     &.on:not(:disabled) { color: var(--primary); }
   }
 
-  // A glyph in a square hit area.
+  /* A glyph in a square hit area. */
   .btn-icon {
     block-size: var(--hit);
-    // --muted, not --faint: the board draws these at #9aa0a6, the same grey
-    // as the text beside them, and --faint is the heading weight below it.
+    /*
+     * --muted, not --faint: the board draws these at #9aa0a6, the same grey
+     * as the text beside them, and --faint is the heading weight below it.
+     */
     color: var(--muted-foreground);
     inline-size: var(--hit);
     padding-inline: 0;
@@ -472,18 +485,59 @@
    * four of the originals masked the element directly and so were only as
    * clickable as their 12px icon.
    */
-  .btn-icon-info::after { @include icon('btn-info'); }
-  .btn-icon-github::after { @include icon('btn-github'); }
-  .btn-icon-settings::after { @include icon('btn-settings'); }
-  .btn-icon-theme-dark::after { @include icon('icn-theme-dark'); }
-  .btn-icon-theme-light::after { @include icon('icn-theme-light'); }
-  .btn-icon-close::after { @include icon-common('icn-close-date', contain); }
-  .btn-icon-fav-off::after { @include icon-common('btn-fav-off', contain); }
-  .btn-icon-fav-on::after { @include icon-common('btn-fav-on', contain); }
+  /*!
+   * The mask itself, declared once for everything that wears one.
+   *
+   * This was a Sass mixin called nine times, which emitted the same five
+   * declarations nine times over. A custom property does the same job in one
+   * rule: the selector list below is what *has* a glyph, and each class
+   * underneath says only which glyph it is. Nothing inherits the mask by
+   * accident — a .btn-icon with no --icon-src is not in the list, so it is
+   * not painted a solid square of currentcolor.
+   */
+  .rtail-logo,
+  .btn-icon-info::after,
+  .btn-icon-github::after,
+  .btn-icon-settings::after,
+  .btn-icon-theme-dark::after,
+  .btn-icon-theme-light::after,
+  .btn-icon-close::after,
+  .btn-icon-fav-off::after,
+  .btn-icon-fav-on::after {
+    background-color: currentcolor;
+    -webkit-mask: var(--icon-src) no-repeat 50% 50%;
+    mask: var(--icon-src) no-repeat 50% 50%;
+    -webkit-mask-size: var(--icon-size, 100%);
+    mask-size: var(--icon-size, 100%);
+  }
 
-  // A swatch shows its own glyph as text, so it suppresses the icon slot and
-  // reads at body size. Replaces a [class*=] selector that had to name three
-  // exceptions to say the same thing.
+  /* Set on the button, read by its ::after — custom properties inherit. */
+  .btn-icon-info { --icon-src: url('../images/icons/btn-info.svg'); }
+  .btn-icon-github { --icon-src: url('../images/icons/btn-github.svg'); }
+  .btn-icon-settings { --icon-src: url('../images/icons/btn-settings.svg'); }
+  .btn-icon-theme-dark { --icon-src: url('../images/icons/icn-theme-dark.svg'); }
+  .btn-icon-theme-light { --icon-src: url('../images/icons/icn-theme-light.svg'); }
+
+  .btn-icon-close {
+    --icon-src: url('../images/common/icn-close-date.svg');
+    --icon-size: contain;
+  }
+
+  .btn-icon-fav-off {
+    --icon-src: url('../images/common/btn-fav-off.svg');
+    --icon-size: contain;
+  }
+
+  .btn-icon-fav-on {
+    --icon-src: url('../images/common/btn-fav-on.svg');
+    --icon-size: contain;
+  }
+
+  /*
+   * A swatch shows its own glyph as text, so it suppresses the icon slot and
+   * reads at body size. Replaces a [class*=] selector that had to name three
+   * exceptions to say the same thing.
+   */
   .btn-swatch {
     font-size: var(--text-md);
 
@@ -513,10 +567,12 @@
 
     sup {
       font-size: var(--text-xs);
-      // Level with the letter's cap, so it reads as a mark on the A rather
-      // than a hyphen after it, and anchored to the middle of the cell
-      // rather than its right edge — the letter is centred, so a wider cell
-      // would otherwise carry the sign away from the letter it modifies.
+      /*
+       * Level with the letter's cap, so it reads as a mark on the A rather
+       * than a hyphen after it, and anchored to the middle of the cell
+       * rather than its right edge — the letter is centred, so a wider cell
+       * would otherwise carry the sign away from the letter it modifies.
+       */
       inset-block-start: 2px;
       inset-inline-start: 50%;
       line-height: 1;
@@ -525,7 +581,7 @@
     }
   }
 
-  // ** top bar: stream picker **
+  /* ** top bar: stream picker ** */
 
   /*!
    * The stream picker — the project pill.
@@ -554,10 +610,18 @@
 
     &:hover { border-color: var(--border-strong); }
 
-    // The caret, so it reads as something that opens. Pointing down, not
-    // right: a menu drops, and a right-pointing one says "go there".
+    /*
+     * The caret, so it reads as something that opens. Pointing down, not
+     * right: a menu drops, and a right-pointing one says "go there".
+     */
     &::after {
-      @include chevron(5px, 1.5px);
+block-size: 5px;
+      border-block-end: 1.5px solid currentcolor;
+      border-inline-end: 1.5px solid currentcolor;
+      content: '';
+      inline-size: 5px;
+      transform: rotate(-45deg);
+      transition: transform .15s ease;
       color: var(--muted-foreground);
       flex-shrink: 0;
       margin-block-start: -3px;
@@ -589,13 +653,13 @@
     white-space: nowrap;
   }
 
-  // The count rides inside the pill, dimmed — it is context, not the label.
+  /* The count rides inside the pill, dimmed — it is context, not the label. */
   .stream-picker-count {
     color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
   }
 
-  // ** live / history **
+  /* ** live / history ** */
 
   .live-toggle {
     align-items: center;
@@ -626,9 +690,11 @@
 
       i {
         background: var(--live);
-        // A still ring rather than a breathing halo: the bar holds four
-        // controls and one of them animating forever draws the eye off the
-        // logs, which are the thing that is actually moving.
+        /*
+         * A still ring rather than a breathing halo: the bar holds four
+         * controls and one of them animating forever draws the eye off the
+         * logs, which are the thing that is actually moving.
+         */
         box-shadow: 0 0 0 3px var(--live-ring);
       }
     }
@@ -636,7 +702,7 @@
 
   .topbar-gap { flex: 1 1 auto; }
 
-  // How much log there is, beside the links out.
+  /* How much log there is, beside the links out. */
   .topbar-store {
     align-items: baseline;
     color: var(--muted-foreground);
@@ -646,16 +712,20 @@
     font-variant-numeric: tabular-nums;
     gap: var(--space-1);
 
-    // It is the first thing to go on a narrow window: it is context, and the
-    // controls beside it are the job.
+    /*
+     * It is the first thing to go on a narrow window: it is context, and the
+     * controls beside it are the job.
+     */
     @media (max-width: 900px) { display: none; }
   }
 
-  // The separator between two facts, a step below both. The board uses
-  // #5f6368 here, which is --border-strong, not the --faint it had.
+  /*
+   * The separator between two facts, a step below both. The board uses
+   * #5f6368 here, which is --border-strong, not the --faint it had.
+   */
   .topbar-dot { color: var(--border-strong); }
 
-  // ** the command bar — the hero control, and sized like one **
+  /* ** the command bar — the hero control, and sized like one ** */
 
   .command {
     display: grid;
@@ -681,8 +751,10 @@
   .command-pane {
     background: var(--surface);
     border: var(--hairline) solid var(--input);
-    // The pane radius, not the control radius: this is a region that holds
-    // controls, and it reads as one by being rounder than the things in it.
+    /*
+     * The pane radius, not the control radius: this is a region that holds
+     * controls, and it reads as one by being rounder than the things in it.
+     */
     border-radius: var(--radius);
     display: grid;
     overflow: hidden;
@@ -690,8 +762,10 @@
 
     &:hover { border-color: var(--border-strong); }
 
-    // The whole pane lights up when the text inside it has focus, so the
-    // footer controls read as part of the focused thing.
+    /*
+     * The whole pane lights up when the text inside it has focus, so the
+     * footer controls read as part of the focused thing.
+     */
     &:focus-within {
       border-color: var(--primary);
       box-shadow: 0 0 0 3px var(--primary-ring);
@@ -702,9 +776,11 @@
 
   .command-editor {
     display: grid;
-    // The ink and the textarea share one cell, stacked. Declared here rather
-    // than by absolutely positioning the ink, so the cell is sized by the
-    // textarea and the two cannot disagree about how tall the query is.
+    /*
+     * The ink and the textarea share one cell, stacked. Declared here rather
+     * than by absolutely positioning the ink, so the cell is sized by the
+     * textarea and the two cannot disagree about how tall the query is.
+     */
     grid-template-areas: "gutter text";
     grid-template-columns: auto 1fr;
     position: relative;
@@ -733,7 +809,7 @@
     .tok-string { color: var(--ansi-magenta); }
   }
 
-  // The shared box. One rule, two layers, no drift.
+  /* The shared box. One rule, two layers, no drift. */
   .command-ink,
   .command-editor textarea {
     font-family: var(--mono);
@@ -772,8 +848,10 @@
 
   .command-editor textarea {
     background: none;
-    // Transparent, with a visible caret: the colour comes from the ink
-    // underneath, and this layer exists only to be typed into.
+    /*
+     * Transparent, with a visible caret: the colour comes from the ink
+     * underneath, and this layer exists only to be typed into.
+     */
     caret-color: var(--primary);
     color: transparent;
     display: block;
@@ -787,8 +865,10 @@
       font-style: italic;
     }
 
-    // The selection has to come from this layer — the ink below cannot be
-    // selected — so it is drawn as a band rather than as coloured text.
+    /*
+     * The selection has to come from this layer — the ink below cannot be
+     * selected — so it is drawn as a band rather than as coloured text.
+     */
     &::selection { background: var(--primary-subtle); }
   }
 
@@ -802,7 +882,7 @@
     position: absolute;
   }
 
-  // Placement only; the button is a .btn-icon.
+  /* Placement only; the button is a .btn-icon. */
   .command-clear {
     inset-block-start: var(--space-1);
     inset-inline-end: var(--space-1);
@@ -830,9 +910,11 @@
     align-items: center;
     display: flex;
     flex-shrink: 0;
-    // The same 8px every other pair on this footer is set at; 4px put the
-    // range picker and Run query closer to each other than either was to
-    // anything else, which read as one control.
+    /*
+     * The same 8px every other pair on this footer is set at; 4px put the
+     * range picker and Run query closer to each other than either was to
+     * anything else, which read as one control.
+     */
     gap: var(--space-2);
     margin-inline-start: auto;
   }
@@ -857,8 +939,10 @@
       padding: 0 7px;
     }
 
-    // One rule between the segments, so the pair reads as one switch with
-    // two positions rather than as two buttons that happen to touch.
+    /*
+     * One rule between the segments, so the pair reads as one switch with
+     * two positions rather than as two buttons that happen to touch.
+     */
     .btn + .btn { border-inline-start: var(--hairline) solid var(--border); }
 
     .btn.on {
@@ -873,11 +957,13 @@
     min-inline-size: 0;
     overflow: hidden;
 
-    // An example is as long as it is; the row elides rather than wraps.
-    //
-    // Dashed, because these are not commands — they are text that will be
-    // written into the editor above. A solid border would make them read as
-    // three more buttons in a footer that already has four.
+    /*
+     * An example is as long as it is; the row elides rather than wraps.
+     *
+     * Dashed, because these are not commands — they are text that will be
+     * written into the editor above. A solid border would make them read as
+     * three more buttons in a footer that already has four.
+     */
     .btn {
       border: var(--hairline) dashed var(--border);
       min-inline-size: 0;
@@ -899,9 +985,11 @@
     inset-inline: var(--space-8) auto;
     max-block-size: calc(var(--row-h) * 9);
     min-inline-size: calc(var(--space-6) * 12);
-    // Rows run edge to edge, so the selected one is a band across the menu
-    // rather than a rounded tile floating inside it. That costs the 4px of
-    // padding and the row's own radius; the menu's radius clips them.
+    /*
+     * Rows run edge to edge, so the selected one is a band across the menu
+     * rather than a rounded tile floating inside it. That costs the 4px of
+     * padding and the row's own radius; the menu's radius clips them.
+     */
     overflow: hidden auto;
     position: absolute;
     z-index: 30;
@@ -921,15 +1009,19 @@
       column-gap: var(--space-2);
       cursor: pointer;
       display: grid;
-      // 48px rather than the board's 44: it drew `number`, `string` and
-      // `ts`, and the real list also holds `envelope` and `boolean`,
-      // which came out as `envelo…`.
+      /*
+       * 48px rather than the board's 44: it drew `number`, `string` and
+       * `ts`, and the real list also holds `envelope` and `boolean`,
+       * which came out as `envelo…`.
+       */
       grid-template-columns: minmax(0, 1fr) 48px 48px;
       padding-inline: var(--space-2);
 
-      // The accent, as everywhere else a thing is picked: --subtle-strong is
-      // the same grey as the row below it, so the selected completion was
-      // marked only by being slightly lighter than its neighbours.
+      /*
+       * The accent, as everywhere else a thing is picked: --subtle-strong is
+       * the same grey as the row below it, so the selected completion was
+       * marked only by being slightly lighter than its neighbours.
+       */
       &.active {
         background: var(--primary-subtle);
 
@@ -962,29 +1054,35 @@
     text-align: end;
   }
 
-  // Inside the pane, at the query's own size, starting in the same column
-  // the query starts in: 32px of gutter and the editor's own 10px.
+  /*
+   * Inside the pane, at the query's own size, starting in the same column
+   * the query starts in: 32px of gutter and the editor's own 10px.
+   */
   .command-error {
     color: var(--level-error);
     margin: 0;
     padding: var(--space-1) 10px var(--space-2) calc(var(--space-8) + 10px);
   }
 
-  // The run the parser stopped on, marked in place. A wavy underline is the
-  // one decoration that cannot be mistaken for syntax colour.
+  /*
+   * The run the parser stopped on, marked in place. A wavy underline is the
+   * one decoration that cannot be mistaken for syntax colour.
+   */
   .tok-bad {
     text-decoration: underline wavy var(--level-error);
     text-underline-offset: 3px;
   }
 
-  // ** time range **
+  /* ** time range ** */
 
   .timerange {
     align-items: center;
     background: none;
-    // A control, at the control height. It had been set to --command-h, the
-    // height of a query *line*, which made it the tallest thing in the
-    // footer and four pixels out of step with the button beside it.
+    /*
+     * A control, at the control height. It had been set to --command-h, the
+     * height of a query *line*, which made it the tallest thing in the
+     * footer and four pixels out of step with the button beside it.
+     */
     block-size: var(--control-h);
     border: var(--hairline) solid var(--border);
     border-radius: var(--radius-md);
@@ -999,16 +1097,24 @@
 
     &:hover { border-color: var(--border-strong); }
 
-    // A pinned range is not the default, and looks it — brighter, not coloured.
+    /* A pinned range is not the default, and looks it — brighter, not coloured. */
     &.absolute { border-color: var(--border-strong); }
 
-    // A caret, so it reads as something that opens — down, like the menu.
+    /* A caret, so it reads as something that opens — down, like the menu. */
     &::after {
-      @include chevron(5px, 1.5px);
+block-size: 5px;
+      border-block-end: 1.5px solid currentcolor;
+      border-inline-end: 1.5px solid currentcolor;
+      content: '';
+      inline-size: 5px;
+      transform: rotate(-45deg);
+      transition: transform .15s ease;
       color: var(--muted-foreground);
-      // The flex gap already spaces it; a margin on top of that is the gap
-      // twice, which is why this control measured five pixels wide of the
-      // reference with everything else about it matching.
+      /*
+       * The flex gap already spaces it; a margin on top of that is the gap
+       * twice, which is why this control measured five pixels wide of the
+       * reference with everything else about it matching.
+       */
       margin-block-start: -3px;
       transform: rotate(45deg);
     }
@@ -1043,13 +1149,15 @@
     display: grid;
     gap: 2px;
 
-    // A list, so the labels start at one edge rather than centring.
+    /* A list, so the labels start at one edge rather than centring. */
     .btn {
       justify-content: start;
     }
 
-    // The chosen preset is a current state, not an accent: this list is read
-    // top to bottom and a blue row in it reads as a link.
+    /*
+     * The chosen preset is a current state, not an accent: this list is read
+     * top to bottom and a blue row in it reads as a link.
+     */
     .btn.on {
       background: var(--subtle-strong);
       color: var(--foreground);
@@ -1068,27 +1176,57 @@
     }
 
     input {
-      @include field;
+background: none;
+      block-size: var(--control-h);
+      border: 0;
+      /* Reserved at rest so focusing never shifts the layout by a pixel. */
+      border-block-end: 2px solid transparent;
+      border-radius: 0;
+      color: var(--foreground);
+      font-family: var(--sans);
+      font-size: var(--text-md);
+      transition: border-color .14s ease;
+
+      &::placeholder { color: var(--faint-foreground); }
       border-block-end: var(--hairline) solid var(--border);
       font-family: var(--mono);
       font-size: var(--text-sm);
 
-      &:focus { @include field-focus; }
+      /*
+       * One declaration, not two. The inset shadow draws over the hairline,
+       * so also recolouring the border stacked a second mark in one place.
+       */
+      &:focus { box-shadow: inset 0 -2px 0 var(--primary); }
     }
   }
 
-  // ** streams popover **
+  /* ** streams popover ** */
 
   .popover-streams {
     padding: 0;
 
     input {
-      @include field(var(--bar-h));
+background: none;
+      block-size: var(--bar-h);
+      border: 0;
+      /* Reserved at rest so focusing never shifts the layout by a pixel. */
+      border-block-end: 2px solid transparent;
+      border-radius: 0;
+      color: var(--foreground);
+      font-family: var(--sans);
+      font-size: var(--text-md);
+      transition: border-color .14s ease;
+
+      &::placeholder { color: var(--faint-foreground); }
       border-block-end: var(--hairline) solid var(--border);
       inline-size: 100%;
       padding-inline: var(--space-4);
 
-      &:focus { @include field-focus; }
+      /*
+       * One declaration, not two. The inset shadow draws over the hairline,
+       * so also recolouring the border stacked a second mark in one place.
+       */
+      &:focus { box-shadow: inset 0 -2px 0 var(--primary); }
     }
   }
 
@@ -1106,9 +1244,11 @@
     }
   }
 
-  // A name in a list: it fills the row and elides, and the row behind it
-  // draws the hover. The chosen one is weight, not colour — the list is
-  // scanned, and one blue row in it reads as a link rather than as current.
+  /*
+   * A name in a list: it fills the row and elides, and the row behind it
+   * draws the hover. The chosen one is weight, not colour — the list is
+   * scanned, and one blue row in it reads as a link rather than as current.
+   */
   .stream-item {
     flex: 1;
     justify-content: start;
@@ -1133,7 +1273,7 @@
     padding: var(--space-3);
   }
 
-  // ** histogram — the navigation, not decoration **
+  /* ** histogram — the navigation, not decoration ** */
 
   /*!
    * The chart, and nothing around it.
@@ -1153,7 +1293,7 @@
     &.loading { opacity: .45; }
   }
 
-  // What is counted, over what bucket, and how tall the tallest bar is.
+  /* What is counted, over what bucket, and how tall the tallest bar is. */
   .histogram-head {
     align-items: baseline;
     color: var(--muted-foreground);
@@ -1179,7 +1319,7 @@
   }
 
   .histogram-bar {
-    // Positioned by timestamp, so a gap in the data stays a gap.
+    /* Positioned by timestamp, so a gap in the data stays a gap. */
     display: flex;
     flex-direction: column;
     inset-block-end: 0;
@@ -1188,32 +1328,38 @@
     position: absolute;
   }
 
-  // The gap lives on the fill rather than the bar box, so the hit area stays
-  // the full bucket width while the ink reads as discrete bars. Without it the
-  // bars touch and the chart becomes one solid slab.
+  /*
+   * The gap lives on the fill rather than the bar box, so the hit area stays
+   * the full bucket width while the ink reads as discrete bars. Without it the
+   * bars touch and the chart becomes one solid slab.
+   */
   .histogram-part {
     inline-size: calc(100% - 2px);
     margin-inline: 1px;
     min-block-size: 2px;
     transition: filter .1s ease;
 
-    // A line with no severity is still traffic, so it is drawn as traffic.
-    // It was the same grey as the gridlines, which made a stream that never
-    // sets a level look like an empty chart.
+    /*
+     * A line with no severity is still traffic, so it is drawn as traffic.
+     * It was the same grey as the gridlines, which made a stream that never
+     * sets a level look like an empty chart.
+     */
     &.level-none,
     &.level-other { background: var(--chart-bar); }
 
     &.level-trace,
     &.level-debug { background: var(--border); }
 
-    // Routine traffic sits back in a lighter blue so the spikes come forward.
+    /* Routine traffic sits back in a lighter blue so the spikes come forward. */
     &.level-info,
     &.level-notice { background: var(--chart-bar); }
 
     &.level-warn { background: var(--level-warn); }
 
-    // Errors are the only saturated thing in the chart, which is enough to
-    // make a spike visible from across the room without a bloom around it.
+    /*
+     * Errors are the only saturated thing in the chart, which is enough to
+     * make a spike visible from across the room without a bloom around it.
+     */
     &.level-error,
     &.level-critical,
     &.level-alert,
@@ -1261,7 +1407,7 @@
     padding-block-start: var(--space-1);
   }
 
-  // ** field explorer **
+  /* ** field explorer ** */
 
   .explorer {
     background: var(--card);
@@ -1271,10 +1417,12 @@
     min-block-size: 0;
     overflow: hidden;
 
-    // The narrow-window rule lives here, beside the display it overrides.
-    // It was written in the layout layer, which this layer outranks — so the
-    // split went to one column while the explorer stayed visible, and the
-    // two panes stacked instead of one of them going away.
+    /*
+     * The narrow-window rule lives here, beside the display it overrides.
+     * It was written in the layout layer, which this layer outranks — so the
+     * split went to one column while the explorer stayed visible, and the
+     * two panes stacked instead of one of them going away.
+     */
     @media (max-width: 760px) { display: none; }
   }
 
@@ -1334,8 +1482,10 @@
     font-variant-numeric: tabular-nums;
   }
 
-  // The bar spans both tracks under its label, so the two numbers stay
-  // aligned and the proportion is read off the width rather than the digits.
+  /*
+   * The bar spans both tracks under its label, so the two numbers stay
+   * aligned and the proportion is read off the width rather than the digits.
+   */
   .explorer-level-bar {
     background: var(--border);
     block-size: 3px;
@@ -1354,23 +1504,27 @@
     }
   }
 
-  // Severity colours the row, which is why the bar can use currentcolor.
+  /* Severity colours the row, which is why the bar can use currentcolor. */
   .explorer-level {
     &.level-error, &.level-critical, &.level-alert,
     &.level-emergency, &.level-fatal { color: var(--level-error); }
     &.level-warn { color: var(--level-warn); }
-    // The same two tokens the severity chips use. These read --primary and
-    // --faint-foreground, so the explorer's INFO bar was the accent blue
-    // while the INF chip beside it was the level blue, and DEBUG was a
-    // shade lighter here than in the rows it counted.
+    /*
+     * The same two tokens the severity chips use. These read --primary and
+     * --faint-foreground, so the explorer's INFO bar was the accent blue
+     * while the INF chip beside it was the level blue, and DEBUG was a
+     * shade lighter here than in the rows it counted.
+     */
     &.level-info, &.level-notice { color: var(--level-info); }
     &.level-debug, &.level-trace { color: var(--level-debug); }
   }
 
   .explorer-level-name { color: currentcolor; }
 
-  // The two kinds of key, labelled. The envelope is rTail's own shape and the
-  // same on every install; the promoted keys are whatever this system logs.
+  /*
+   * The two kinds of key, labelled. The envelope is rTail's own shape and the
+   * same on every install; the promoted keys are whatever this system logs.
+   */
   .explorer-section {
     color: var(--faint-foreground);
     font-size: var(--text-xs);
@@ -1413,20 +1567,26 @@
     inset-inline-end: 0;
     justify-content: end;
     opacity: 0;
-    // The glyph's right edge lands where the digits end, not where the hit
-    // area does: the padding is inside the button so the target stays 20px
-    // tall and comfortably wide.
+    /*
+     * The glyph's right edge lands where the digits end, not where the hit
+     * area does: the padding is inside the button so the target stays 20px
+     * tall and comfortably wide.
+     */
     padding-inline: var(--space-2);
     position: absolute;
     transition: opacity .12s ease, color .14s ease;
 
-    // Pinned is said by the name's colour, which costs no room. The ⊞ is
-    // the way to change that, so it appears when you reach for it and the
-    // count keeps the slot the rest of the time.
+    /*
+     * Pinned is said by the name's colour, which costs no room. The ⊞ is
+     * the way to change that, so it appears when you reach for it and the
+     * count keeps the slot the rest of the time.
+     */
     &.on { color: var(--primary); }
 
-    // It sits over the row's own background, so it brings none of its own —
-    // a filled chip here would read as a second, smaller row.
+    /*
+     * It sits over the row's own background, so it brings none of its own —
+     * a filled chip here would read as a second, smaller row.
+     */
     &,
     &:hover { background: none; }
   }
@@ -1434,10 +1594,12 @@
   .explorer-field:hover .explorer-column,
   .explorer-column:focus-visible { opacity: 1; }
 
-  // The count steps aside rather than being overlapped — while the pointer
-  // is on the row, and only then. A pinned field used to surrender its count
-  // permanently to hold the ⊞, which traded a number for a marker that said
-  // the same thing the column header already said.
+  /*
+   * The count steps aside rather than being overlapped — while the pointer
+   * is on the row, and only then. A pinned field used to surrender its count
+   * permanently to hold the ⊞, which traded a number for a marker that said
+   * the same thing the column header already said.
+   */
   .explorer-field:hover .explorer-kind { opacity: 0; }
 
   .explorer-kind { transition: opacity .12s ease; }
@@ -1459,22 +1621,28 @@
 
   }
 
-  // Open is said by the values being there, and by the row keeping the
-  // hover wash. A caret in front of every name cost a gutter down the whole
-  // list to decorate a row whose disclosure is already visible.
+  /*
+   * Open is said by the values being there, and by the row keeping the
+   * hover wash. A caret in front of every name cost a gutter down the whole
+   * list to decorate a row whose disclosure is already visible.
+   */
   .explorer-field.open .explorer-head { background: var(--subtle); }
 
-  // Mentioned by the query: the one row on the list the query is about.
-  // A filled band rather than a wash with a marker — at 20px the marker is
-  // more ink than the name beside it.
+  /*
+   * Mentioned by the query: the one row on the list the query is about.
+   * A filled band rather than a wash with a marker — at 20px the marker is
+   * more ink than the name beside it.
+   */
   .explorer-field.active .explorer-head { background: var(--primary-subtle); }
 
   .explorer-field.active .explorer-name,
   .explorer-field.active .explorer-kind { color: var(--primary); }
 
-  // Pinned as a column: the name in the accent, nothing else. The band is
-  // spoken for by `active`, and a field can be both — so pinning gets the
-  // quieter half of the same signal rather than a second background.
+  /*
+   * Pinned as a column: the name in the accent, nothing else. The band is
+   * spoken for by `active`, and a field can be both — so pinning gets the
+   * quieter half of the same signal rather than a second background.
+   */
   .explorer-field.pinned .explorer-name { color: var(--primary); }
 
   .explorer-name {
@@ -1514,7 +1682,7 @@
     gap: var(--space-2);
     min-inline-size: 0;
     overflow: hidden;
-    // Indented past the field name, so values read as children of it.
+    /* Indented past the field name, so values read as children of it. */
     padding-inline: var(--space-5) var(--space-2);
     position: relative;
     text-align: start;
@@ -1522,14 +1690,18 @@
     &:hover { background: var(--subtle); }
   }
 
-  // No share bar. The real panel lists a value and a count and nothing else,
-  // and it is right to: the counts are already right-aligned and comparable,
-  // and a bar behind every label turns a quiet index into a chart nobody
-  // asked for.
+  /*
+   * No share bar. The real panel lists a value and a count and nothing else,
+   * and it is right to: the counts are already right-aligned and comparable,
+   * and a bar behind every label turns a quiet index into a chart nobody
+   * asked for.
+   */
   .explorer-share { display: none; }
 
-  // Body size, not the dense-control size: the main board draws the field
-  // list at 11px, the same as everything else in the sidebar.
+  /*
+   * Body size, not the dense-control size: the main board draws the field
+   * list at 11px, the same as everything else in the sidebar.
+   */
   .explorer-label {
     color: var(--foreground);
     font-size: var(--text-md);
@@ -1547,8 +1719,10 @@
     position: relative;
   }
 
-  // Revealed on hover, and red on its own hover: excluding is the one
-  // destructive thing this panel does.
+  /*
+   * Revealed on hover, and red on its own hover: excluding is the one
+   * destructive thing this panel does.
+   */
   .explorer-exclude {
     inline-size: var(--space-6);
     opacity: 0;
@@ -1557,7 +1731,7 @@
     &:hover:not(:disabled) { color: var(--level-error); }
   }
 
-  // ** results **
+  /* ** results ** */
 
   .results {
     /*!
@@ -1578,8 +1752,10 @@
 
     background: var(--card);
     display: grid;
-    // Stats, columns, rows, footer. The middle track is the only one that
-    // grows, so the two chrome rows stay put while the list scrolls.
+    /*
+     * Stats, columns, rows, footer. The middle track is the only one that
+     * grows, so the two chrome rows stay put while the list scrolls.
+     */
     grid-template-rows: auto auto 1fr auto;
     min-block-size: 0;
     overflow: hidden;
@@ -1614,8 +1790,10 @@
   .results-dot { color: var(--border-strong); }
   .results-gap { flex: 1 1 auto; }
 
-  // The sticky column header. Same grid as a row, so the columns line up
-  // without either side hard-coding a width.
+  /*
+   * The sticky column header. Same grid as a row, so the columns line up
+   * without either side hard-coding a width.
+   */
   /*!
    * The header and every row declare the *same* grid template.
    *
@@ -1629,7 +1807,7 @@
   .row-head {
     display: grid;
     gap: var(--space-2);
-    // Set on .results, so both read one value and cannot fall out of step.
+    /* Set on .results, so both read one value and cannot fall out of step. */
     grid-template-columns: var(--row-template, var(--caret-w) var(--gutter-w) var(--sev-w) 1fr);
     padding-inline: var(--space-2);
   }
@@ -1646,9 +1824,11 @@
     text-transform: uppercase;
   }
 
-  // Every header cell clips rather than pushing its neighbour along: the
-  // severity column is only as wide as a chip, and an un-clipped label there
-  // shunts "Timestamp" out of alignment with the column it names.
+  /*
+   * Every header cell clips rather than pushing its neighbour along: the
+   * severity column is only as wide as a chip, and an un-clipped label there
+   * shunts "Timestamp" out of alignment with the column it names.
+   */
   .results-header span {
     overflow: hidden;
     text-overflow: clip;
@@ -1669,7 +1849,7 @@
    * all the way down the table.
    */
 
-  // An added column header: the field name, and the way to take it away.
+  /* An added column header: the field name, and the way to take it away. */
   .results-col-added {
     align-items: center;
     display: flex;
@@ -1679,14 +1859,18 @@
 
     &:hover .results-col-drop { opacity: 1; }
 
-    // See .results below: on a narrow window the pinned columns are the
-    // first thing to give, and their headers go with them.
+    /*
+     * See .results below: on a narrow window the pinned columns are the
+     * first thing to give, and their headers go with them.
+     */
     @media (max-width: 760px) { display: none; }
   }
 
-  // A pinned field's name is a column label like the fixed three, and is set
-  // like them. It was the one lowercase word in a row of capitals, which read
-  // as a value that had got into the header rather than as a heading.
+  /*
+   * A pinned field's name is a column label like the fixed three, and is set
+   * like them. It was the one lowercase word in a row of capitals, which read
+   * as a value that had got into the header rather than as a heading.
+   */
   /*!
    * A promoted field's label.
    *
@@ -1704,8 +1888,10 @@
     white-space: nowrap;
   }
 
-  // Numbers right-align, header and cells together: a column of quantities is
-  // compared by its digits lining up, and the label has to sit over them.
+  /*
+   * Numbers right-align, header and cells together: a column of quantities is
+   * compared by its digits lining up, and the label has to sit over them.
+   */
   .results-col-added.numeric { justify-content: end; }
   .row-cell.numeric { text-align: end; }
   .row-cell.empty { color: var(--border-strong); }
@@ -1734,13 +1920,17 @@
     &:hover:not(:disabled) { color: var(--foreground); }
   }
 
-  // Margin, not padding: `overflow: hidden` clips at the padding edge, so a
-  // padded label still runs its last characters underneath the ×. Shrinking
-  // the box is what moves the text out of the way.
+  /*
+   * Margin, not padding: `overflow: hidden` clips at the padding edge, so a
+   * padded label still runs its last characters underneath the ×. Shrinking
+   * the box is what moves the text out of the way.
+   */
   .results-col-added:hover .results-col-name { margin-inline-end: var(--space-5); }
 
-  // A promoted value. Monospace and truncating, because these are identifiers
-  // and a wrapped one would break the row rhythm the whole table depends on.
+  /*
+   * A promoted value. Monospace and truncating, because these are identifiers
+   * and a wrapped one would break the row rhythm the whole table depends on.
+   */
   .row-cell {
     @media (max-width: 760px) { display: none; }
 
@@ -1767,23 +1957,27 @@
   }
 
 
-  // Matched text, marked in the summary the way the reference does it.
-  // Amber rather than blue. Blue is selection, and a marked term inside a
-  // selected row was the same colour as the row around it — the one place the
-  // single-accent rule had to give, since severity never appears in the
-  // message text and so cannot be confused with it.
+  /*
+   * Matched text, marked in the summary the way the reference does it.
+   * Amber rather than blue. Blue is selection, and a marked term inside a
+   * selected row was the same colour as the row around it — the one place the
+   * single-accent rule had to give, since severity never appears in the
+   * message text and so cannot be confused with it.
+   */
   mark {
     background: var(--level-warn-bg);
     border-radius: var(--radius-xs);
-    // Amber on amber, as the board has it. This kept the row's own colour
-    // and carried an underline instead, because #b06000 on #feefe3 was
-    // 4.13:1 — but the light theme's warn is #825d35 on #f4ede6 since it was
-    // desaturated, which is 5.08:1, so the reason is gone and so is the rule.
+    /*
+     * Amber on amber, as the board has it. This kept the row's own colour
+     * and carried an underline instead, because #b06000 on #feefe3 was
+     * 4.13:1 — but the light theme's warn is #825d35 on #f4ede6 since it was
+     * desaturated, which is 5.08:1, so the reason is gone and so is the rule.
+     */
     color: var(--level-warn);
     padding: 0 1px;
   }
 
-  // The count of what arrived while the feed was held.
+  /* The count of what arrived while the feed was held. */
   .results-pending {
     background: var(--primary-foreground);
     border-radius: var(--radius-xs);
@@ -1793,7 +1987,7 @@
     padding: 0 var(--space-1);
   }
 
-  // Floats over the results, so it keeps its own placement, lift and entrance.
+  /* Floats over the results, so it keeps its own placement, lift and entrance. */
   .results-follow {
     animation: rise .14s ease-out;
     box-shadow: var(--shadow-md);
@@ -1817,7 +2011,7 @@
     }
   }
 
-  // Two crossed rules, so it stays crisp and inherits colour.
+  /* Two crossed rules, so it stays crisp and inherits colour. */
   .results-empty-mark {
     block-size: var(--space-6);
     inline-size: var(--space-6);
@@ -1838,23 +2032,27 @@
     &::after { transform: rotate(-45deg); }
   }
 
-  // ** one row — a Material table row **
+  /* ** one row — a Material table row ** */
 
   .row {
-    // A hairline under every row, a shade below the panel borders.
-    //
-    // Without it the list is one undifferentiated block of text and a
-    // wrapped summary silently reads as two events. It is deliberately the
-    // --muted grey rather than --border: the rule has to separate lines
-    // without drawing a table.
+    /*
+     * A hairline under every row, a shade below the panel borders.
+     *
+     * Without it the list is one undifferentiated block of text and a
+     * wrapped summary silently reads as two events. It is deliberately the
+     * --muted grey rather than --border: the rule has to separate lines
+     * without drawing a table.
+     */
     border-block-end: var(--hairline) solid var(--muted);
     cursor: pointer;
     font-family: var(--mono);
     font-size: var(--mono-size);
     transition: background-color .08s ease;
 
-    // Hover is the same translucent lift, for the same reason: a solid
-    // --subtle erased the severity wash the moment the pointer crossed a row.
+    /*
+     * Hover is the same translucent lift, for the same reason: a solid
+     * --subtle erased the severity wash the moment the pointer crossed a row.
+     */
     &:hover { background-image: linear-gradient(var(--raise), var(--raise)); }
 
     /*!
@@ -1889,27 +2087,41 @@
   .row-head {
     align-items: baseline;
     min-block-size: var(--line-h);
-    // One pixel above and below the line. It is the whole difference between
-    // a list of lines and a wall of text, and it is why the row is 22px
-    // rather than 20 — nineteen of type, two of air, one of rule.
+    /*
+     * One pixel above and below the line. It is the whole difference between
+     * a list of lines and a wall of text, and it is why the row is 22px
+     * rather than 20 — nineteen of type, two of air, one of rule.
+     */
     padding-block: 1px;
   }
 
-  // A disclosure triangle, drawn from two rules so it inherits colour and
-  // stays crisp at any zoom.
-  // The disclosure column: a chevron centred in its own cell.
+  /*
+   * A disclosure triangle, drawn from two rules so it inherits colour and
+   * stays crisp at any zoom.
+   * The disclosure column: a chevron centred in its own cell.
+   */
   .row-caret {
     align-items: center;
     align-self: start;
-    // A shade dimmer and a size smaller than the other chevrons on the
-    // screen. There is one per row, a thousand rows down the page, and at
-    // the weight the menus use they read as a column of punctuation.
+    /*
+     * A shade dimmer and a size smaller than the other chevrons on the
+     * screen. There is one per row, a thousand rows down the page, and at
+     * the weight the menus use they read as a column of punctuation.
+     */
     color: var(--border-strong);
     display: flex;
     block-size: var(--line-h);
     justify-content: center;
 
-    &::after { @include chevron(4px, 1.25px); }
+    &::after {
+      block-size: 4px;
+      border-block-end: 1.25px solid currentcolor;
+      border-inline-end: 1.25px solid currentcolor;
+      content: '';
+      inline-size: 4px;
+      transform: rotate(-45deg);
+      transition: transform .15s ease;
+    }
   }
 
   .row:hover .row-caret { color: var(--muted-foreground); }
@@ -1927,9 +2139,11 @@
     display: flex;
   }
 
-  // Three letters in the severity colour. No pill, no badge: in a monospace
-  // column the letters are already a fixed-width block, so a shape around
-  // them adds ink without adding information.
+  /*
+   * Three letters in the severity colour. No pill, no badge: in a monospace
+   * column the letters are already a fixed-width block, so a shape around
+   * them adds ink without adding information.
+   */
   .row-chip {
     color: var(--level-info);
     flex-shrink: 0;
@@ -1973,8 +2187,10 @@
 
   .row.level-warn .row-chip { color: var(--level-warn); }
 
-  // Errors wash the whole row. A screen full of them should look wrong before
-  // you have read a word of it.
+  /*
+   * Errors wash the whole row. A screen full of them should look wrong before
+   * you have read a word of it.
+   */
   .row.level-error,
   .row.level-critical,
   .row.level-alert,
@@ -1993,7 +2209,7 @@
 
   .row.level-none .row-chip { color: var(--border-strong); }
 
-  // ** the expanded row **
+  /* ** the expanded row ** */
 
   /*!
    * The detail panel, with no fill and no rule of its own.
@@ -2015,11 +2231,13 @@
     display: grid;
     gap: var(--space-2);
     padding: var(--space-1) var(--space-2) var(--space-2);
-    // Indented past the caret column and the gap after it, so the detail
-    // hangs off the row's own disclosure and its keys begin where the
-    // timestamp's column does. It used to start under the summary, four
-    // columns in, which left a third of the width empty and pushed the
-    // promoted keys off a narrow pane.
+    /*
+     * Indented past the caret column and the gap after it, so the detail
+     * hangs off the row's own disclosure and its keys begin where the
+     * timestamp's column does. It used to start under the summary, four
+     * columns in, which left a third of the width empty and pushed the
+     * promoted keys off a narrow pane.
+     */
     padding-inline-start: calc(var(--caret-w) + var(--space-2));
   }
 
@@ -2041,11 +2259,13 @@
   }
 
   .row-fields {
-    // Rows keep their own height. Without this the shorter column's tracks
-    // stretch to fill the taller column beside it, so five envelope fields
-    // spaced themselves across the height of a payload that happened to
-    // carry a nested object — the two columns were double-spaced against
-    // each other for no reason either of them could see.
+    /*
+     * Rows keep their own height. Without this the shorter column's tracks
+     * stretch to fill the taller column beside it, so five envelope fields
+     * spaced themselves across the height of a payload that happened to
+     * carry a nested object — the two columns were double-spaced against
+     * each other for no reason either of them could see.
+     */
     align-content: start;
     display: grid;
     min-inline-size: 0;
@@ -2070,8 +2290,10 @@
   .leaf {
     display: grid;
     gap: var(--space-2);
-    // 96px: long enough for `latency_ms` and `short_message`, short enough
-    // that two of these pairs fit side by side in a half-width pane.
+    /*
+     * 96px: long enough for `latency_ms` and `short_message`, short enough
+     * that two of these pairs fit side by side in a half-width pane.
+     */
     grid-template-columns: calc(var(--space-6) * 4) 1fr;
     min-block-size: var(--line-h);
     padding-inline: 0;
@@ -2085,8 +2307,10 @@
   }
 
   .leaf-key {
-    // Muted, not faint: faint is the ENVELOPE / PROMOTED heading's weight,
-    // and using it here flattened the heading into its own list.
+    /*
+     * Muted, not faint: faint is the ENVELOPE / PROMOTED heading's weight,
+     * and using it here flattened the heading into its own list.
+     */
     color: var(--muted-foreground);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2136,34 +2360,42 @@
     opacity: 0;
     transition: opacity .12s ease;
 
-    // A field already pinned keeps its ⊞ on: the state is the point, and
-    // hiding it until hover makes the one control that has a state the one
-    // you cannot see the state of.
+    /*
+     * A field already pinned keeps its ⊞ on: the state is the point, and
+     * hiding it until hover makes the one control that has a state the one
+     * you cannot see the state of.
+     */
     &.kept { opacity: 1; }
   }
 
-  // Two glyphs that sit against the value they filter on, so they give up
-  // the standard inline padding.
+  /*
+   * Two glyphs that sit against the value they filter on, so they give up
+   * the standard inline padding.
+   */
   .leaf-filter {
     padding-inline: 2px;
 
     &.on { color: var(--primary); }
   }
 
-  // Flush with the keys above them: the detail already carries the indent,
-  // and a second one here set the actions 8px in from the column they belong
-  // to.
+  /*
+   * Flush with the keys above them: the detail already carries the indent,
+   * and a second one here set the actions 8px in from the column they belong
+   * to.
+   */
   .row-actions {
     display: flex;
     gap: var(--space-2);
   }
 
 
-  // ** popovers **
+  /* ** popovers ** */
 
   .popover {
-    // Anchored to the trigger's viewport rect by Popover.tsx, which measures
-    // the panel and clamps it on screen.
+    /*
+     * Anchored to the trigger's viewport rect by Popover.tsx, which measures
+     * the panel and clamps it on screen.
+     */
     position: fixed;
     z-index: 40;
 
@@ -2182,17 +2414,23 @@
     }
 
     .popover-info {
-      // 4px, the board's rhythm: the mark, the label, the table and the
-      // link are four parts of one short panel, and at 8px they read as
-      // four separate things in a taller one.
+      /*
+       * 4px, the board's rhythm: the mark, the label, the table and the
+       * link are four parts of one short panel, and at 8px they read as
+       * four separate things in a taller one.
+       */
       gap: var(--space-1);
-      // The same inset as the settings panel: they are two faces of one
-      // object and open a centimetre apart.
+      /*
+       * The same inset as the settings panel: they are two faces of one
+       * object and open a centimetre apart.
+       */
       padding: var(--space-3);
 
-      // The mark and the build on one line, left-aligned with the list under
-      // them. It had been centred over a left-aligned table, which gave the
-      // panel two axes and no reason for either.
+      /*
+       * The mark and the build on one line, left-aligned with the list under
+       * them. It had been centred over a left-aligned table, which gave the
+       * panel two axes and no reason for either.
+       */
       .popover-brand {
         align-items: baseline;
         display: flex;
@@ -2213,8 +2451,10 @@
         display: flex;
         inline-size: 100%;
         justify-content: center;
-        // 4px of its own on top of the panel's 4px: the link is the one
-        // thing here that acts rather than informs.
+        /*
+         * 4px of its own on top of the panel's 4px: the link is the one
+         * thing here that acts rather than informs.
+         */
         margin-block-start: var(--space-1);
         transition: background-color .14s ease, color .14s ease;
 
@@ -2267,9 +2507,11 @@
     }
 
     .popover-settings {
-      // 12px between groups and 4px between a label and its control, which
-      // is the only pairing in the panel that should read as tight. At 8px
-      // and 4px the three settings ran together into six rows.
+      /*
+       * 12px between groups and 4px between a label and its control, which
+       * is the only pairing in the panel that should read as tight. At 8px
+       * and 4px the three settings ran together into six rows.
+       */
       gap: var(--space-3);
       justify-items: stretch;
       padding: var(--space-3);
@@ -2286,7 +2528,7 @@
     }
   }
 
-  // ** segmented control, used by the settings popover **
+  /* ** segmented control, used by the settings popover ** */
 
   /*!
    * The settings groups: one six-column grid, used three times.
@@ -2312,18 +2554,22 @@
       min-inline-size: 0;
     }
 
-    // The chosen one, for a group that is choosing a size or a mode. The
-    // border steps up with the fill: at --border it was the same edge as
-    // the five unchosen buttons beside it, and only the 6% lighter ground
-    // said which was picked.
+    /*
+     * The chosen one, for a group that is choosing a size or a mode. The
+     * border steps up with the fill: at --border it was the same edge as
+     * the five unchosen buttons beside it, and only the 6% lighter ground
+     * said which was picked.
+     */
     .btn.on {
       background: var(--subtle-strong);
       border-color: var(--border-strong);
       color: var(--foreground);
     }
 
-    // A chosen face is the one thing in this panel that is a choice about
-    // appearance rather than about size, so it is the one that gets colour.
+    /*
+     * A chosen face is the one thing in this panel that is a choice about
+     * appearance rather than about size, so it is the one that gets colour.
+     */
     &.six-grid .btn.on {
       background: var(--primary-subtle);
       border-color: var(--primary);
@@ -2331,7 +2577,7 @@
     }
   }
 
-  // ** shortcuts, in the info popover **
+  /* ** shortcuts, in the info popover ** */
 
   .shortcuts {
     inline-size: 100%;
@@ -2345,19 +2591,23 @@
       text-transform: uppercase;
     }
 
-    // A fixed key column, so the descriptions start on one line rather than
-    // stepping in and out with the width of each key. 64px, which is what
-    // the longest of them — a modifier and a named key — actually needs.
+    /*
+     * A fixed key column, so the descriptions start on one line rather than
+     * stepping in and out with the width of each key. 64px, which is what
+     * the longest of them — a modifier and a named key — actually needs.
+     */
     dl {
       display: grid;
       gap: 2px var(--space-2);
       grid-template-columns: calc(var(--space-6) * 2 + var(--space-4)) 1fr;
     }
 
-    // Plain text, not a drawn keycap. The whole interface is monospace, so a
-    // key is already a fixed-width block of characters in a column of its
-    // own; a border round each one doubled the panel's height to say what
-    // the alignment was saying anyway.
+    /*
+     * Plain text, not a drawn keycap. The whole interface is monospace, so a
+     * key is already a fixed-width block of characters in a column of its
+     * own; a border round each one doubled the panel's height to say what
+     * the alignment was saying anyway.
+     */
     dt {
       color: var(--foreground);
       font-family: var(--mono);

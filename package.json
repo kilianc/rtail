@@ -38,7 +38,6 @@
     "esbuild": "^0.24.2",
     "highlight.js": "^11.11.1",
     "preact": "^10.25.4",
-    "sass": "^1.83.0",
     "typescript": "^5.7.3"
   },
   "scripts": {
