@@ -124,12 +124,27 @@ jobs:
       - name: Lay out the packages
         run: sh tools/npm-pack.sh 0.0.0-ci
 
+      # Through tarballs, not the laid-out directories.
+      #
+      # `npm install <dir>` symlinks rather than copies, and Node resolves
+      # modules through the realpath — so the launcher would look for its
+      # binary next to dist/npm/ and never see the node_modules it was
+      # installed into. `npm pack` first makes this the install a user gets.
+      #
+      # The platform package goes in on its own because the one the launcher
+      # wants is not published yet at this point; --omit=optional then stops
+      # npm trying to fetch the other four from the registry.
       - name: Install as a user would, and run it
         run: |
-          mkdir -p /tmp/launch && cd /tmp/launch
+          mkdir -p /tmp/tgz /tmp/launch
+          (cd dist/npm/rtail-linux-x64 && npm pack --pack-destination /tmp/tgz)
+          (cd dist/npm/rtail && npm pack --pack-destination /tmp/tgz)
+
+          cd /tmp/launch
           npm init -y >/dev/null
-          npm install "$GITHUB_WORKSPACE/dist/npm/rtail-linux-x64" --no-audit --no-fund
-          npm install "$GITHUB_WORKSPACE/dist/npm/rtail" --no-optional --no-audit --no-fund
+          npm install /tmp/tgz/rtail-linux-x64-0.0.0-ci.tgz --no-audit --no-fund
+          npm install /tmp/tgz/rtail-0.0.0-ci.tgz --omit=optional --no-audit --no-fund
+
           [ "$(./node_modules/.bin/rtail --version)" = "0.0.0-ci" ]
           printf 'hello\n' | ./node_modules/.bin/rtail --port 9999 | grep -qx hello
           ./node_modules/.bin/rtail --nope 2>&1 | grep -q 'unknown argument'

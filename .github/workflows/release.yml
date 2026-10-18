@@ -275,15 +275,26 @@ jobs:
       # The launcher is the one piece of JavaScript left in the install, so it
       # is checked on the runner before it is published: resolve the binary
       # for this platform, run it, read back the version it was stamped with.
+      # Through tarballs, not the laid-out directories: `npm install <dir>`
+      # symlinks, and Node resolves modules through the realpath, so the
+      # launcher would look for its binary next to dist/npm/ rather than in
+      # the node_modules it was installed into. Packing first makes this the
+      # install a user gets.
       - name: Smoke-test the launcher
         run: |
-          mkdir -p /tmp/launch && cd /tmp/launch
+          version="${{ steps.version.outputs.version }}"
+          mkdir -p /tmp/tgz /tmp/launch
+          (cd dist/npm/rtail-linux-x64 && npm pack --pack-destination /tmp/tgz)
+          (cd dist/npm/rtail && npm pack --pack-destination /tmp/tgz)
+
+          cd /tmp/launch
           npm init -y >/dev/null
-          npm install "$GITHUB_WORKSPACE/dist/npm/rtail-linux-x64" --no-audit --no-fund
-          npm install "$GITHUB_WORKSPACE/dist/npm/rtail" --no-optional --no-audit --no-fund
+          npm install "/tmp/tgz/rtail-linux-x64-$version.tgz" --no-audit --no-fund
+          npm install "/tmp/tgz/rtail-$version.tgz" --omit=optional --no-audit --no-fund
+
           got="$(./node_modules/.bin/rtail --version)"
           echo "launcher reports $got"
-          [ "$got" = "${{ steps.version.outputs.version }}" ]
+          [ "$got" = "$version" ]
           printf 'hello\n' | ./node_modules/.bin/rtail --port 9999 | grep -qx hello
 
       - name: Publish
