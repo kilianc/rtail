@@ -26,7 +26,6 @@
     "url": "git@github.com:kilianc/rtail.git"
   },
   "dependencies": {
-    "chrono-node": "^2.7.7",
     "json5": "^2.2.3",
     "strip-ansi": "^7.1.0",
     "update-notifier": "^7.3.1",

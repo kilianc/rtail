@@ -88,19 +88,29 @@ describe('rtail-client', () => {
     assert.deepEqual(messages.map((m) => m.content), ['a', '', 'b'])
   })
 
-  it('extracts a leading date and strips it from the line', async () => {
-    const { messages } = await send([], '2015-07-08T10:00:00Z something happened\n')
+  /*!
+   * These two replace a pair that asserted the opposite.
+   *
+   * The client used to search every plain-text line for a date in natural
+   * language, take it as the record's timestamp and cut it out of the
+   * message; `--no-parse-date` turned that off. It guessed with no way to be
+   * right and was silent when it guessed wrong, so it is gone — and the one
+   * thing a test can usefully pin now is that nothing is removed.
+   */
+  it('sends a line that begins with a date unchanged', async () => {
+    const line = '2015-07-08T10:00:00Z something happened'
+    const { messages } = await send([], `${line}\n`)
 
     assert.equal(messages.length, 1)
-    assert.equal(messages[0].content, 'something happened')
-    assert.equal(messages[0].timestamp, Date.parse('2015-07-08T10:00:00Z'))
+    assert.equal(messages[0].content, line)
   })
 
-  it('leaves the line alone with --no-parse-date', async () => {
-    const line = '2015-07-08T10:00:00Z something happened'
-    const { messages } = await send(['--no-parse-date'], `${line}\n`)
+  it('stamps arrival time, not a date found in the text', async () => {
+    const before = Date.now()
+    const { messages } = await send([], '2015-07-08T10:00:00Z something happened\n')
 
-    assert.equal(messages[0].content, line)
+    assert.ok(messages[0].timestamp >= before)
+    assert.ok(messages[0].timestamp <= Date.now())
   })
 
   it('supports a custom host and port', async () => {

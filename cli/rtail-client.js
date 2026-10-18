@@ -7,7 +7,6 @@
 
 import dgram from 'node:dgram'
 import { createInterface } from 'node:readline'
-import * as chrono from 'chrono-node'
 import JSON5 from 'json5'
 import stripAnsi from 'strip-ansi'
 import updateNotifier from 'update-notifier'
@@ -32,7 +31,6 @@ const argv = yargs(hideBin(process.argv))
   .example('server | rtail --port 43567', 'Uses custom port')
   .example('server | rtail --mute', 'No stdout')
   .example('server | rtail --no-tty', 'Strips ansi colors')
-  .example('server | rtail --no-parse-date', 'Disable date parsing/stripping')
   .option('host', {
     alias: 'h',
     type: 'string',
@@ -62,11 +60,6 @@ const argv = yargs(hideBin(process.argv))
     type: 'boolean',
     default: true,
     describe: 'Keeps ansi colors'
-  })
-  .option('parse-date', {
-    type: 'boolean',
-    default: true,
-    describe: 'Looks for dates to use as timestamp'
   })
   .help('help')
   .version(pkg.version)
@@ -100,26 +93,34 @@ lines.on('line', (raw) => {
     process.stdout.write((stripColors ? stripAnsi(raw) : raw) + '\n')
   }
 
+  /*!
+   * The line is sent as it was written.
+   *
+   * It used to be handed to chrono-node, which searched for a date in
+   * natural language anywhere in the text, used it as the record's timestamp
+   * and cut it back out of the message. Three things were wrong with that.
+   *
+   * It guessed, on every plain-text line, with no way to be right: a build
+   * log that says "retrying in 30 seconds" carries a date chrono will find
+   * and nobody meant. It was silent when it guessed wrong — the text simply
+   * came out shorter than it went in. And the server already does this job
+   * properly for the case that matters, lifting `ts` / `timestamp` / `time`
+   * / `@timestamp` out of a JSON envelope where the field says what it is.
+   *
+   * So the client stamps arrival time and sends the line intact. If you want
+   * the event time, emit JSON with a timestamp field in it.
+   */
   let content = raw
-  let timestamp = null
 
   try {
-    // try to JSON parse
     content = JSON5.parse(raw)
   } catch {
-    // look for timestamps if not an object
-    timestamp = argv.parseDate ? chrono.parse(raw)[0] : null
-  }
-
-  if (timestamp) {
-    // escape for regexp and remove from line
-    const text = timestamp.text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')
-    content = raw.replace(new RegExp(' *[^ ]?' + text + '[^ ]? *'), '')
+    // Not JSON. It is a line of text, and that is all it has to be.
   }
 
   const buffer = Buffer.from(JSON.stringify({
     id: argv.id,
-    timestamp: timestamp ? Date.parse(timestamp.start.date()) : Date.now(),
+    timestamp: Date.now(),
     content
   }))
 

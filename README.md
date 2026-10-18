@@ -351,7 +351,6 @@ For fun and debugging:
       --id, --name   The log stream id                 [string] [default: (moniker)]
       --mute, -m     Don't pipe stdin with stdout                          [boolean]
       --tty          Keeps ansi colors                     [boolean] [default: true]
-      --parse-date   Looks for dates to use as timestamp   [boolean] [default: true]
       --help         Show help                                             [boolean]
       --version, -v  Show version number                                   [boolean]
 

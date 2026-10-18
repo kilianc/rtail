@@ -13,7 +13,10 @@ and a plausible SaaS on top.
 Today rTail is ~330 lines of Node across two binaries:
 
 - [`cli/rtail-client.js`](../cli/rtail-client.js) — reads stdin, tries `JSON5.parse`,
-  falls back to chrono date extraction, sends one UDP datagram per line.
+  stamps arrival time, sends one UDP datagram per line. It used to fall back to
+  chrono-node date extraction on plain text — dropped in v2, because it guessed
+  on every line with no way to be right and §4.2's normalizer does the job
+  properly for records that say what their timestamp is.
 - [`cli/rtail-server.js`](../cli/rtail-server.js) — binds UDP, keeps a
   `Map<streamId, Line[]>` capped at 100 entries, fans out over socket.io.
 - [`app/`](../app) — a Preact SPA that renders those lines with ANSI colouring
