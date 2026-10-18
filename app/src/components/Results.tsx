@@ -86,6 +86,16 @@ export function Results({
   const previous = useRef(lines.length)
 
   /*!
+   * Whether the view has reached the tail yet.
+   *
+   * Starts false: a live view opens scrolled to the top of a list that is
+   * already taller than it, and that is not somebody choosing to read
+   * history. It becomes true once the tail has actually been reached, and
+   * only then does leaving it mean anything.
+   */
+  const wasAtEnd = useRef(false)
+
+  /*!
    * Opening a row holds the feed.
    *
    * Expanding something is a statement that you want to read it, and a live
@@ -121,14 +131,36 @@ export function Results({
     virtual.scrollToEnd()
   }, [lines.length, live, following, virtual])
 
+  /*!
+   * Scrolling away from the tail holds it, as opening a row does.
+   *
+   * It used to only stop *following* — the feed kept arriving, and because
+   * the live buffer drops from the front once it is full, every new line slid
+   * the one being read up by a row. Scrolling back to read something is the
+   * clearest statement there is that the screen should stop moving, and the
+   * button that appears says "Jump to latest", which is a promise that you
+   * are no longer being shown it. Held, the count of what has arrived since
+   * is what the pending badge is for.
+   */
   useEffect(() => {
     if (!live) return
+
     setFollowing(virtual.atEnd)
-  }, [live, virtual.atEnd])
+
+    // Only a move *away* from the tail holds it. Before the first
+    // scroll-to-end has run the list is already taller than the viewport and
+    // sitting at the top, and reading that frame as "the reader scrolled
+    // away" would open every live view already paused.
+    if (wasAtEnd.current && !virtual.atEnd) onPause()
+    wasAtEnd.current = virtual.atEnd
+  }, [live, virtual.atEnd, onPause])
 
   // Historical results are read from the top; streaming ones from the bottom.
   useEffect(() => {
-    if (live) setFollowing(true)
+    if (live) {
+      setFollowing(true)
+      wasAtEnd.current = false
+    }
   }, [live])
 
   useEffect(() => {
