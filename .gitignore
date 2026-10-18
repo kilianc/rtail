@@ -13,6 +13,10 @@ app/bundle.js.map
 /.gocache
 /.gomodcache
 
+# The npm packages laid out by tools/npm-pack.sh: cross-compiled binaries and
+# generated package.jsons, rebuilt from source on every release.
+/dist
+
 # The built webapp, which the Go binary embeds. The directory itself must stay
 # in git or `go:embed all:dist` fails to compile on a fresh clone.
 web/dist/*

@@ -22,6 +22,7 @@ require (
 	github.com/klauspost/compress v1.18.0
 	github.com/marcboeker/go-duckdb/v2 v2.4.3
 	github.com/parquet-go/parquet-go v0.32.0
+	github.com/titanous/json5 v1.0.0
 	go.opentelemetry.io/proto/otlp v1.11.0
 	google.golang.org/protobuf v1.36.11
 	modernc.org/sqlite v1.56.0

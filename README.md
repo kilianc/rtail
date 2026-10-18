@@ -67,17 +67,28 @@ before it is published, so a release that cannot run does not become one.
 ## Installing the client
 
 The client is a UNIX pipe and belongs on the host whose output you are tailing,
-not in the container. It needs Node.js 20 or newer:
+not in the container. It is a single Go binary, about 2.6 MB, with no runtime
+of any kind:
 
+    # already in the release tarball, next to rtail-server
+    $ tar -xzf rtail_2.0.0_darwin_arm64.tar.gz && sudo mv rtail /usr/local/bin
+
+    # or, if you have Go
+    $ go install github.com/kilianc/rtail/v2/cmd/rtail@latest
+
+    # or, if you are already standing in a project
     $ npm install -g rtail
 
-That is all npm ships in v2. The server is a Go binary — run the container
-above, or build it yourself with `make release`.
+The npm route is a convenience, not a dependency: the package holds a short
+launcher and one optional dependency per platform, each carrying a prebuilt
+binary and declaring the `os` and `cpu` it is for. npm downloads the one that
+matches and skips the rest. There is no postinstall script and nothing is
+fetched at install time, so it works behind a proxy and under
+`--ignore-scripts`. The launcher needs Node 20 or newer; the other two routes
+need nothing.
 
-The server embeds DuckDB, which is a C++ library, so it is **not** a static
-binary and the image is ~240MB rather than the ~16MB it was before search
-existed. Builds are per-platform (linux/amd64, linux/arm64, darwin/arm64) and
-need `CGO_ENABLED=1`.
+Windows is published to npm and not as a tarball — the client cross-compiles
+anywhere, the server does not.
 
 ## The explorer
 
@@ -347,7 +358,7 @@ For fun and debugging:
 
     Options:
       --host, -h     The server host                 [string] [default: "127.0.0.1"]
-      --port, -p     The server port                        [string] [default: 9999]
+      --port, -p     The server port                        [number] [default: 9999]
       --id, --name   The log stream id                 [string] [default: (moniker)]
       --mute, -m     Don't pipe stdin with stdout                          [boolean]
       --tty          Keeps ansi colors                     [boolean] [default: true]
@@ -361,8 +372,6 @@ For fun and debugging:
       server | rtail --port 43567         Uses custom port
       server | rtail --mute               No stdout
       server | rtail --no-tty             Strips ansi colors
-      server | rtail --no-date-parse      Disable date parsing/stripping
-
 
 ## `rtail-server(1)`
 
@@ -545,16 +554,18 @@ receives a log line.
 UDP_PORT=9001`.
 
 If you do have a Node.js toolchain on your machine, the same targets are plain
-npm scripts — `npm install && npm run dev`.
+npm scripts — `npm install && npm run dev`. Node builds the webapp and is not
+in the product: the server embeds the bundle, and the client is a Go binary.
 
 ### The stack
 
 | | |
 | --- | --- |
-| CLI | ESM, Node ≥ 20, [yargs](https://yargs.js.org), [socket.io](https://socket.io) |
+| Client | Go, one static binary, [json5](https://github.com/titanous/json5) its only dependency |
+| Server | Go + [DuckDB](https://duckdb.org) + [parquet-go](https://github.com/parquet-go/parquet-go) |
 | Webapp | [Preact](https://preactjs.com) + TypeScript, ~33 KB gzipped |
-| Build | [esbuild](https://esbuild.github.io) + [dart-sass](https://sass-lang.com) |
-| Tests | the built-in `node:test` runner |
+| Build | [esbuild](https://esbuild.github.io); the stylesheets are plain CSS |
+| Tests | `go test ./...` |
 
 The webapp has no framework runtime beyond Preact: routing, preferences,
 popovers, and timestamp formatting are a few dozen lines each over the
@@ -567,9 +578,9 @@ This project follows the awesome [Vincent Driessen](http://nvie.com/about/) [bra
 * You must add a new feature on its own branch
 * You must contribute to hot-fixing, directly into the master branch (and pull-request to it)
 
-The test suite runs on the built-in [`node:test`](https://nodejs.org/api/test.html)
-runner. Use the tests to check whether your contribution breaks some part of the
-library, and be sure to add new tests for each new feature.
+The test suite is `make test`, which is `go test -race ./...` inside the
+toolchain image. Use it to check whether your contribution breaks some part of
+the library, and be sure to add new tests for each new feature.
 
     $ make test
 

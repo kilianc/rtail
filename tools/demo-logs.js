@@ -1,7 +1,7 @@
 /*!
  * demo-logs.js — representative log lines on stdout, for piping into rtail.
  *
- *   node tools/demo-logs.js api-gateway | node cli/rtail-client.js --id api-gateway
+ *   node tools/demo-logs.js api-gateway | bin/rtail --id api-gateway
  *
  * tools/dev.js runs one of these per demo stream, which is also how you check
  * that switching streams no longer interleaves their output.

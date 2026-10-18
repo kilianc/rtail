@@ -10,15 +10,21 @@ and a plausible SaaS on top.
 
 ## 1. Where we are
 
-Today rTail is ~330 lines of Node across two binaries:
+rTail v1 was ~330 lines of Node across two binaries. Both are now Go, and the
+descriptions below are what they *were* — kept because the rest of this
+document argues from them:
 
-- [`cli/rtail-client.js`](../cli/rtail-client.js) — reads stdin, tries `JSON5.parse`,
-  stamps arrival time, sends one UDP datagram per line. It used to fall back to
-  chrono-node date extraction on plain text — dropped in v2, because it guessed
-  on every line with no way to be right and §4.2's normalizer does the job
-  properly for records that say what their timestamp is.
-- [`cli/rtail-server.js`](../cli/rtail-server.js) — binds UDP, keeps a
-  `Map<streamId, Line[]>` capped at 100 entries, fans out over socket.io.
+- `cli/rtail-client.js` — read stdin, tried `JSON5.parse`, stamped arrival
+  time, sent one UDP datagram per line. It also fell back to chrono-node date
+  extraction on plain text, dropped in v2 because it guessed on every line
+  with no way to be right and §4.2's normalizer does the job properly for
+  records that say what their timestamp is. Now
+  [`internal/client`](../internal/client), behind
+  [`cmd/rtail`](../cmd/rtail) — see §8.4.
+- `cli/rtail-server.js` — bound UDP, kept a `Map<streamId, Line[]>` capped at
+  100 entries, fanned out over socket.io. Now
+  [`cmd/rtail-server`](../cmd/rtail-server), with SSE in place of socket.io
+  and the storage engine of §4 underneath.
 - [`app/`](../app) — a Preact SPA that renders those lines with ANSI colouring
   and JSON highlighting, plus a client-side regexp filter.
 
@@ -419,7 +425,7 @@ by `(ts, seq)` with the filter dropped. This is the feature people actually
 debug with and most tools bury it.
 
 **Aesthetic direction.** Keep the existing dark/light token system in
-[`_tokens.scss`](../app/scss/_tokens.scss); tighten everything else. Hairline
+[`tokens.css`](../app/styles/tokens.css); tighten everything else. Hairline
 borders, one accent colour, a real 1.2 type scale, no gradients, no shadows
 beyond a single elevation for popovers. Density over whitespace — this is an
 instrument, and legibility at 12px mono is the goal, not air. Motion only where
@@ -443,8 +449,9 @@ Single binary + one data directory:
 rtail-server --data ./data --retention 30d
 ```
 
-Webapp embedded via `embed.FS`. Container image as today. Because of cgo, three
-release artifacts (linux/amd64, linux/arm64, darwin/arm64) instead of one.
+Webapp embedded via `embed.FS`. Container image as today. Because of cgo, the
+server needs one CI runner per platform rather than one cross-compile. The
+client does not — it is pure Go — which is what makes §8.4 possible.
 
 Rough sizing, structured JSON logs, zstd, after L2:
 - **30–80 bytes/event on disk** — 1TB of raw log text lands around 40–80GB.
@@ -473,6 +480,52 @@ fsync boundary, assert catalog and disk agree) rather than hoping.
 
 P0 is worth doing first and alone: it de-risks the Go port while the surface
 area is 330 lines, and it ships something immediately.
+
+### 8.4 To install it
+
+`cmd | rtail` is the onboarding flow, so the client has to be reachable from
+wherever somebody already is. Four ways in, one binary behind all of them:
+
+| | |
+|---|---|
+| release tarball | `rtail_<version>_<os>_<arch>.tar.gz`, both binaries |
+| `go install` | `github.com/kilianc/rtail/v2/cmd/rtail@latest` |
+| container | the server image, as before |
+| npm | `npm i -g rtail` |
+
+npm is on the list because it is where the audience already stands — the
+people piping a dev server into rTail are usually inside a checkout with a
+`package.json` — and dropping it to win a Go rewrite would have traded the
+install story for the implementation. It does not have to be that trade.
+
+**The layout.** [`tools/npm-pack.sh`](../tools/npm-pack.sh) builds the client
+for five platforms and lays out six packages: `@rtail/linux-x64`,
+`@rtail/linux-arm64`, `@rtail/darwin-x64`, `@rtail/darwin-arm64`,
+`@rtail/win32-x64` — each carrying one binary and declaring the `os` and `cpu`
+it is for — and `rtail`, which carries no binary and lists the other five as
+`optionalDependencies` pinned to the exact version. npm resolves `os`/`cpu`
+against the installing machine, fetches the one that matches and skips the
+rest.
+
+This is esbuild's arrangement, and the reason to copy it is what it does *not*
+need: no `postinstall`, so nothing executes with the installing user's
+privileges, nothing to be disabled by `--ignore-scripts`, no download at
+install time to fail behind a proxy, and a lockfile that pins a hash of the
+actual binary rather than of a script that will go fetch one later.
+
+**Why there is still one JavaScript file.** A platform package could declare
+its own `bin` and npm would link it for a local install — but `npm i -g`
+links the bins of the named package only, never a transitive dependency's, so
+a global install would put nothing on `PATH`. So
+[`npm/rtail/bin/rtail.js`](../npm/rtail/bin/rtail.js) resolves this machine's
+binary and `spawnSync`s it with stdio inherited, which keeps the file
+descriptors — rTail is a pipe, and a copy through a Node process would buffer
+it. Roughly fifty lines, and the only JavaScript left in the product.
+
+Windows is on the npm matrix and not in the release tarballs: the client
+cross-compiles from a single runner because it has no cgo, so the marginal
+cost of a fifth platform is a `GOOS=windows` build. The server cannot — it
+embeds DuckDB — which is why §8.1's matrix is what it is.
 
 ### 8.3 Decisions — settled
 

@@ -9,10 +9,12 @@
 #   make logs       tail the background server
 #   make url        print this worktree's URL
 #   make server     build bin/rtail-server
+#   make client     build bin/rtail
 #   make build      build the webapp into app/ (development)
 #   make dist       build the webapp into web/dist (embedded into the binary)
 #   make release    build the fully self-contained server binary
-#   make test       run the Go and Node test suites
+#   make npm-pack   lay out the npm packages under dist/npm
+#   make test       run the Go test suite
 #   make vet        go vet
 #   make typecheck  type-check the webapp
 #   make fmt        gofmt the Go sources
@@ -55,17 +57,17 @@ DOCKER_RUN := docker run --rm \
 
 DEV_ENV := -e WEB_PORT=$(PORT) -e UDP_PORT=$(UDP_PORT) -p $(PORT):$(PORT)
 
-.PHONY: dev up down logs url server build dist release test go-test go-test-one \
-        node-test vet typecheck fmt shell clean image deps
+.PHONY: dev up down logs url server build dist release client npm-pack test \
+        go-test go-test-one vet typecheck fmt shell clean image deps
 
 ## Run the app in the foreground: builds and watches assets, serves the webapp
 ## from disk, and feeds it three live demo streams. Ctrl-C to stop.
-dev: image deps server
+dev: image deps server client
 	@echo "==> $(URL)"
 	$(DOCKER_RUN) -it $(DEV_ENV) $(IMAGE) npm run dev
 
 ## Same, detached. Survives between commands; stop it with `make down`.
-up: image deps server down
+up: image deps server client down
 	@docker run -d --name $(CONTAINER) \
 		-u "$$(id -u):$$(id -g)" \
 		-e HOME=/tmp -e npm_config_cache=/tmp/.npm \
@@ -98,13 +100,26 @@ release: image deps dist
 		go build -trimpath -ldflags "-s -w $(LDFLAGS)" -o bin/rtail-server ./cmd/rtail-server
 	@echo "==> bin/rtail-server $(VERSION)"
 
+## Build the client for this machine.
+client: image
+	$(DOCKER_RUN) -e CGO_ENABLED=0 $(IMAGE) \
+		go build -trimpath -ldflags "-s -w $(LDFLAGS)" -o bin/rtail ./cmd/rtail
+	@echo "==> bin/rtail $(VERSION)"
+
+## Lay out the npm packages: a Go binary per platform, plus the launcher.
+npm-pack: image
+	$(DOCKER_RUN) $(IMAGE) sh tools/npm-pack.sh $(VERSION)
+
 build: image deps
 	$(DOCKER_RUN) $(IMAGE) npm run build
 
 dist: image deps
 	$(DOCKER_RUN) $(IMAGE) npm run dist
 
-test: go-test node-test
+# One suite now. The client moved to Go with the server, so `go test ./...`
+# covers the pipe as well as the store — and covers it in-process rather than
+# by spawning a node per case.
+test: go-test
 
 go-test: image
 	$(DOCKER_RUN) $(IMAGE) go test -race ./...
@@ -112,9 +127,6 @@ go-test: image
 ## Run one package's tests: make go-test-one PKG=./internal/query
 go-test-one: image
 	$(DOCKER_RUN) $(IMAGE) go test -race -v $(PKG)
-
-node-test: image deps
-	$(DOCKER_RUN) $(IMAGE) npm test
 
 vet: image
 	$(DOCKER_RUN) $(IMAGE) go vet ./...

@@ -68,14 +68,18 @@ jobs:
       - name: Build
         run: CGO_ENABLED=1 go build -trimpath -o /tmp/rtail-server ./cmd/rtail-server
 
-  # The webapp and the client pipe, which is all npm still ships.
+  # The webapp. Node builds it and is not in the product: the server embeds
+  # the bundle and the client is a Go binary, so the only thing a Node version
+  # can break here is the build itself.
   webapp:
     runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
       matrix:
-        # Lower bound is the `engines` floor; upper bound is current LTS.
+        # Lower bound is the launcher's `engines` floor — the one piece of
+        # JavaScript that still runs on a user's machine. Upper bound is
+        # current LTS.
         node: ['20', '22']
 
     steps:
@@ -97,8 +101,38 @@ jobs:
       - name: Build the embedded webapp
         run: npm run dist
 
-      - name: Test the client
-        run: npm test
+  # The npm packages, laid out and exercised but never published here.
+  #
+  # This is the step that would have caught a launcher that cannot find its
+  # binary, which is the one failure the install layout can have and the one
+  # that only shows up after `npm publish`.
+  npm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Lay out the packages
+        run: sh tools/npm-pack.sh 0.0.0-ci
+
+      - name: Install as a user would, and run it
+        run: |
+          mkdir -p /tmp/launch && cd /tmp/launch
+          npm init -y >/dev/null
+          npm install "$GITHUB_WORKSPACE/dist/npm/rtail-linux-x64" --no-audit --no-fund
+          npm install "$GITHUB_WORKSPACE/dist/npm/rtail" --no-optional --no-audit --no-fund
+          [ "$(./node_modules/.bin/rtail --version)" = "0.0.0-ci" ]
+          printf 'hello\n' | ./node_modules/.bin/rtail --port 9999 | grep -qx hello
+          ./node_modules/.bin/rtail --nope 2>&1 | grep -q 'unknown argument'
 
   # The whole thing, exactly as it ships.
   image:

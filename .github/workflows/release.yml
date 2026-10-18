@@ -71,7 +71,15 @@ jobs:
           - os: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
-          - os: macos-13
+          # macos-15-intel, not macos-13: GitHub retired the macOS 13 image on
+          # 4 December 2025, and a job asking for it is not refused — it is
+          # queued, for ever. The v2.0.0-rc.1 release sat at six hours of
+          # "queued" on this line with the other three targets built in under
+          # a minute, and `image` and `release` both wait on all four.
+          #
+          # This is the last Intel macOS runner GitHub offers; x86_64 macOS
+          # goes away when the macOS 15 image retires in autumn 2027.
+          - os: macos-15-intel
             goos: darwin
             goarch: amd64
           - os: macos-latest
@@ -133,6 +141,21 @@ jobs:
       # The binary is the whole product, so it is run before it is published.
       # A release that cannot answer /healthz is worth catching here rather
       # than in somebody's issue.
+      # The client is pure Go with no cgo, so it builds for this target
+      # wherever we happen to be standing. It goes in the same tarball as the
+      # server: one download, both halves, same version.
+      - name: Build the client
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          CGO_ENABLED=0 go build \
+            -trimpath \
+            -ldflags "-s -w -X main.version=$VERSION" \
+            -o rtail ./cmd/rtail
+          ./rtail --version
+
       - name: Smoke-test what was built
         shell: bash
         run: |
@@ -154,9 +177,9 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          name="rtail-server_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          name="rtail_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
           mkdir -p "dist/$name"
-          cp rtail-server README.md LICENSE "dist/$name/"
+          cp rtail-server rtail README.md LICENSE "dist/$name/"
           tar -czf "dist/$name.tar.gz" -C dist "$name"
           # Checksums are produced next to the artifact and merged later, so a
           # failed target cannot silently drop a line from the manifest.
@@ -210,8 +233,75 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ** npm **
+  #
+  # One package per platform, each declaring its `os` and `cpu`, plus the
+  # package people actually install — a launcher and a list of optional
+  # dependencies. npm downloads the one binary that matches the machine doing
+  # the installing and skips the rest.
+  #
+  # The platform packages go first and the launcher last: a published `rtail`
+  # whose optional dependencies do not exist yet is an install that fails for
+  # everyone who is quick.
+  npm:
+    needs: webapp
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: https://registry.npmjs.org
+
+      - name: Version from the tag
+        id: version
+        run: |
+          ref="${GITHUB_REF#refs/tags/}"
+          if [ "$ref" = "$GITHUB_REF" ]; then
+            ref="0.0.0-$(git rev-parse --short HEAD)"
+          fi
+          echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Lay out the packages
+        run: sh tools/npm-pack.sh "${{ steps.version.outputs.version }}"
+
+      # The launcher is the one piece of JavaScript left in the install, so it
+      # is checked on the runner before it is published: resolve the binary
+      # for this platform, run it, read back the version it was stamped with.
+      - name: Smoke-test the launcher
+        run: |
+          mkdir -p /tmp/launch && cd /tmp/launch
+          npm init -y >/dev/null
+          npm install "$GITHUB_WORKSPACE/dist/npm/rtail-linux-x64" --no-audit --no-fund
+          npm install "$GITHUB_WORKSPACE/dist/npm/rtail" --no-optional --no-audit --no-fund
+          got="$(./node_modules/.bin/rtail --version)"
+          echo "launcher reports $got"
+          [ "$got" = "${{ steps.version.outputs.version }}" ]
+          printf 'hello\n' | ./node_modules/.bin/rtail --port 9999 | grep -qx hello
+
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          tag=latest
+          case "${{ steps.version.outputs.version }}" in *-*) tag=next ;; esac
+
+          for dir in dist/npm/rtail-*; do
+            npm publish "$dir" --access public --tag "$tag"
+          done
+
+          npm publish dist/npm/rtail --access public --tag "$tag"
+
   release:
-    needs: [binaries, image]
+    needs: [binaries, image, npm]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
 

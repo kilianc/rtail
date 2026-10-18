@@ -4,7 +4,7 @@
  * Builds and watches the webapp, runs the Go rtail-server against those files
  * on disk, and feeds it a few demo streams so there is something to render.
  *
- * The server binary is built by the Makefile before this runs; asset changes
+ * Both binaries are built by the Makefile before this runs; asset changes
  * are picked up live because --web-root serves app/ from disk rather than the
  * copy embedded in the binary. Go changes need a restart.
  */
@@ -22,6 +22,11 @@ const PORT = process.env.WEB_PORT || '8888'
 const UDP_PORT = process.env.UDP_PORT || '9999'
 
 const SERVER = process.env.RTAIL_SERVER_BIN || path('bin/rtail-server')
+
+// The client is a Go binary too, built by the Makefile alongside the server.
+// It used to be cli/rtail-client.js, which is why the demo streams below ran
+// under `node`.
+const CLIENT = process.env.RTAIL_CLIENT_BIN || path('bin/rtail')
 
 const DEMO_STREAMS = ['api-gateway', 'worker-billing', 'nginx-access']
 
@@ -104,8 +109,7 @@ setTimeout(() => {
 
   for (const name of DEMO_STREAMS) {
     const producer = run('node', [path('tools/demo-logs.js'), name], { stdio: ['ignore', 'pipe', 'inherit'] })
-    const client = run('node', [
-      path('cli/rtail-client.js'),
+    const client = run(CLIENT, [
       '--id', name,
       '--port', UDP_PORT,
       '--mute'

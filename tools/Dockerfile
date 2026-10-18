@@ -15,7 +15,7 @@
 # and the UDP demo producers can reach the server over loopback instead of
 # through Docker's NAT.
 #
-# Everything else (esbuild, sass, typescript) is a devDependency pinned in
+# Everything else (esbuild, typescript) is a devDependency pinned in
 # package-lock.json, so this image only pins the two runtimes.
 FROM golang:1.26.3-bookworm AS go
 
