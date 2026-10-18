@@ -5,9 +5,13 @@ app/bundle.js.map
 
 # The Go server binary and the toolchain caches (kept in-tree so the container
 # writes them as the invoking user — see tools/Dockerfile).
-bin
-.gocache
-.gomodcache
+#
+# Anchored: an unanchored `bin` also matches npm/rtail/bin, which is a source
+# directory, and a file that is silently ignored is a file that is silently
+# missing from the package.
+/bin
+/.gocache
+/.gomodcache
 
 # The built webapp, which the Go binary embeds. The directory itself must stay
 # in git or `go:embed all:dist` fails to compile on a fresh clone.
@@ -17,6 +21,3 @@ web/dist/*
 # Durable storage for `make dev`: parquet files and the catalog, rebuilt
 # from the demo streams on every run and never worth keeping.
 .dev-data
-
-# Playwright's run report, written wherever the browser tests are run from.
-test-results
