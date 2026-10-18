@@ -899,21 +899,44 @@
     inset-inline: var(--space-8) auto;
     max-block-size: calc(var(--row-h) * 9);
     min-inline-size: calc(var(--space-6) * 12);
-    overflow-y: auto;
-    padding: var(--space-1);
+    // Rows run edge to edge, so the selected one is a band across the menu
+    // rather than a rounded tile floating inside it. That costs the 4px of
+    // padding and the row's own radius; the menu's radius clips them.
+    overflow: hidden auto;
     position: absolute;
     z-index: 30;
 
+    /*!
+     * Three columns, not a flex row.
+     *
+     * The kind and the count were flexed to content with the count pushed
+     * right by `margin-inline-start: auto`, so neither lined up between one
+     * row and the next: `number`/`string`/`ts` each started somewhere else,
+     * and a column of counts you are reading to choose a field was ragged
+     * on both sides. The board gives them 44px and 48px.
+     */
     li {
       align-items: center;
       block-size: var(--row-h);
-      border-radius: var(--radius-xs);
+      column-gap: var(--space-2);
       cursor: pointer;
-      display: flex;
-      gap: var(--space-3);
+      display: grid;
+      // 48px rather than the board's 44: it drew `number`, `string` and
+      // `ts`, and the real list also holds `envelope` and `boolean`,
+      // which came out as `envelo…`.
+      grid-template-columns: minmax(0, 1fr) 48px 48px;
       padding-inline: var(--space-2);
 
-      &.active { background: var(--subtle-strong); }
+      // The accent, as everywhere else a thing is picked: --subtle-strong is
+      // the same grey as the row below it, so the selected completion was
+      // marked only by being slightly lighter than its neighbours.
+      &.active {
+        background: var(--primary-subtle);
+
+        .command-menu-name,
+        .command-menu-kind,
+        .command-menu-detail { color: var(--primary); }
+      }
     }
   }
 
@@ -926,25 +949,25 @@
   }
 
   .command-menu-kind {
-    color: var(--faint-foreground);
+    color: var(--muted-foreground);
     font-size: var(--text-xs);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .command-menu-detail {
-    color: var(--faint-foreground);
-    font-size: var(--text-xs);
+    color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
-    margin-inline-start: auto;
+    text-align: end;
   }
 
+  // Inside the pane, at the query's own size, starting in the same column
+  // the query starts in: 32px of gutter and the editor's own 10px.
   .command-error {
     color: var(--level-error);
-    font-size: var(--text-xs);
     margin: 0;
-    padding-block-start: var(--space-1);
-    // Clear of the line-number gutter, so the message starts where the query
-    // does rather than under its line numbers.
-    padding-inline-start: var(--space-8);
+    padding: var(--space-1) 10px var(--space-2) calc(var(--space-8) + 10px);
   }
 
   // The run the parser stopped on, marked in place. A wavy underline is the

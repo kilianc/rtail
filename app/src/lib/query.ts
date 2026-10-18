@@ -1,3 +1,4 @@
+import { formatCount } from './format.js'
 import type { WireLine } from './types.js'
 
 /*!
@@ -278,7 +279,11 @@ export function complete(
       value: `${negated ? '-' : ''}${field.name}${'envelope' === field.kind ? '' : '='}`,
       label: field.name,
       kind: field.kind,
-      detail: field.occurrences ? `${field.occurrences.toLocaleString()}×` : undefined
+      // The compact form the explorer and the board both use. This was
+      // `17,611×`, which is the same fact at twice the width and in a
+      // different notation from the count for the same field three
+      // inches to the left.
+      detail: field.occurrences ? formatCount(field.occurrences) : undefined
     }))
 
   return { from: start, to: cursor, items }

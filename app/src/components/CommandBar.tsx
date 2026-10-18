@@ -282,6 +282,14 @@ export function CommandBar({
         </div>
 
         {/*
+          What the parser stopped on, inside the pane and directly under the
+          line it stopped in. It sat outside the border, under the whole
+          control, which put the red rule around the query and the sentence
+          explaining it on opposite sides of an edge.
+        */}
+        {error && <p class="command-error">{error.message}</p>}
+
+        {/*
           The footer, inside the pane. Everything that acts on the query lives
           here: which language it is written in, what one looks like, the window
           it runs over, and the button that runs it.
@@ -348,7 +356,6 @@ export function CommandBar({
         </ul>
       )}
 
-      {error && <p class="command-error">{error.message}</p>}
     </div>
   )
 }
