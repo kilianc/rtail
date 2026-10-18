@@ -152,9 +152,9 @@ export function TopBar({ prefs, live, timeline, store, children, onChangePrefs, 
             <dl>
               <dt>/</dt><dd>focus the query</dd>
               <dt>⌘K</dt><dd>focus the query</dd>
-              <dt>⏎</dt><dd>run it</dd>
+              <dt>return</dt><dd>run it</dd>
               <dt>j / k</dt><dd>move between events</dd>
-              <dt>⎋</dt><dd>collapse everything</dd>
+              <dt>esc</dt><dd>collapse everything</dd>
             </dl>
           </div>
 
