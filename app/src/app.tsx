@@ -340,6 +340,21 @@ export function App() {
     setView((current) => ({ ...current, query: draft }))
   }, [draft])
 
+  /*!
+   * Editing clears the parse error.
+   *
+   * It describes a character at an offset in text that no longer exists the
+   * moment anything is typed, and it was outliving it — a query retyped from
+   * scratch still carried the last one's red border, its message, and the
+   * underline under whatever run now happened to sit at that offset. It also
+   * took a line, which pushed the completion menu off the pane and onto the
+   * chart.
+   */
+  const edit = useCallback((next: string) => {
+    setDraft(next)
+    setError(null)
+  }, [])
+
   const setRange = useCallback((range: Range) => {
     setView((current) => ({
       ...current,
@@ -454,7 +469,7 @@ export function App() {
           fields={fields}
           error={error}
           busy={loading}
-          onChange={setDraft}
+          onChange={edit}
           onSubmit={commit}
         >
           <TimeRange range={view.range} onChange={setRange} />
