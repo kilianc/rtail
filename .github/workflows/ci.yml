@@ -1,5 +1,12 @@
 name: CI
 
+# Every job here is a thin wrapper around `tools/ci.sh <job>`, which is also
+# what `make ci` runs. The checks used to live in this file as `run:` blocks,
+# which meant the only way to find out whether they passed was to push — and
+# that the Makefile and this file were two descriptions of the same thing,
+# free to disagree. The script is the description; this file only supplies the
+# machines.
+
 on:
   push:
     branches: ['**']
@@ -11,7 +18,8 @@ jobs:
   #
   # P2 embeds DuckDB, which is cgo — so this is a per-platform build now, not
   # one static binary. The matrix is what stops "works on my machine" from
-  # becoming the release process.
+  # becoming the release process, and it is the half of CI a laptop cannot
+  # stand in for.
   server:
     strategy:
       fail-fast: false
@@ -28,45 +36,23 @@ jobs:
           go-version: '1.26'
           cache-dependency-path: go.mod
 
-      - name: Vet
-        run: go vet ./...
-
-      - name: Check formatting
-        if: runner.os == 'Linux'
-        run: |
-          unformatted="$(gofmt -l cmd internal web)"
-          if [ -n "$unformatted" ]; then
-            echo "::error::gofmt needed on:"
-            echo "$unformatted"
-            exit 1
-          fi
-
       # The interop tests assert that our Parquet files are readable by a
       # completely unrelated implementation. That claim is the product's core
-      # promise, so it is checked rather than asserted — the tests skip
-      # themselves when duckdb is absent, which is exactly why CI installs it.
+      # promise, so it is checked rather than asserted — and the tests skip
+      # themselves when duckdb is absent, which is why it is installed here
+      # and why tools/ci.sh refuses to run without it.
       - name: Install duckdb (linux)
         if: runner.os == 'Linux'
         run: |
           curl -fsSL -o /tmp/duckdb.zip \
             https://github.com/duckdb/duckdb/releases/download/v1.4.1/duckdb_cli-linux-amd64.zip
           sudo unzip -q /tmp/duckdb.zip -d /usr/local/bin
-          duckdb -c "SELECT 'duckdb ' || version()"
 
       - name: Install duckdb (macos)
         if: runner.os == 'macOS'
-        run: |
-          brew install duckdb
-          duckdb -c "SELECT 'duckdb ' || version()"
+        run: brew install duckdb
 
-      - name: Test
-        run: go test -race ./...
-
-      # CGO_ENABLED=1 is required from P2 on: go-duckdb has no pure-Go
-      # fallback, and a CGO_ENABLED=0 build fails at link time rather than
-      # silently losing search.
-      - name: Build
-        run: CGO_ENABLED=1 go build -trimpath -o /tmp/rtail-server ./cmd/rtail-server
+      - run: sh tools/ci.sh server
 
   # The webapp. Node builds it and is not in the product: the server embeds
   # the bundle and the client is a Go binary, so the only thing a Node version
@@ -79,7 +65,8 @@ jobs:
       matrix:
         # Lower bound is the launcher's `engines` floor — the one piece of
         # JavaScript that still runs on a user's machine. Upper bound is
-        # current LTS.
+        # current LTS. The local image pins one Node, so this matrix is the
+        # other half of CI a laptop cannot stand in for.
         node: ['20', '22']
 
     steps:
@@ -90,16 +77,7 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
 
-      - run: npm ci
-
-      - name: Type-check the webapp
-        run: npm run typecheck
-
-      - name: Build the webapp
-        run: npm run build
-
-      - name: Build the embedded webapp
-        run: npm run dist
+      - run: sh tools/ci.sh webapp
 
   # The npm packages, laid out and exercised but never published here.
   #
@@ -121,33 +99,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Lay out the packages
-        run: sh tools/npm-pack.sh 0.0.0-ci
-
-      # Through tarballs, not the laid-out directories.
-      #
-      # `npm install <dir>` symlinks rather than copies, and Node resolves
-      # modules through the realpath — so the launcher would look for its
-      # binary next to dist/npm/ and never see the node_modules it was
-      # installed into. `npm pack` first makes this the install a user gets.
-      #
-      # The platform package goes in on its own because the one the launcher
-      # wants is not published yet at this point; --omit=optional then stops
-      # npm trying to fetch the other four from the registry.
-      - name: Install as a user would, and run it
-        run: |
-          mkdir -p /tmp/tgz /tmp/launch
-          (cd dist/npm/rtail-linux-x64 && npm pack --pack-destination /tmp/tgz)
-          (cd dist/npm/rtail && npm pack --pack-destination /tmp/tgz)
-
-          cd /tmp/launch
-          npm init -y >/dev/null
-          npm install /tmp/tgz/rtail-linux-x64-0.0.0-ci.tgz --no-audit --no-fund
-          npm install /tmp/tgz/rtail-0.0.0-ci.tgz --omit=optional --no-audit --no-fund
-
-          [ "$(./node_modules/.bin/rtail --version)" = "0.0.0-ci" ]
-          printf 'hello\n' | ./node_modules/.bin/rtail --port 9999 | grep -qx hello
-          ./node_modules/.bin/rtail --nope 2>&1 | grep -q 'unknown argument'
+      - run: sh tools/ci.sh npm
 
   # The whole thing, exactly as it ships.
   image:
@@ -158,6 +110,8 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # Built here rather than in the script so the layer cache GitHub hosts
+      # is actually used; the script then only smoke-tests what came out.
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -167,13 +121,4 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Smoke-test the image
-        run: |
-          docker run -d --name rtail -p 8888:8888 -p 9999:9999/udp rtail:ci
-          for i in $(seq 1 30); do
-            curl -sf http://127.0.0.1:8888/healthz && break
-            sleep 1
-          done
-          curl -sf http://127.0.0.1:8888/healthz | tee /dev/stderr | grep -q '"status":"ok"'
-          curl -sf http://127.0.0.1:8888/ | grep -qi '<title'
-          docker rm -f rtail
+      - run: RTAIL_CI_IMAGE_PREBUILT=1 sh tools/ci.sh image

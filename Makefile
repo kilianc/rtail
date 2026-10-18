@@ -14,6 +14,7 @@
 #   make dist       build the webapp into web/dist (embedded into the binary)
 #   make release    build the fully self-contained server binary
 #   make npm-pack   lay out the npm packages under dist/npm
+#   make ci         run everything CI runs, here, before you push
 #   make test       run the Go test suite
 #   make vet        go vet
 #   make typecheck  type-check the webapp
@@ -57,8 +58,8 @@ DOCKER_RUN := docker run --rm \
 
 DEV_ENV := -e WEB_PORT=$(PORT) -e UDP_PORT=$(UDP_PORT) -p $(PORT):$(PORT)
 
-.PHONY: dev up down logs url server build dist release client npm-pack test \
-        go-test go-test-one vet typecheck fmt shell clean image deps
+.PHONY: dev up down logs url server build dist release client npm-pack ci \
+        test go-test go-test-one vet typecheck fmt shell clean image deps
 
 ## Run the app in the foreground: builds and watches assets, serves the webapp
 ## from disk, and feeds it three live demo streams. Ctrl-C to stop.
@@ -115,6 +116,18 @@ build: image deps
 
 dist: image deps
 	$(DOCKER_RUN) $(IMAGE) npm run dist
+
+## Everything CI runs, before you spend a runner minute finding out.
+##
+## The same tools/ci.sh the workflow calls, so the two cannot drift. Three
+## jobs go inside the toolchain container; `image` needs a Docker daemon and
+## so runs on the host.
+ci: image deps
+	$(DOCKER_RUN) $(IMAGE) sh tools/ci.sh server webapp npm
+	sh tools/ci.sh image
+	@echo
+	@echo "==> not covered here: the macOS server matrix and the Node 20 webapp"
+	@echo "    build. Both need a second machine, and only GitHub has one."
 
 # One suite now. The client moved to Go with the server, so `go test ./...`
 # covers the pipe as well as the store — and covers it in-process rather than
