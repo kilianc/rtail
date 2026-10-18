@@ -87,9 +87,9 @@
       <figure class="panel shell">
         <figcaption class="panel-bar">
           <span class="panel-label">on the host you are tailing</span>
-          <button class="copy" type="button" data-copy="node server.js 2>&amp;1 | rtail --id api.example.com">Copy</button>
+          <button class="copy" type="button" data-copy="./my-service 2>&amp;1 | rtail --id api.example.com">Copy</button>
         </figcaption>
-        <pre><code><span class="p">$</span> node server.js 2&gt;&amp;1 | rtail <span class="f">--id</span> api.example.com</code></pre>
+        <pre><code><span class="p">$</span> ./my-service 2&gt;&amp;1 | rtail <span class="f">--id</span> api.example.com</code></pre>
       </figure>
     </div>
   </section>
@@ -428,7 +428,8 @@
             <h3>UNIX pipes</h3>
             <p>The original, frozen forever. UDP, at-most-once, one datagram per line, and your process never blocks on it.</p>
           </div>
-          <pre><code><span class="p">$</span> node server.js 2&gt;&amp;1 | rtail <span class="f">--id</span> api.example.com</code></pre>
+          <pre><code><span class="p">$</span> ./my-service 2&gt;&amp;1 | rtail <span class="f">--id</span> api.example.com
+<span class="p">$</span> tail -F /var/log/nginx/access.log | rtail <span class="f">--id</span> nginx</code></pre>
         </article>
 
         <article class="panel">
@@ -621,11 +622,11 @@
 
         <article class="panel">
           <div class="panel-bar">
-            <span class="panel-label">03 · the client</span>
+            <span class="panel-label">03 · the client pipe</span>
             <button class="copy" type="button" data-copy="npm install -g rtail">Copy</button>
           </div>
           <pre><code><span class="p">$</span> npm install <span class="f">-g</span> rtail</code></pre>
-          <p>That is all npm ships in v2. It is a UNIX pipe, so it belongs on the host you are tailing, not in the container. Node.js 20 or newer.</p>
+          <p>A UNIX pipe, so it belongs on the host you are tailing rather than in the container. It is all npm ships in v2, and it needs Node 20 or newer.</p>
         </article>
       </div>
     </div>
