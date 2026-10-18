@@ -29,7 +29,10 @@ export const FONT_FAMILY_COUNT = 6
 const DEFAULTS: Prefs = {
   theme: 'dark',
   fontFamily: 1,
-  fontSize: 4,
+  // 11px — the size the whole interface is set in. It used to start at 14px,
+  // which made the log rows the only thing on the screen in a different size
+  // from everything around them.
+  fontSize: 1,
   favorites: []
 }
 

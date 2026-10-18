@@ -47,11 +47,13 @@ export function TopBar({ prefs, live, timeline, store, children, onChangePrefs, 
     <>
       <div class="topbar">
         <div class="topbar-brand">
-          <div class="rtail-logo" />
+          <span class="topbar-mark">rtail</span>
         </div>
 
         <div class="topbar-main">
           {children}
+
+          <span class="topbar-rule" aria-hidden="true" />
 
           <button
             class={`live-toggle ${live ? 'on' : ''}`}
@@ -60,7 +62,7 @@ export function TopBar({ prefs, live, timeline, store, children, onChangePrefs, 
             onClick={onToggleLive}
           >
             <i />
-            {live ? 'Live' : 'History'}
+            {live ? 'live' : 'history'}
           </button>
 
           {/*
@@ -89,6 +91,17 @@ export function TopBar({ prefs, live, timeline, store, children, onChangePrefs, 
               {store.files.toLocaleString()} {1 === store.files ? 'file' : 'files'}
             </span>
           )}
+
+          <span class="topbar-rule" aria-hidden="true" />
+
+          <a
+            class="topbar-docs"
+            href="https://github.com/kilianc/rtail#readme"
+            target="_blank"
+            rel="noreferrer"
+          >
+            docs
+          </a>
 
           <div class="topbar-actions">
             <Button

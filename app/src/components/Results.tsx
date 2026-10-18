@@ -13,9 +13,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { useVirtual } from '../lib/virtual.js'
 import { formatBytes } from '../lib/format.js'
-import type { Scanned } from '../lib/api.js'
+import { PAGE, type Scanned, type Store } from '../lib/api.js'
 import type { Line } from '../lib/types.js'
 import { Button } from './Button.js'
+import { Popover } from './Popover.js'
 import { LogRow, type FilterAction } from './LogRow.js'
 
 interface Props {
@@ -25,12 +26,16 @@ interface Props {
   loading: boolean
   /** What the last historical query touched, for the cost readout. */
   scanned: Scanned | null
+  /** The whole store, so the files touched can be given as a fraction. */
+  store: Store | null
   /** Fields the current query mentions. */
   active: string[]
   /** Substrings to mark in each message. */
   needles: string[]
   /** Fields promoted into columns of their own. */
   columns: string[]
+  /** Of those, the ones holding numbers, which align to the right. */
+  numeric: string[]
   onDropColumn: (field: string) => void
   /** More history exists beyond what is loaded. */
   hasMore: boolean
@@ -55,9 +60,11 @@ export function Results({
   live,
   loading,
   scanned,
+  store,
   active,
   needles,
   columns,
+  numeric,
   hasMore,
   paused,
   pending,
@@ -70,6 +77,8 @@ export function Results({
   onDropColumn
 }: Props) {
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set())
+  const [showColumns, setShowColumns] = useState(false)
+  const columnsRef = useRef<HTMLButtonElement>(null)
   const [selected, setSelected] = useState(-1)
   const [following, setFollowing] = useState(true)
 
@@ -182,7 +191,10 @@ export function Results({
     // the line rather than as its primary key.
     'var(--gutter-w)',
     'var(--sev-w)',
-    ...columns.map(() => 'minmax(5rem, 10rem)'),
+    // Fixed, not elastic: the summary takes every pixel the pinned columns
+    // do not, and a column sized to its content moves the line you are
+    // reading every time a longer value scrolls past.
+    ...columns.map(() => 'var(--col-w)'),
     '1fr'
   ].join(' ')
 
@@ -210,13 +222,65 @@ export function Results({
         {!live && scanned && (
           <>
             <span class="results-dot" aria-hidden="true">·</span>
-            <span>{scanned.files.toLocaleString()} {1 === scanned.files ? 'file' : 'files'}</span>
+            {/*
+              The files read, out of the files there are. A bare "3 files"
+              says nothing about whether the planner did well; "3 of 184"
+              is the whole case for keeping a catalog.
+            */}
+            <span>
+              {scanned.files.toLocaleString()}
+              {store ? ` of ${store.files.toLocaleString()}` : ''}
+              {1 === scanned.files && !store ? ' file' : ' files'}
+            </span>
             <span class="results-dot" aria-hidden="true">·</span>
             <span>{formatBytes(scanned.bytes)} in {scanned.millis.toLocaleString()} ms</span>
           </>
         )}
 
         <span class="results-gap" />
+
+        {/*
+          How many fields are pinned out of the summary into columns of their
+          own. It is a property of this view, like following, so it reads
+          from the same strip — and it is the only place the set can be seen
+          as a set rather than one × at a time in the header below.
+        */}
+        <Button
+          variant="outline"
+          size="sm"
+          on={columns.length > 0}
+          aria-expanded={showColumns}
+          elementRef={columnsRef}
+          onClick={() => setShowColumns((open) => !open)}
+        >
+          columns {columns.length}
+        </Button>
+
+        {showColumns && (
+          <Popover anchor={columnsRef.current} class="popover-columns" onClose={() => setShowColumns(false)}>
+            <h4>Pinned columns</h4>
+
+            {0 === columns.length ? (
+              <p class="popover-note">None pinned. Pin a field with ⊞ in the explorer.</p>
+            ) : (
+              <ul class="popover-list">
+                {columns.map((field) => (
+                  <li key={field}>
+                    <span>{field}</span>
+                    <Button
+                      variant="icon"
+                      size="sm"
+                      aria-label={`Remove the ${field} column`}
+                      onClick={() => onDropColumn(field)}
+                    >
+                      ×
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Popover>
+        )}
 
         {/*
           Following is a state of this pane, so its switch lives in this
@@ -251,7 +315,11 @@ export function Results({
         <span class="results-col-level" title="Severity">Sev</span>
 
         {columns.map((field) => (
-          <span key={field} class="results-col-added" title={field}>
+          <span
+            key={field}
+            class={`results-col-added ${numeric.includes(field) ? 'numeric' : ''}`}
+            title={field}
+          >
             <span class="results-col-name">{field}</span>
             <Button
               variant="icon"
@@ -296,6 +364,7 @@ export function Results({
                   active={active}
                   needles={needles}
                   columns={columns}
+                  numeric={numeric}
                   onToggle={() => {
                     setSelected(virtual.start + index)
                     toggle(line.key)
@@ -320,7 +389,7 @@ export function Results({
           <span class="results-gap" />
           {hasMore && (
             <Button variant="outline" size="sm" disabled={loading} onClick={onLoadMore}>
-              {loading ? 'loading…' : 'older'}
+              {loading ? 'loading…' : `older ${PAGE}`}
             </Button>
           )}
         </div>

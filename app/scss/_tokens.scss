@@ -45,6 +45,11 @@
   // many lines fit on the screen, and every one of these was a few pixels
   // looser than the thing it was copied from.
   --bar-h: 32px;        // the top bar
+  // The chrome strips: the explorer's title, the results' cost readout, the
+  // keyset footer. They name or measure the thing under them and nothing
+  // else, so they are six pixels shorter than the bar that holds controls.
+  --strip-h: 26px;
+  --head-h: 22px;       // the column header, which also holds the caret column
   --row-h: 20px;        // list rows in panels
   --control-h: 22px;    // buttons, small inputs
   --command-h: 26px;    // the query box, and everything beside it
@@ -57,6 +62,10 @@
   --gutter-w: 136px;    // timestamp column, wide enough for a full date
   --sev-w: 44px;        // severity column — one badge, and the word "Sev"
   --caret-w: 20px;      // disclosure column
+  // A pinned column: a service name or a four-digit latency, and no wider.
+  // Fixed, not elastic — the summary takes every pixel these do not, and a
+  // column that grows to its content makes the line you are reading move.
+  --col-w: 72px;
   --sidebar-w: 264px;
   --marker-w: 3px;
   --hairline: 1px;
@@ -88,7 +97,7 @@
    * and the letter-spacing stops rescuing them.
    */
   --text-xs: 9.5px;
-  --text-sm: 10.5px;
+  --text-sm: 11px;
   --text-md: 11px;
   --text-lg: 12.5px;
   --mono-size: 11px;
@@ -99,6 +108,10 @@
   // ** surfaces — Google's own dark console greys **
   --background: #1f1f1f;
   --card: #1f1f1f;
+  // One step up from the page: the column header and the query pane, which
+  // are the two surfaces that have to read as sitting *on* the log rather
+  // than as more of it.
+  --surface: #202124;
   --elevated: #2d2e30;
   --foreground: #e8eaed;
 
@@ -145,6 +158,9 @@
   --primary-foreground: #202124;
   --primary-subtle: #283142;
   --primary-glow: rgba(138, 180, 248, 0.24);
+  // The focus ring: a third of the glow's strength, because it sits around a
+  // pane the width of the window rather than around a 6px dot.
+  --primary-ring: rgba(138, 180, 248, 0.14);
   // Selection, at the same strength as --level-error-wash, so a selected
   // error row reads as both rather than as one overwriting the other.
   --primary-wash: rgba(138, 180, 248, 0.05);
@@ -153,6 +169,9 @@
   // ** live **
   --live: #81c995;
   --live-glow: rgba(129, 201, 149, 0.4);
+  // The ring around the live dot — a halo, not a glow: it has to read at 6px
+  // against the bar's own grey without lighting anything else up.
+  --live-ring: rgba(129, 201, 149, 0.18);
 
   // ** the histogram **
   --chart-bar: #4a6da8;
@@ -183,6 +202,7 @@
 
   --background: #ffffff;
   --card: #ffffff;
+  --surface: #f8f9fa;
   --elevated: #ffffff;
   --foreground: #202124;
 
@@ -223,11 +243,13 @@
   --primary-foreground: #ffffff;
   --primary-subtle: #e8f0fe;
   --primary-glow: rgba(26, 115, 232, 0.24);
+  --primary-ring: rgba(26, 115, 232, 0.14);
   --primary-wash: rgba(26, 115, 232, 0.05);
   --ring: rgba(26, 115, 232, 0.5);
 
   --live: #1e8e3e;
   --live-glow: rgba(30, 142, 62, 0.4);
+  --live-ring: rgba(30, 142, 62, 0.18);
 
   --chart-bar: #8ab4f8;
   --chart-bar-hover: #669df6;

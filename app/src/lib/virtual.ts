@@ -114,19 +114,63 @@ export function useVirtual(count: number, estimate: number): Virtual {
    * Only a genuine change triggers a re-render — a row that measures the same
    * as last frame must not, or expanding one row would loop forever.
    */
+  const record = useCallback((index: number, measured: number) => {
+    if (0 === measured) return
+
+    if (heights.current[index] !== measured) {
+      heights.current[index] = measured
+      bump((n) => n + 1)
+    }
+  }, [])
+
+  /*!
+   * Rows are watched, not measured once.
+   *
+   * A ref callback fires when a row mounts and never again, so a height that
+   * changes afterwards — a column pinned, the window narrowed, the font size
+   * raised — was recorded wrong and stayed wrong. The prefix sum then placed
+   * every row below it at an offset nothing occupied, which is visible as a
+   * band of empty background a third of the way down the list.
+   *
+   * One observer for the whole viewport rather than one per row: rows are
+   * recycled constantly, and the allocation would be on the scroll path.
+   */
+  const sizes = useRef<ResizeObserver | null>(null)
+  const indexOf = useRef(new WeakMap<Element, number>())
+  const watched = useRef(new Map<number, HTMLElement>())
+
+  if (null === sizes.current && 'undefined' !== typeof ResizeObserver) {
+    sizes.current = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const index = indexOf.current.get(entry.target)
+        if (undefined !== index) record(index, (entry.target as HTMLElement).offsetHeight)
+      }
+    })
+  }
+
+  useEffect(() => () => sizes.current?.disconnect(), [])
+
   const measure = useCallback(
     (index: number) => (element: HTMLElement | null) => {
+      const previous = watched.current.get(index)
+
+      // Unobserve before anything else: Preact hands us null on unmount and
+      // a new element when a row is recycled, and an observer that keeps
+      // detached rows is a leak that grows with every page of history.
+      if (previous && previous !== element) {
+        sizes.current?.unobserve(previous)
+        watched.current.delete(index)
+      }
+
       if (!element) return
 
-      const measured = element.offsetHeight
-      if (0 === measured) return
+      watched.current.set(index, element)
+      indexOf.current.set(element, index)
+      sizes.current?.observe(element)
 
-      if (heights.current[index] !== measured) {
-        heights.current[index] = measured
-        bump((n) => n + 1)
-      }
+      record(index, element.offsetHeight)
     },
-    []
+    [record]
   )
 
   // Binary search for the first row that reaches the viewport.

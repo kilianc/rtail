@@ -19,7 +19,7 @@ import { Results } from './components/Results.js'
 import { StreamPicker } from './components/StreamPicker.js'
 import { TimeRange } from './components/TimeRange.js'
 import { TopBar } from './components/TopBar.js'
-import { api, QueryError, type Bucket, type Field, type Params, type Scanned, type Store } from './lib/api.js'
+import { api, PAGE, QueryError, type Bucket, type Field, type Params, type Scanned, type Store } from './lib/api.js'
 import { connect, type Connection } from './lib/connection.js'
 import { formatLine } from './lib/format.js'
 import { loadPrefs, savePrefs } from './lib/prefs.js'
@@ -32,7 +32,6 @@ import { onChange, read, write, type ViewState } from './lib/urlstate.js'
 const LIVE_BUFFER = 2000
 
 /** One page of history. */
-const PAGE = 200
 
 export function App() {
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs)
@@ -235,6 +234,22 @@ export function App() {
 
     return () => controller.abort()
   }, [params.q, params.lang, params.stream, params.from, params.to])
+
+  /*!
+   * Which pinned columns hold numbers.
+   *
+   * Read from the catalog's own kinds rather than guessed from the values on
+   * screen: a column that happens to be all digits on this page and words on
+   * the next would change alignment as you scroll, which is worse than being
+   * left-aligned throughout.
+   */
+  const numeric = useMemo(
+    () =>
+      fields
+        .filter((field) => ['int', 'float', 'number', 'bigint', 'double'].includes(field.kind))
+        .map((field) => field.name),
+    [fields]
+  )
 
   /*!
    * runSearch replaces the result list with a page of history.
@@ -467,9 +482,11 @@ export function App() {
 
         <Results
           lines={lines}
+          numeric={numeric}
           live={view.live}
           loading={loading}
           scanned={scanned}
+          store={store}
           active={active}
           needles={needles}
           columns={view.columns}

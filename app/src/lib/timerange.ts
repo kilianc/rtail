@@ -26,7 +26,9 @@ export interface Preset {
 export const PRESETS: Preset[] = [
   { label: 'Last 5 minutes', short: '5m', range: { from: '-5m', to: '' } },
   { label: 'Last 15 minutes', short: '15m', range: { from: '-15m', to: '' } },
-  { label: 'Last hour', short: '1h', range: { from: '-1h', to: '' } },
+  // "1 hour", not "hour": the list reads as a column of quantities, and
+  // the one entry without a number is the one the eye stops on.
+  { label: 'Last 1 hour', short: '1h', range: { from: '-1h', to: '' } },
   { label: 'Last 6 hours', short: '6h', range: { from: '-6h', to: '' } },
   { label: 'Last 24 hours', short: '24h', range: { from: '-24h', to: '' } },
   { label: 'Last 3 days', short: '3d', range: { from: '-72h', to: '' } },
@@ -96,6 +98,23 @@ const stamp = new Intl.DateTimeFormat(undefined, {
 
 export function formatStamp(date: Date): string {
   return stamp.format(date).replace(',', '')
+}
+
+const clock = new Intl.DateTimeFormat(undefined, {
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false
+})
+
+/*!
+ * The time alone, for an axis whose window does not cross a day.
+ *
+ * Five ticks reading "Oct 17 16:08" spend two thirds of their ink repeating
+ * a date the whole axis shares. The date comes back the moment the window is
+ * long enough for it to be the thing that changes.
+ */
+export function formatTick(date: Date, spanMs: number): string {
+  return spanMs > 86_400_000 ? formatStamp(date) : clock.format(date)
 }
 
 /** Builds an absolute range, as produced by dragging on the histogram. */

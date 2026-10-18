@@ -418,3 +418,63 @@ function scalar(value: unknown): string {
   if ('object' === typeof value) return JSON.stringify(value)
   return String(value)
 }
+
+/** One run of query text, classified for colour. */
+export interface Token {
+  kind: 'field' | 'op' | 'value' | 'string' | 'plain'
+  text: string
+}
+
+/*!
+ * Splits a query into coloured runs.
+ *
+ * A textarea cannot colour its own contents, so the pane draws this list
+ * underneath one whose text is transparent. That means the tokeniser's only
+ * hard requirement is that it emits every character exactly once, in order —
+ * drop one and the ink slides out from under the caret. It is deliberately
+ * not the rQL parser: this runs on every keystroke, including on text that is
+ * half-typed and does not parse, and "what colour is this word" survives being
+ * wrong in a way "what does this query mean" does not.
+ */
+export function tokenize(query: string): Token[] {
+  const pattern = /("(?:[^"\\]|\\.)*"?)|(>=|<=|!=|=|>|<|:)|(\s+)|([^\s"<>=!:]+)/g
+  const tokens: Token[] = []
+
+  // What the last word meant, so the word after an operator reads as a value
+  // and the word after a value reads as the next field.
+  let afterOp = false
+
+  for (const match of query.matchAll(pattern)) {
+    const [text, string, op, space, word] = match
+
+    if (undefined !== string) {
+      tokens.push({ kind: 'string', text })
+      afterOp = false
+      continue
+    }
+
+    if (undefined !== op) {
+      tokens.push({ kind: 'op', text })
+      afterOp = true
+      continue
+    }
+
+    if (undefined !== space) {
+      tokens.push({ kind: 'plain', text })
+      continue
+    }
+
+    // Boolean glue is punctuation wearing letters, and reads as the operator
+    // it is rather than as a field nobody has.
+    if (/^(AND|OR|NOT)$/i.test(word)) {
+      tokens.push({ kind: 'op', text })
+      afterOp = false
+      continue
+    }
+
+    tokens.push({ kind: afterOp ? 'value' : 'field', text })
+    afterOp = false
+  }
+
+  return tokens
+}

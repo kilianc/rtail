@@ -12,7 +12,7 @@
 
 import { useMemo, useRef, useState } from 'preact/hooks'
 import type { Bucket } from '../lib/api.js'
-import { absolute, formatStamp, type Range } from '../lib/timerange.js'
+import { absolute, formatStamp, formatTick, type Range } from '../lib/timerange.js'
 
 interface Props {
   collapsed: boolean
@@ -215,7 +215,7 @@ export function Histogram({ collapsed, buckets, intervalMs, range, loading, onSe
       */}
       <div class="histogram-axis" aria-hidden="true">
         {ticks.map((at, index) => (
-          <span key={index}>{formatStamp(at)}</span>
+          <span key={index}>{formatTick(at, span)}</span>
         ))}
       </div>
     </div>

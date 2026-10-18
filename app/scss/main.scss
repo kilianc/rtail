@@ -117,6 +117,9 @@
     color: var(--foreground);
     font-family: var(--mono);
     font-size: var(--text-md);
+    // One leading for the whole interface, and it is the log row's. Every
+    // strip of chrome is then a whole number of lines tall by construction.
+    line-height: var(--line-h);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     letter-spacing: var(--tracking-tight);
@@ -218,6 +221,36 @@
     flex-shrink: 0;
   }
 
+  /*!
+   * The wordmark, set in the interface's own face.
+   *
+   * It was a bitmap sprite, which meant the one piece of brand on the screen
+   * was the one thing that did not share a baseline, a weight or a colour
+   * with anything around it. Four letters of the same mono the logs are in,
+   * in the accent, is the mark the design asks for and costs no image.
+   */
+  .topbar-mark {
+    color: var(--primary);
+    font-weight: 700;
+    letter-spacing: .04em;
+    padding-inline-end: var(--space-1);
+  }
+
+  // The vertical rules that group the bar: brand | query controls | context.
+  .topbar-rule {
+    background: var(--border);
+    block-size: var(--space-4);
+    flex-shrink: 0;
+    inline-size: var(--hairline);
+  }
+
+  .topbar-docs {
+    color: var(--muted-foreground);
+    flex-shrink: 0;
+
+    &:hover { color: var(--primary); }
+  }
+
   .topbar-main {
     align-items: center;
     display: flex;
@@ -301,8 +334,11 @@
     color: var(--muted-foreground);
     display: inline-flex;
     flex-shrink: 0;
-    font-size: var(--text-sm);
-    font-weight: 500;
+    // `font: inherit`, as the reference has it: a control sitting in a row of
+    // 11px text is 11px text with a border round it, and half a pixel of
+    // difference is just enough to see without being legible as a decision.
+    font-size: var(--text-md);
+    font-weight: 400;
     gap: var(--space-2);
     justify-content: center;
     line-height: 1;
@@ -437,66 +473,49 @@
    */
   .stream-picker {
     align-items: center;
+    background: var(--muted);
     block-size: var(--control-h);
-    border: var(--hairline) solid var(--border-strong);
-    border-radius: 999px;
+    border: var(--hairline) solid var(--border);
+    border-radius: var(--radius-md);
     color: var(--foreground);
     display: flex;
     flex-shrink: 0;
-    font-size: var(--text-sm);
-    gap: var(--space-2);
+    font-size: var(--text-md);
+    gap: 6px;
     max-inline-size: calc(var(--space-6) * 10);
     min-inline-size: 0;
     padding-inline: var(--space-2) var(--space-1);
     transition: background-color .14s ease, border-color .14s ease;
 
-    &:hover {
-      background: var(--subtle);
-      border-color: var(--faint-foreground);
-    }
+    &:hover { border-color: var(--border-strong); }
 
-    // The caret, so it reads as something that opens.
+    // The caret, so it reads as something that opens. Pointing down, not
+    // right: a menu drops, and a right-pointing one says "go there".
     &::after {
       @include chevron(5px, 1.5px);
-      color: var(--faint-foreground);
+      color: var(--muted-foreground);
       flex-shrink: 0;
-      margin-inline-end: var(--space-1);
+      margin-block-start: -3px;
+      margin-inline: 1px;
+      transform: rotate(45deg);
     }
   }
 
   /*!
-   * A drawn mark rather than an icon from the set.
+   * An accent dot, not a filter glyph.
    *
-   * The only glyph that fitted was the filter funnel, which says "narrowing"
-   * when the control means "which stream". Three stacked bars read as a body
-   * of records, cost no asset, and inherit colour like text.
+   * The three bars read as "filter", and the chip does not filter anything —
+   * it picks which stream the whole screen is about. A dot is a status mark,
+   * which is what this is.
    */
   .stream-picker-icon {
-    block-size: var(--icon-sm);
-    display: grid;
+    background: var(--primary);
+    block-size: var(--dot);
+    border-radius: 50%;
     flex-shrink: 0;
-    gap: 1.5px;
-    inline-size: var(--icon-sm);
-    place-content: center;
+    inline-size: var(--dot);
 
-    &::before,
-    &::after {
-      background: currentcolor;
-      block-size: 1.5px;
-      border-radius: 1px;
-      content: '';
-      inline-size: var(--icon-sm);
-    }
-
-    &::after { inline-size: calc(var(--icon-sm) * .6); }
-
-    span {
-      background: currentcolor;
-      block-size: 1.5px;
-      border-radius: 1px;
-      display: block;
-      inline-size: calc(var(--icon-sm) * .8);
-    }
+    span { display: none; }
   }
 
   .stream-picker-name {
@@ -507,8 +526,7 @@
 
   // The count rides inside the pill, dimmed — it is context, not the label.
   .stream-picker-count {
-    color: var(--faint-foreground);
-    font-size: var(--text-xs);
+    color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
   }
 
@@ -517,17 +535,17 @@
   .live-toggle {
     align-items: center;
     block-size: var(--control-h);
-    border-radius: var(--radius-sm);
-    color: var(--muted-foreground);
+    border: var(--hairline) solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--foreground);
     display: flex;
     flex-shrink: 0;
-    font-size: var(--text-sm);
-    font-weight: 500;
-    gap: var(--space-2);
-    padding-inline: var(--space-2);
-    transition: background-color .14s ease, color .14s ease;
+    font-size: var(--text-md);
+    gap: 5px;
+    padding-inline: 6px;
+    transition: background-color .14s ease, border-color .14s ease;
 
-    &:hover { background: var(--subtle); }
+    &:hover { border-color: var(--border-strong); }
 
     i {
       background: var(--faint-foreground);
@@ -543,16 +561,10 @@
 
       i {
         background: var(--live);
-
-        // A halo that breathes, so "live" reads at a glance.
-        &::after {
-          animation: pulse 2s ease-out infinite;
-          background: var(--live);
-          border-radius: 50%;
-          content: '';
-          inset: 0;
-          position: absolute;
-        }
+        // A still ring rather than a breathing halo: the bar holds four
+        // controls and one of them animating forever draws the eye off the
+        // logs, which are the thing that is actually moving.
+        box-shadow: 0 0 0 3px var(--live-ring);
       }
     }
   }
@@ -565,7 +577,7 @@
     color: var(--muted-foreground);
     display: flex;
     flex-shrink: 0;
-    font-size: var(--text-sm);
+    font-size: var(--text-md);
     font-variant-numeric: tabular-nums;
     gap: var(--space-1);
 
@@ -600,9 +612,11 @@
   }
 
   .command-pane {
-    background: var(--muted);
+    background: var(--surface);
     border: var(--hairline) solid var(--input);
-    border-radius: var(--radius-md);
+    // The pane radius, not the control radius: this is a region that holds
+    // controls, and it reads as one by being rounder than the things in it.
+    border-radius: var(--radius);
     display: grid;
     overflow: hidden;
     transition: border-color .16s ease;
@@ -611,15 +625,57 @@
 
     // The whole pane lights up when the text inside it has focus, so the
     // footer controls read as part of the focused thing.
-    &:focus-within { border-color: var(--primary); }
+    &:focus-within {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-ring);
+    }
   }
 
   .command.invalid .command-pane { border-color: var(--level-error); }
 
   .command-editor {
     display: grid;
+    // The ink and the textarea share one cell, stacked. Declared here rather
+    // than by absolutely positioning the ink, so the cell is sized by the
+    // textarea and the two cannot disagree about how tall the query is.
+    grid-template-areas: "gutter text";
     grid-template-columns: auto 1fr;
     position: relative;
+
+    > .command-gutter { grid-area: gutter; }
+    > .command-ink,
+    > textarea { grid-area: text; }
+  }
+
+  /*!
+   * The coloured copy of the query, under the transparent one.
+   *
+   * Every box-affecting property here has to match the textarea exactly or
+   * the two drift apart a character at a time. They are declared together,
+   * immediately below, for that reason.
+   */
+  .command-ink {
+    color: var(--foreground);
+    margin: 0;
+    overflow: hidden;
+    pointer-events: none;
+    user-select: none;
+
+    .tok-op { color: var(--level-error); }
+    .tok-value { color: var(--level-warn); }
+    .tok-string { color: var(--ansi-magenta); }
+  }
+
+  // The shared box. One rule, two layers, no drift.
+  .command-ink,
+  .command-editor textarea {
+    font-family: var(--mono);
+    font-size: var(--mono-size);
+    letter-spacing: inherit;
+    line-height: var(--line-h);
+    padding: var(--space-2) 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   /*!
@@ -631,7 +687,7 @@
    * bottom of the pane.
    */
   .command-gutter {
-    border-inline-end: var(--hairline) solid var(--border);
+    border-inline-end: var(--hairline) solid var(--muted);
     color: var(--faint-foreground);
     display: grid;
     font-size: var(--mono-size);
@@ -649,20 +705,24 @@
 
   .command-editor textarea {
     background: none;
-    color: var(--foreground);
+    // Transparent, with a visible caret: the colour comes from the ink
+    // underneath, and this layer exists only to be typed into.
+    caret-color: var(--primary);
+    color: transparent;
     display: block;
-    font-family: var(--mono);
-    font-size: var(--mono-size);
-    line-height: var(--line-h);
     min-inline-size: 0;
     outline: 0;
-    padding: var(--space-2) var(--space-3);
+    position: relative;
     resize: none;
 
     &::placeholder {
       color: var(--faint-foreground);
       font-style: italic;
     }
+
+    // The selection has to come from this layer — the ink below cannot be
+    // selected — so it is drawn as a band rather than as coloured text.
+    &::selection { background: var(--primary-subtle); }
   }
 
   .command-busy {
@@ -691,11 +751,12 @@
    */
   .command-footer {
     align-items: center;
-    border-block-start: var(--hairline) solid var(--border);
+    background: var(--card);
+    border-block-start: var(--hairline) solid var(--muted);
     display: flex;
     gap: var(--space-2);
     min-inline-size: 0;
-    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+    padding: 5px 6px 5px var(--space-2);
   }
 
   .command-actions {
@@ -714,21 +775,25 @@
    * standing on its own, and only the track knows it is a track.
    */
   .command-lang {
-    background: var(--card);
+    border: var(--hairline) solid var(--border);
     border-radius: var(--radius-sm);
     display: flex;
     flex-shrink: 0;
-    padding: 1px;
+    overflow: hidden;
 
     .btn {
-      block-size: auto;
-      border-radius: var(--radius-xs);
-      padding: 2px var(--space-2);
+      block-size: var(--row-h);
+      border-radius: 0;
+      padding: 0 7px;
     }
 
+    // One rule between the segments, so the pair reads as one switch with
+    // two positions rather than as two buttons that happen to touch.
+    .btn + .btn { border-inline-start: var(--hairline) solid var(--border); }
+
     .btn.on {
-      background: var(--primary-subtle);
-      color: var(--primary);
+      background: var(--subtle-strong);
+      color: var(--foreground);
     }
   }
 
@@ -837,11 +902,13 @@
     // A pinned range is not the default, and looks it — brighter, not coloured.
     &.absolute { border-color: var(--border-strong); }
 
-    // A caret, so it reads as something that opens.
+    // A caret, so it reads as something that opens — down, like the menu.
     &::after {
       @include chevron(5px, 1.5px);
-      color: var(--faint-foreground);
-      margin-inline-start: var(--space-1);
+      color: var(--muted-foreground);
+      margin-block-start: -3px;
+      margin-inline-start: 6px;
+      transform: rotate(45deg);
     }
   }
 
@@ -978,7 +1045,7 @@
   .histogram {
     background: var(--card);
     border-block-end: var(--hairline) solid var(--border);
-    padding: var(--space-2) var(--space-3) var(--space-3);
+    padding: 6px var(--space-2) var(--space-2);
     transition: opacity .16s ease;
 
     &.loading { opacity: .45; }
@@ -989,9 +1056,9 @@
     align-items: baseline;
     color: var(--muted-foreground);
     display: flex;
-    font-size: var(--text-sm);
+    font-size: var(--text-md);
     gap: var(--space-2);
-    padding-block-end: var(--space-1);
+    padding-block-end: 5px;
   }
 
   .histogram-dot { color: var(--faint-foreground); }
@@ -1003,7 +1070,7 @@
 
   .histogram-surface {
     block-size: var(--chart-h);
-    border-block-end: var(--hairline) solid var(--border);
+    border-block-end: var(--hairline) solid var(--subtle-strong);
     cursor: crosshair;
     position: relative;
     user-select: none;
@@ -1105,13 +1172,13 @@
 
   .explorer-title {
     align-items: center;
-    block-size: var(--bar-h);
+    block-size: var(--strip-h);
     border-block-end: var(--hairline) solid var(--border);
     color: var(--muted-foreground);
     display: flex;
     font-size: var(--text-md);
     gap: var(--space-2);
-    padding-inline: var(--space-3);
+    padding-inline: var(--space-2);
   }
 
   .explorer-gap { flex: 1 1 auto; }
@@ -1129,17 +1196,17 @@
    * and the whole row is the filter.
    */
   .explorer-levels {
-    border-block-end: var(--hairline) solid var(--border);
+    border-block-end: var(--hairline) solid var(--muted);
     display: grid;
-    padding: var(--space-2) var(--space-3);
-    row-gap: var(--space-1);
+    padding: 6px var(--space-2);
+    row-gap: 3px;
   }
 
   .explorer-level {
     align-items: baseline;
     column-gap: var(--space-2);
     display: grid;
-    font-size: var(--text-sm);
+    font-size: var(--text-md);
     grid-template-columns: 1fr auto;
     text-align: start;
 
@@ -1196,8 +1263,8 @@
     color: var(--faint-foreground);
     font-size: var(--text-xs);
     font-weight: 400;
-    letter-spacing: .06em;
-    padding: var(--space-2) var(--space-3) var(--space-1);
+    letter-spacing: var(--tracking-wide);
+    padding: 7px var(--space-2) 3px;
     text-transform: uppercase;
   }
 
@@ -1241,7 +1308,7 @@
     font-size: var(--text-md);
     gap: var(--space-2);
     inline-size: 100%;
-    padding-inline: var(--space-3) var(--space-2);
+    padding-inline: var(--space-2);
     text-align: start;
     transition: background-color .12s ease;
 
@@ -1255,10 +1322,9 @@
   .explorer-field.open .explorer-head { background: var(--subtle); }
 
   // Mentioned by the query: the one row on the list the query is about.
-  .explorer-field.active .explorer-head {
-    background: var(--primary-wash);
-    box-shadow: inset 2px 0 0 var(--primary);
-  }
+  // A filled band rather than a wash with a marker — at 20px the marker is
+  // more ink than the name beside it.
+  .explorer-field.active .explorer-head { background: var(--primary-subtle); }
 
   .explorer-field.active .explorer-name,
   .explorer-field.active .explorer-kind { color: var(--primary); }
@@ -1274,8 +1340,8 @@
 
 
   .explorer-kind {
-    color: var(--faint-foreground);
-    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+    font-size: var(--text-md);
     font-variant-numeric: tabular-nums;
     margin-inline-start: auto;
   }
@@ -1368,11 +1434,11 @@
     background: var(--card);
     color: var(--muted-foreground);
     display: flex;
-    font-size: var(--text-sm);
+    font-size: var(--text-md);
     font-variant-numeric: tabular-nums;
     gap: var(--space-2);
-    min-block-size: var(--bar-h);
-    padding-inline: var(--space-3);
+    min-block-size: var(--strip-h);
+    padding-inline: var(--space-2);
   }
 
   .results-stats { border-block-end: var(--hairline) solid var(--border); }
@@ -1404,13 +1470,13 @@
 
   .results-header {
     align-items: center;
-    background: var(--muted);
+    background: var(--surface);
     border-block-end: var(--hairline) solid var(--border);
-    color: var(--muted-foreground);
+    color: var(--faint-foreground);
     font-size: var(--text-xs);
-    font-weight: 500;
+    font-weight: 400;
     letter-spacing: var(--tracking-wide);
-    min-block-size: var(--row-h);
+    min-block-size: var(--head-h);
     text-transform: uppercase;
   }
 
@@ -1441,23 +1507,37 @@
     display: flex;
     gap: var(--space-1);
     min-inline-size: 0;
-    text-transform: none;
+    position: relative;
 
     &:hover .results-col-drop { opacity: 1; }
   }
 
+  // A pinned field's name is a column label like the fixed three, and is set
+  // like them. It was the one lowercase word in a row of capitals, which read
+  // as a value that had got into the header rather than as a heading.
   .results-col-name {
     font-family: var(--mono);
-    letter-spacing: 0;
+    letter-spacing: var(--tracking-wide);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  // Numbers right-align, header and cells together: a column of quantities is
+  // compared by its digits lining up, and the label has to sit over them.
+  .results-col-added.numeric { justify-content: end; }
+  .row-cell.numeric { text-align: end; }
+  .row-cell.empty { color: var(--border-strong); }
+
   // Dropping a column is destructive, so it reveals on hover and goes red on
   // its own — same reasoning as the field explorer's exclude.
+  // Out of flow, so a hidden control does not shorten the label it sits
+  // beside: a 72px column has room for "SERVICE" or for a × and "SERVIC…",
+  // and the one that is there at rest should be the name.
   .results-col-drop {
+    inset-inline-end: 0;
     opacity: 0;
+    position: absolute;
     transition: opacity .12s ease, background-color .14s ease, color .14s ease;
 
     &:hover:not(:disabled) { color: var(--level-error); }
@@ -1611,6 +1691,10 @@
   .row-head {
     align-items: baseline;
     min-block-size: var(--line-h);
+    // One pixel above and below the line. It is the whole difference between
+    // a list of lines and a wall of text, and it is why the row is 22px
+    // rather than 20 — nineteen of type, two of air, one of rule.
+    padding-block: 1px;
   }
 
   // A disclosure triangle, drawn from two rules so it inherits colour and
@@ -1619,12 +1703,15 @@
   .row-caret {
     align-items: center;
     align-self: start;
-    color: var(--faint-foreground);
+    // A shade dimmer and a size smaller than the other chevrons on the
+    // screen. There is one per row, a thousand rows down the page, and at
+    // the weight the menus use they read as a column of punctuation.
+    color: var(--border-strong);
     display: flex;
     block-size: var(--line-h);
     justify-content: center;
 
-    &::after { @include chevron; }
+    &::after { @include chevron(4px, 1.25px); }
   }
 
   .row:hover .row-caret { color: var(--muted-foreground); }
@@ -1705,7 +1792,7 @@
     cursor: default;
     display: grid;
     gap: var(--space-3);
-    padding: var(--space-2) var(--space-3) var(--space-3);
+    padding: var(--space-1) var(--space-2) var(--space-2);
     // Indented one caret-width, so the detail hangs off the row's disclosure
     // rather than off the summary column. It used to start under the summary
     // — four columns in from the left — which left a third of the width empty
@@ -1724,7 +1811,7 @@
    */
   .row-detail-grid {
     display: grid;
-    gap: var(--space-3) var(--space-6);
+    gap: var(--space-2) var(--space-6);
     grid-template-columns: repeat(2, minmax(0, 1fr));
 
     @media (max-width: 640px) { grid-template-columns: minmax(0, 1fr); }
@@ -1738,10 +1825,9 @@
   .row-fields-head {
     color: var(--faint-foreground);
     font-size: var(--text-xs);
-    font-weight: 500;
+    font-weight: 400;
     letter-spacing: var(--tracking-wide);
-    margin: 0 0 var(--space-1) 0;
-    padding-inline: var(--space-2);
+    margin: 0 0 2px 0;
     text-transform: uppercase;
   }
 
@@ -1753,13 +1839,15 @@
 
   .leaf {
     display: grid;
-    gap: var(--space-3);
-    grid-template-columns: calc(var(--space-6) * 5) 1fr;
+    gap: var(--space-2);
+    // 96px: long enough for `latency_ms` and `short_message`, short enough
+    // that two of these pairs fit side by side in a half-width pane.
+    grid-template-columns: calc(var(--space-6) * 4) 1fr;
     min-block-size: var(--line-h);
-    padding-inline: var(--space-2);
+    padding-inline: 0;
 
     &:hover {
-      background: var(--subtle);
+      background: var(--raise);
       .leaf-actions { opacity: 1; }
     }
 
@@ -1863,6 +1951,50 @@
         transition: background-color .14s ease;
 
         &:hover { background: var(--subtle); }
+      }
+    }
+
+    /*!
+     * The pinned columns, as a set.
+     *
+     * The header below shows them one × at a time and only while they fit;
+     * this is the place the whole set can be read and emptied.
+     */
+    .popover-columns {
+      gap: var(--space-1);
+      min-inline-size: calc(var(--space-6) * 8);
+      padding: var(--space-2);
+
+      h4 {
+        color: var(--faint-foreground);
+        font-size: var(--text-xs);
+        font-weight: 400;
+        letter-spacing: var(--tracking-wide);
+        padding-inline: var(--space-2);
+        text-transform: uppercase;
+      }
+
+      .popover-note {
+        color: var(--muted-foreground);
+        padding: var(--space-1) var(--space-2);
+      }
+
+      .popover-list {
+        display: grid;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+
+        li {
+          align-items: center;
+          block-size: var(--row-h);
+          display: flex;
+          gap: var(--space-2);
+          padding-inline: var(--space-2) var(--space-1);
+
+          span { flex: 1 1 auto; }
+          &:hover { background: var(--subtle); }
+        }
       }
     }
 

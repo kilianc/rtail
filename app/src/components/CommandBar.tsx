@@ -29,10 +29,10 @@ import type { ComponentChildren } from 'preact'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { Field } from '../lib/api.js'
 import { Button } from './Button.js'
-import { complete, type Completion } from '../lib/query.js'
+import { complete, tokenize, type Completion } from '../lib/query.js'
 
 /** Shown under an empty editor, and inserted on click. */
-const EXAMPLES = ['level>=ERROR', 'service=api latency_ms>500', '"connection reset"']
+const EXAMPLES = ['level>=ERROR', 'service=api latency_ms>500']
 
 /*!
  * The SQL examples name physical columns, because that is what the expression
@@ -192,6 +192,30 @@ export function CommandBar({
               <span key={line}>{line}</span>
             ))}
           </div>
+
+          {/*
+            The ink, under the text.
+
+            A textarea cannot colour its own contents, so the pane draws the
+            query twice: once here in colour, and once in the textarea above
+            with transparent text and a visible caret. The two share font,
+            size, leading and padding, which is what keeps them registered —
+            any one of those drifting shows up immediately as ghosting.
+
+            rQL only. The SQL escape hatch is DuckDB's grammar, not ours, and
+            colouring it with an rQL tokeniser would be confidently wrong
+            about half of what it highlighted.
+          */}
+          <pre class="command-ink" aria-hidden="true">
+            {'rql' === lang
+              ? tokenize(value).map((token, index) => (
+                  <span key={index} class={`tok-${token.kind}`}>{token.text}</span>
+                ))
+              : value}
+            {/* A trailing newline is collapsed by `pre`; this keeps the last
+                line's height so the two layers end at the same place. */}
+            {'\n' === value.slice(-1) ? ' ' : ''}
+          </pre>
 
           <textarea
             ref={input}

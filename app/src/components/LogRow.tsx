@@ -40,6 +40,8 @@ interface Props {
   needles: string[]
   /** Fields promoted into columns of their own. */
   columns: string[]
+  /** Of those, the ones holding numbers, which align to the right. */
+  numeric: string[]
   onToggle: () => void
   onFilter: (action: FilterAction) => void
   onContext: () => void
@@ -64,7 +66,18 @@ const ABBREV: Record<string, string> = {
   NOTICE: 'NTC', INFO: 'INF', DEBUG: 'DBG', TRACE: 'TRC'
 }
 
-export function LogRow({ line, expanded, selected, active, needles, columns, onToggle, onFilter, onContext }: Props) {
+/*!
+ * Digits grouped in threes with underscores.
+ *
+ * `918_441_203` rather than `918,441,203`, because a sequence number is an
+ * identifier you compare, not a quantity you add up, and the comma form
+ * invites the second reading.
+ */
+function groupDigits(value: number): string {
+  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, '_')
+}
+
+export function LogRow({ line, expanded, selected, active, needles, columns, numeric, onToggle, onFilter, onContext }: Props) {
   const level = (line.level ?? '').toUpperCase()
   const clock = formatClock(line.timestamp)
 
@@ -97,16 +110,25 @@ export function LogRow({ line, expanded, selected, active, needles, columns, onT
 
         {/*
           Promoted columns sit between the timestamp and the summary, in the
-          same grid tracks the header declares. An empty cell is left empty
-          rather than filled with a dash: a column of dashes reads as data, and
-          "this record does not have that field" is worth seeing at a glance
-          in a store with no fixed schema.
+          same grid tracks the header declares. A record without the field
+          gets an em dash rather than an empty cell: in a store with no fixed
+          schema, "this line does not have that key" is a fact worth seeing,
+          and a blank reads as a value that failed to load. The dash is drawn
+          a shade below the values so a column of them stays quiet.
         */}
-        {columns.map((field) => (
-          <span key={field} class="row-cell" title={columnValue(line, field)}>
-            {columnValue(line, field)}
-          </span>
-        ))}
+        {columns.map((field) => {
+          const value = columnValue(line, field)
+
+          return (
+            <span
+              key={field}
+              class={`row-cell ${numeric.includes(field) ? 'numeric' : ''} ${value ? '' : 'empty'}`}
+              title={value || `no ${field}`}
+            >
+              {value || '—'}
+            </span>
+          )
+        })}
 
         <span class="row-message" dangerouslySetInnerHTML={{ __html: highlight(line.html, needles) }} />
       </div>
@@ -127,7 +149,7 @@ export function LogRow({ line, expanded, selected, active, needles, columns, onT
               <h5 class="row-fields-head">Envelope</h5>
 
               <Leaf
-                label="timestamp"
+                label="ts"
                 value={new Date(line.timestamp).toISOString()}
                 field="ts"
                 active={active}
@@ -137,9 +159,30 @@ export function LogRow({ line, expanded, selected, active, needles, columns, onT
 
               <Leaf label="stream" value={line.streamid} field="stream" active={active} onFilter={onFilter} />
 
-              {level && <Leaf label="level" value={level} field="level" active={active} onFilter={onFilter} />}
-
               {line.host && <Leaf label="host" value={line.host} field="host" active={active} onFilter={onFilter} />}
+
+              {/*
+                The pagination key, grouped with underscores rather than
+                commas: it is an identifier, not a quantity, and a comma in a
+                monospace column reads as something you could sum.
+              */}
+              <Leaf
+                label="seq"
+                value={groupDigits(line.seq)}
+                field="seq"
+                active={active}
+                onFilter={onFilter}
+                filterable={false}
+              />
+
+              <Leaf
+                label="is_json"
+                value={'object' === line.type}
+                field="is_json"
+                active={active}
+                onFilter={onFilter}
+                filterable={false}
+              />
             </dl>
 
             {/*
@@ -175,12 +218,17 @@ export function LogRow({ line, expanded, selected, active, needles, columns, onT
           <div class="row-actions">
             <Button
               variant="outline"
-              onClick={() => navigator.clipboard?.writeText(line.text)}
+              size="sm"
+              onClick={() =>
+                navigator.clipboard?.writeText(
+                  'object' === line.type ? JSON.stringify(line.content, null, 2) : line.text
+                )
+              }
             >
-              Copy
+              copy as JSON
             </Button>
-            <Button variant="outline" onClick={onContext}>
-              Show context
+            <Button variant="outline" size="sm" onClick={onContext}>
+              surrounding 50 lines
             </Button>
           </div>
         </div>

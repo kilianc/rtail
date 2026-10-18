@@ -9,6 +9,14 @@
 
 import type { WireLine } from './types.js'
 
+/**
+ * How many records a page of history holds.
+ *
+ * Shared because the footer names it — "older 200" is a promise about what
+ * the button does, and it would be a lie the moment the two drifted.
+ */
+export const PAGE = 200
+
 /** What a query cost, reported by every search response. */
 export interface Scanned {
   files: number
