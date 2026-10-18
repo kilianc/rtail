@@ -1949,9 +1949,22 @@
 
   // ** the expanded row **
 
+  /*!
+   * The detail panel, with no fill and no rule of its own.
+   *
+   * It painted --card across its full width, which is opaque, and an inset
+   * box-shadow sits under a child's background: the selection marker and the
+   * primary wash both stopped dead at the first line of the panel. A row you
+   * had open was marked beside its summary and unmarked beside the four
+   * hundred pixels of its own payload — the one time the stripe has a height
+   * worth drawing, it drew 21px of it.
+   *
+   * So the panel inherits the row's colour instead of replacing it, which is
+   * what the board does: the marker and the tint run the whole height of the
+   * open block, and the hairline that used to separate head from detail goes
+   * with the fill, since the tint already says where the block begins.
+   */
   .row-detail {
-    background: var(--card);
-    border-block-start: var(--hairline) solid var(--border);
     cursor: default;
     display: grid;
     gap: var(--space-2);
