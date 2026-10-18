@@ -94,6 +94,8 @@ export function Results({
    * only then does leaving it mean anything.
    */
   const wasAtEnd = useRef(false)
+  /** The measured height the tail was last pinned against. */
+  const measured = useRef(0)
 
   /*!
    * Opening a row holds the feed.
@@ -125,11 +127,23 @@ export function Results({
    */
   useLayoutEffect(() => {
     if (!live || !following || paused) return
-    if (lines.length === previous.current) return
+
+    /*!
+     * Re-pin on the measured height, not only on the line count.
+     *
+     * Rows are estimated at 20px and measure 22, so the list grows under a
+     * fixed scrollTop for a frame or two after each batch lands. Keyed on
+     * `lines.length` alone the pin ran once per batch, before that growth,
+     * and left the viewport ~76px short of the bottom — far enough that
+     * `atEnd` read false, which the hold below then took for the reader
+     * scrolling away and paused a feed nobody had touched.
+     */
+    if (lines.length === previous.current && virtual.total === measured.current) return
 
     previous.current = lines.length
+    measured.current = virtual.total
     virtual.scrollToEnd()
-  }, [lines.length, live, following, virtual])
+  }, [lines.length, live, following, paused, virtual.total, virtual])
 
   /*!
    * Scrolling away from the tail holds it, as opening a row does.
@@ -145,15 +159,37 @@ export function Results({
   useEffect(() => {
     if (!live) return
 
-    setFollowing(virtual.atEnd)
+    if (virtual.atEnd) {
+      setFollowing(true)
+      wasAtEnd.current = true
+      return
+    }
 
-    // Only a move *away* from the tail holds it. Before the first
-    // scroll-to-end has run the list is already taller than the viewport and
-    // sitting at the top, and reading that frame as "the reader scrolled
-    // away" would open every live view already paused.
-    if (wasAtEnd.current && !virtual.atEnd) onPause()
-    wasAtEnd.current = virtual.atEnd
-  }, [live, virtual.atEnd, onPause])
+    /*!
+     * Not at the tail — which is a *hold* only if the reader put us here.
+     *
+     * Two frames look identical to `atEnd` and are not. One is somebody
+     * scrolling up to read. The other is the list growing under a fixed
+     * scrollTop: rows are estimated at 20px and measure 22, so every batch
+     * leaves the viewport short of a bottom that moved, and the virtualizer
+     * starts life claiming `atEnd` before it has measured anything at all.
+     *
+     * Mirroring `atEnd` into `following` treated both as the reader. A live
+     * stream opened at its oldest loaded line, already paused, with "Jump to
+     * latest" showing and 30-odd events counted as missed — none of which
+     * anybody had done.
+     *
+     * So a hold needs the tail to have actually been pinned here
+     * (`wasAtEnd`) and the list to be the height it was pinned against. If it
+     * has grown since, the effect above is about to re-pin, and this frame
+     * says nothing about where the reader wants to be.
+     */
+    if (!wasAtEnd.current || measured.current !== virtual.total) return
+
+    setFollowing(false)
+    wasAtEnd.current = false
+    onPause()
+  }, [live, virtual.atEnd, virtual.total, onPause])
 
   // Historical results are read from the top; streaming ones from the bottom.
   useEffect(() => {

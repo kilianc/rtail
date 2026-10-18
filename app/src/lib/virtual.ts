@@ -242,9 +242,26 @@ export function useVirtual(count: number, estimate: number): Virtual {
     [container, count, estimate, offsets]
   )
 
+  /*!
+   * Jump to the bottom, and say so in the same commit.
+   *
+   * The effect that tracks `atEnd` is registered by this hook, so it runs
+   * before the effects of the component that calls it: a caller that scrolls
+   * to the end in its own layout effect was reading an `atEnd` computed from
+   * the position *before* its scroll, and got `false` for a frame. A live
+   * tail that treats that frame as the reader scrolling away pauses itself
+   * the moment it catches up.
+   *
+   * Reading `scrollTop` back after the assignment gives the browser's
+   * clamped value, so the state matches the DOM rather than the number we
+   * asked for.
+   */
   const scrollToEnd = useCallback(() => {
     if (!container) return
+
     container.scrollTop = container.scrollHeight
+    setScroll(container.scrollTop)
+    setAtEnd(true)
   }, [container])
 
   return {
