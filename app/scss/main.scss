@@ -2180,7 +2180,10 @@
     }
 
     .popover-info {
-      gap: var(--space-2);
+      // 4px, the board's rhythm: the mark, the label, the table and the
+      // link are four parts of one short panel, and at 8px they read as
+      // four separate things in a taller one.
+      gap: var(--space-1);
       // The same inset as the settings panel: they are two faces of one
       // object and open a centimetre apart.
       padding: var(--space-3);
@@ -2208,6 +2211,9 @@
         display: flex;
         inline-size: 100%;
         justify-content: center;
+        // 4px of its own on top of the panel's 4px: the link is the one
+        // thing here that acts rather than informs.
+        margin-block-start: var(--space-1);
         transition: background-color .14s ease, color .14s ease;
 
         &:hover { background: var(--subtle); color: var(--foreground); }
@@ -2304,9 +2310,13 @@
       min-inline-size: 0;
     }
 
-    // The chosen one, for a group that is choosing a size or a mode.
+    // The chosen one, for a group that is choosing a size or a mode. The
+    // border steps up with the fill: at --border it was the same edge as
+    // the five unchosen buttons beside it, and only the 6% lighter ground
+    // said which was picked.
     .btn.on {
       background: var(--subtle-strong);
+      border-color: var(--border-strong);
       color: var(--foreground);
     }
 
