@@ -58,12 +58,24 @@ export function Histogram({ collapsed, buckets, intervalMs, range, loading, onSe
   const bars = useMemo(
     () =>
       buckets.map((bucket) => {
-        const at = new Date(bucket.ts).getTime()
+        const at = new Date(bucket.ts).getTime() - range.from.getTime()
+
+        /*!
+         * Both edges, clamped to the chart.
+         *
+         * A bar used to be a left offset plus a whole interval's width, and
+         * the window is rarely an exact number of intervals — so the last
+         * bucket ran past the right edge. Two pixels of a bar hanging off the
+         * chart gave the *document* a horizontal scrollbar, which is a
+         * strange way to find out your buckets do not divide your range.
+         */
+        const start = Math.max(0, (at / span) * 100)
+        const end = Math.min(100, ((at + intervalMs) / span) * 100)
 
         return {
           bucket,
-          left: ((at - range.from.getTime()) / span) * 100,
-          width: (intervalMs / span) * 100,
+          left: start,
+          width: Math.max(0, end - start),
           height: peak > 0 ? (bucket.total / peak) * 100 : 0
         }
       }),
