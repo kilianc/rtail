@@ -491,10 +491,13 @@
     sup {
       font-size: var(--text-xs);
       // Level with the letter's cap, so it reads as a mark on the A rather
-      // than a hyphen after it.
-      inset-block-start: 1px;
-      inset-inline-end: 3px;
+      // than a hyphen after it, and anchored to the middle of the cell
+      // rather than its right edge — the letter is centred, so a wider cell
+      // would otherwise carry the sign away from the letter it modifies.
+      inset-block-start: 2px;
+      inset-inline-start: 50%;
       line-height: 1;
+      margin-inline-start: 3.5px;
       position: absolute;
     }
   }
@@ -1352,7 +1355,10 @@
     position: absolute;
     transition: opacity .12s ease, color .14s ease;
 
-    &.on { opacity: 1; }
+    // Pinned is said by the name's colour, which costs no room. The ⊞ is
+    // the way to change that, so it appears when you reach for it and the
+    // count keeps the slot the rest of the time.
+    &.on { color: var(--primary); }
 
     // It sits over the row's own background, so it brings none of its own —
     // a filled chip here would read as a second, smaller row.
@@ -1363,9 +1369,11 @@
   .explorer-field:hover .explorer-column,
   .explorer-column:focus-visible { opacity: 1; }
 
-  // The count steps aside rather than being overlapped.
-  .explorer-field:hover .explorer-kind,
-  .explorer-field.pinned .explorer-kind { opacity: 0; }
+  // The count steps aside rather than being overlapped — while the pointer
+  // is on the row, and only then. A pinned field used to surrender its count
+  // permanently to hold the ⊞, which traded a number for a marker that said
+  // the same thing the column header already said.
+  .explorer-field:hover .explorer-kind { opacity: 0; }
 
   .explorer-kind { transition: opacity .12s ease; }
 
@@ -1398,6 +1406,11 @@
 
   .explorer-field.active .explorer-name,
   .explorer-field.active .explorer-kind { color: var(--primary); }
+
+  // Pinned as a column: the name in the accent, nothing else. The band is
+  // spoken for by `active`, and a field can be both — so pinning gets the
+  // quieter half of the same signal rather than a second background.
+  .explorer-field.pinned .explorer-name { color: var(--primary); }
 
   .explorer-name {
     color: var(--foreground);
@@ -1998,7 +2011,9 @@
 
     .popover-info {
       gap: var(--space-2);
-      padding: var(--space-2);
+      // The same inset as the settings panel: they are two faces of one
+      // object and open a centimetre apart.
+      padding: var(--space-3);
 
       // The mark and the build on one line, left-aligned with the list under
       // them. It had been centred over a left-aligned table, which gave the
@@ -2074,13 +2089,14 @@
     }
 
     .popover-settings {
-      gap: var(--space-2);
-      justify-items: start;
-      padding: var(--space-2);
+      // 12px between groups and 4px between a label and its control, which
+      // is the only pairing in the panel that should read as tight. At 8px
+      // and 4px the three settings ran together into six rows.
+      gap: var(--space-3);
+      justify-items: stretch;
+      padding: var(--space-3);
 
-      // Each group is a label and its control, 4px apart, with 8px between
-      // groups — so the panel reads as three settings rather than six rows.
-      h4 { margin-block-end: calc(var(--space-1) - var(--space-2)); }
+      h4 { margin-block-end: calc(var(--space-1) - var(--space-3)); }
 
       h4 {
         color: var(--faint-foreground);
@@ -2095,54 +2111,30 @@
   // ** segmented control, used by the settings popover **
 
   /*!
-   * A segmented track: one border, one rule between positions.
+   * The settings groups: one six-column grid, used three times.
    *
-   * It had been a recessed slab with 2px of padding and a lifted, shadowed
-   * segment — a control three times the height of everything else in the
-   * panel, in a product whose every other control is a 20px box with a
-   * hairline. One border and a divider says the same thing at the size the
-   * rest of the interface is drawn at.
+   * Size, face and theme had been built three different ways — a 26px
+   * segmented track, a six-up grid of 29px boxes, and another 26px track —
+   * so no two rows in the panel began at the same place and the letters
+   * inside them sat on three unrelated sets of columns. On one grid, every
+   * cell of every row lines up with the cell above it, and a group that
+   * needs three of the six simply stops after three.
    */
   .btn-group {
-    align-self: start;
-    border: var(--hairline) solid var(--border);
-    border-radius: var(--radius-md);
-    display: flex;
-    overflow: hidden;
-
-    // The faces are a row of their own boxes rather than one track: they are
-    // six samples, not six positions of one switch.
-    &.six-grid {
-      border: 0;
-      display: grid;
-      gap: var(--space-1);
-      grid-template-columns: repeat(6, 1fr);
-      overflow: visible;
-    }
+    display: grid;
+    gap: var(--space-1);
+    grid-template-columns: repeat(6, 1fr);
+    inline-size: 100%;
 
     .btn {
-      block-size: var(--row-h);
-      border-radius: 0;
-      inline-size: auto;
-      min-inline-size: 26px;
-    }
-
-    .btn + .btn { border-inline-start: var(--hairline) solid var(--border); }
-
-    &.six-grid .btn {
+      block-size: var(--control-h);
       border: var(--hairline) solid var(--border);
       border-radius: var(--radius-md);
+      inline-size: auto;
       min-inline-size: 0;
     }
 
-    /*!
-     * The chosen segment is lifted, not tinted.
-     *
-     * The track is the recessed surface and the current segment sits on top
-     * of it — which is the whole idea of a segmented control, and why this
-     * treatment belongs to the track rather than to the button. A plain
-     * accent colour here would read as one of three links.
-     */
+    // The chosen one, for a group that is choosing a size or a mode.
     .btn.on {
       background: var(--subtle-strong);
       color: var(--foreground);

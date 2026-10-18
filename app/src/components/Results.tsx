@@ -248,7 +248,10 @@ export function Results({
         <Button
           variant="outline"
           size="sm"
-          on={columns.length > 0}
+          // On when its own list is open, not when columns exist. The accent
+          // on this row means "the feed is following"; a second permanent
+          // accent beside it left neither reading as a state.
+          on={showColumns}
           aria-expanded={showColumns}
           elementRef={columnsRef}
           onClick={() => setShowColumns((open) => !open)}
