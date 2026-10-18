@@ -13,7 +13,7 @@
  * it shifts by the difference.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 export interface Slice {
   /** Index of the first row to render. */
@@ -109,6 +109,33 @@ export function useVirtual(count: number, estimate: number): Virtual {
   }, [container])
 
   /*!
+   * The element's own scrollTop is the truth, re-read after every render.
+   *
+   * The slice used to be derived from a `scroll` value that only the scroll
+   * event updated, and the two drifted apart whenever the list changed
+   * underneath the scroller — switching streams replaces every row, and the
+   * offset that survived belonged to a list that no longer existed. The rows
+   * were then rendered, measured and positioned three thousand pixels below a
+   * viewport sitting at the top: a blank results pane under a header saying
+   * four hundred matched. Dispatching a scroll event by hand fixed it, which
+   * is what gives the diagnosis away.
+   *
+   * Checking on every render rather than on a dependency list, because the
+   * causes are not enumerable — a new stream, a new query, a page appended, a
+   * row expanded, the window resized — and two of them happening to produce
+   * the same row count would slip through a list that named them. It is one
+   * property read, and it only sets state when the two have actually
+   * diverged, so it settles in a single extra pass.
+   */
+  useLayoutEffect(() => {
+    if (!container) return
+
+    const top = container.scrollTop
+    setScroll((current) => (current === top ? current : top))
+    setAtEnd(container.scrollHeight - top - container.clientHeight < 24)
+  })
+
+  /*!
    * measure records a row's real height.
    *
    * Only a genuine change triggers a re-render — a row that measures the same
@@ -190,8 +217,18 @@ export function useVirtual(count: number, estimate: number): Virtual {
     [count, offsets]
   )
 
-  const start = Math.max(0, find(scroll) - OVERSCAN)
-  const end = Math.min(count, find(scroll + height) + 1 + OVERSCAN)
+  /*!
+   * The offset to render for, never past the end of the content.
+   *
+   * Belt to the effect's braces: between a list shrinking and the scroller
+   * being re-read there is a frame where `scroll` points past the last row,
+   * and clamping it means the worst that frame can do is render the bottom of
+   * the list rather than nothing at all.
+   */
+  const offset = Math.max(0, Math.min(scroll, total - height))
+
+  const start = Math.max(0, find(offset) - OVERSCAN)
+  const end = Math.min(count, find(offset + height) + 1 + OVERSCAN)
 
   const scrollTo = useCallback(
     (index: number, align: 'start' | 'center' = 'start') => {
