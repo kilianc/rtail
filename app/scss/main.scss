@@ -209,6 +209,11 @@
     background: var(--card);
     border-block-end: var(--hairline) solid var(--border);
     display: flex;
+    // The row wraps rather than running off the window. Nothing in here can
+    // be made narrower — a stream's name, a toggle and three icons are all
+    // as short as they go — so when they stop fitting, the only honest
+    // answer is a second line.
+    flex-wrap: wrap;
     gap: var(--space-2);
     padding-inline: var(--space-2);
     position: relative;
@@ -219,6 +224,10 @@
     align-items: center;
     display: flex;
     flex-shrink: 0;
+
+    // On a narrow window it is the one thing here that identifies nothing
+    // the reader does not already know.
+    @media (max-width: 760px) { display: none; }
   }
 
   /*!
@@ -255,6 +264,7 @@
     align-items: center;
     display: flex;
     flex: 1;
+    flex-wrap: wrap;
     gap: var(--space-2);
     min-inline-size: 0;
   }
@@ -285,10 +295,20 @@
     overflow: hidden;
   }
 
-  // Below this width the field explorer is the first thing to go.
-  @container (max-width: 760px) {
+  /*!
+   * Below this width the field explorer is the first thing to go.
+   *
+   * A media query, not a container query. This was written as `@container`
+   * and nothing in the app ever declared `container-type`, so the rule had
+   * never once applied: at 420px the explorer still took its full 264px and
+   * the window scrolled sideways. Declaring a container here would have been
+   * worse than the bug — `container-type` makes the element the containing
+   * block for fixed-position descendants, and every popover in the app is
+   * fixed and placed against the viewport.
+   */
+  @media (max-width: 760px) {
     .explorer-split { grid-template-columns: 1fr; }
-    .explorer { display: none; }
+
   }
 }
 
@@ -1219,6 +1239,12 @@
     grid-template-rows: auto auto 1fr;
     min-block-size: 0;
     overflow: hidden;
+
+    // The narrow-window rule lives here, beside the display it overrides.
+    // It was written in the layout layer, which this layer outranks — so the
+    // split went to one column while the explorer stayed visible, and the
+    // two panes stacked instead of one of them going away.
+    @media (max-width: 760px) { display: none; }
   }
 
   .explorer-title {
@@ -1497,6 +1523,22 @@
   // ** results **
 
   .results {
+    /*!
+     * On a narrow window the pinned columns go.
+     *
+     * Each is a fixed 72px, and three of them left the summary about forty
+     * pixels to render a log line in — one character per line, for every row
+     * on screen. The message is the content; a promoted column is an
+     * enhancement, and the first thing that should give when there is no
+     * room. The explorer that pins them is already hidden at this width.
+     *
+     * !important because the template is an inline custom property computed
+     * from the pinned set, and this has to win against it.
+     */
+    @media (max-width: 760px) {
+      --row-template: var(--caret-w) var(--gutter-w) var(--sev-w) 1fr !important;
+    }
+
     background: var(--card);
     display: grid;
     // Stats, columns, rows, footer. The middle track is the only one that
@@ -1597,6 +1639,10 @@
     position: relative;
 
     &:hover .results-col-drop { opacity: 1; }
+
+    // See .results below: on a narrow window the pinned columns are the
+    // first thing to give, and their headers go with them.
+    @media (max-width: 760px) { display: none; }
   }
 
   // A pinned field's name is a column label like the fixed three, and is set
@@ -1657,6 +1703,8 @@
   // A promoted value. Monospace and truncating, because these are identifiers
   // and a wrapped one would break the row rhythm the whole table depends on.
   .row-cell {
+    @media (max-width: 760px) { display: none; }
+
     color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
     overflow: hidden;
