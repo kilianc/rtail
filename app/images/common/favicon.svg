@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="rtail">
+  <!--
+    The mark alone, on the app's own ground. This is the only place the logo
+    is allowed its second colour: the cursor in --primary. The PNGs beside it
+    are the same geometry rasterised for browsers that ignore an SVG icon.
+  -->
+  <rect x="0" y="0" width="32" height="32" fill="#09090b"/>
+  <rect x="0" y="4" width="32" height="4" fill="#fafafa"/>
+  <rect x="0" y="14" width="20" height="4" fill="#fafafa"/>
+  <rect x="0" y="24" width="12" height="4" fill="#fafafa"/>
+  <rect x="16" y="24" width="4" height="4" fill="#ff7a5c"/>
+</svg>
