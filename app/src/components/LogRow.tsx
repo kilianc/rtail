@@ -194,7 +194,13 @@ export function LogRow({ line, expanded, selected, active, needles, columns, num
               shown.
             */}
             <dl class="row-fields">
-              <h5 class="row-fields-head">Promoted columns</h5>
+              {/*
+                "Promoted", the word the explorer uses for the same thing.
+                It said "Promoted columns", which named something else: these
+                are the keys this record carries, not the handful pinned as
+                columns — and those are already on the row above.
+              */}
+              <h5 class="row-fields-head">Promoted</h5>
 
               {promoted.length > 0 ? (
                 promoted.map(([key, value]) => (
@@ -255,7 +261,7 @@ function Leaf({ label, field, value, active, filterable = true, onFilter }: Leaf
 
       <dd class="leaf-value">
         {nested ? (
-          <pre class="leaf-json">{JSON.stringify(value, null, 2)}</pre>
+          <pre class="leaf-json">{JSON.stringify(value)}</pre>
         ) : (
           <span class={`leaf-scalar type-${typeof value}`}>{String(value)}</span>
         )}

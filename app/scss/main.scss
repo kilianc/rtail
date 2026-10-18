@@ -1898,13 +1898,14 @@
     border-block-start: var(--hairline) solid var(--border);
     cursor: default;
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-2);
     padding: var(--space-1) var(--space-2) var(--space-2);
-    // Indented one caret-width, so the detail hangs off the row's disclosure
-    // rather than off the summary column. It used to start under the summary
-    // — four columns in from the left — which left a third of the width empty
-    // and pushed the promoted keys off the edge of a narrow pane.
-    padding-inline-start: calc(var(--caret-w) + var(--space-3));
+    // Indented past the caret column and the gap after it, so the detail
+    // hangs off the row's own disclosure and its keys begin where the
+    // timestamp's column does. It used to start under the summary, four
+    // columns in, which left a third of the width empty and pushed the
+    // promoted keys off a narrow pane.
+    padding-inline-start: calc(var(--caret-w) + var(--space-2));
   }
 
   /*!
@@ -1925,8 +1926,15 @@
   }
 
   .row-fields {
+    // Rows keep their own height. Without this the shorter column's tracks
+    // stretch to fill the taller column beside it, so five envelope fields
+    // spaced themselves across the height of a payload that happened to
+    // carry a nested object — the two columns were double-spaced against
+    // each other for no reason either of them could see.
+    align-content: start;
     display: grid;
     min-inline-size: 0;
+    row-gap: 2px;
   }
 
   .row-fields-head {
@@ -1983,11 +1991,19 @@
     &.type-boolean { color: var(--ansi-magenta); }
   }
 
+  /*!
+   * A nested value, on one line.
+   *
+   * It used to be pretty-printed, which spent four lines on `{"foo":"bar"}`
+   * and set the whole panel's rhythm by the deepest object on the record.
+   * Compact, it is a value like any other; it wraps if it is genuinely long,
+   * and `copy as JSON` is a button away for the indented version.
+   */
   .leaf-json {
     color: var(--muted-foreground);
-    max-block-size: calc(var(--line-h) * 12);
-    overflow: auto;
-    white-space: pre;
+    margin: 0;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
   }
 
   .leaf-actions {
@@ -2004,10 +2020,12 @@
     padding-inline: 2px;
   }
 
+  // Flush with the keys above them: the detail already carries the indent,
+  // and a second one here set the actions 8px in from the column they belong
+  // to.
   .row-actions {
     display: flex;
     gap: var(--space-2);
-    padding-inline: var(--space-2);
   }
 
 
