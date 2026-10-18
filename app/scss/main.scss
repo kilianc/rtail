@@ -1598,7 +1598,16 @@
   // A pinned field's name is a column label like the fixed three, and is set
   // like them. It was the one lowercase word in a row of capitals, which read
   // as a value that had got into the header rather than as a heading.
-  .results-col-name {
+  /*!
+   * A promoted field's label.
+   *
+   * It ellipsises where the fixed headers clip, and says so loudly enough to
+   * beat `.results-header span`, which is one specificity point heavier. The
+   * fixed three are chosen to fit; a promoted name is whatever the system
+   * logs, and `latency_ms` clipped in a 72px column reads as a column called
+   * LATENCY — a different field, and one that may well also exist.
+   */
+  .results-header .results-col-name {
     font-family: var(--mono);
     letter-spacing: var(--tracking-wide);
     overflow: hidden;
@@ -1612,19 +1621,34 @@
   .row-cell.numeric { text-align: end; }
   .row-cell.empty { color: var(--border-strong); }
 
-  // Dropping a column is destructive, so it reveals on hover and goes red on
-  // its own — same reasoning as the field explorer's exclude.
-  // Out of flow, so a hidden control does not shorten the label it sits
-  // beside: a 72px column has room for "SERVICE" or for a × and "SERVIC…",
-  // and the one that is there at rest should be the name.
+  /*!
+   * Dropping a column.
+   *
+   * Out of flow, so a hidden control does not shorten the label it sits
+   * beside: a 72px column has room for "SERVICE" or for a × and "SERVIC…",
+   * and the one that is there at rest should be the name. But out of flow it
+   * was also drawn *over* the name — "LATENCY×", the two sharing pixels — so
+   * the label gives up its last 20px while the pointer is on the column and
+   * re-ellipsises into what is left.
+   *
+   * No red. Red in this table means a record is at error level, and the same
+   * red on a column header read as something wrong with the column. Hiding a
+   * column loses nothing — the field is still a row in the explorer, one
+   * click from coming back — so it is not the kind of act red is for.
+   */
   .results-col-drop {
     inset-inline-end: 0;
     opacity: 0;
     position: absolute;
     transition: opacity .12s ease, background-color .14s ease, color .14s ease;
 
-    &:hover:not(:disabled) { color: var(--level-error); }
+    &:hover:not(:disabled) { color: var(--foreground); }
   }
+
+  // Margin, not padding: `overflow: hidden` clips at the padding edge, so a
+  // padded label still runs its last characters underneath the ×. Shrinking
+  // the box is what moves the text out of the way.
+  .results-col-added:hover .results-col-name { margin-inline-end: var(--space-5); }
 
   // A promoted value. Monospace and truncating, because these are identifiers
   // and a wrapped one would break the row rhythm the whole table depends on.
