@@ -9,6 +9,7 @@ app/css
 app/bundle.js
 app/bundle.js.map
 web/dist
+site
 docs
 test
 test-results

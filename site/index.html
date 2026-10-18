@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>rTail — a UNIX pipe that became a log store</title>
+  <meta name="description" content="rTail pipes terminal output into your browser a second after it is printed, and with --data keeps every line in Parquet. One query language over the live tail and the history alike.">
+
+  <link rel="canonical" href="https://rtail.ciuffolo.com/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://rtail.ciuffolo.com/">
+  <meta property="og:title" content="rTail — a UNIX pipe that became a log store">
+  <meta property="og:description" content="Every line lands in Parquet, every field becomes a column, and one query language runs over the live tail and the history alike.">
+  <meta name="twitter:card" content="summary">
+
+  <link href="css/site.css" rel="stylesheet">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="icon" href="images/common/favicon-16x16.png" sizes="16x16">
+  <link rel="icon" href="images/common/favicon-32x32.png" sizes="32x32">
+  <link rel="icon" href="images/common/favicon-96x96.png" sizes="96x96">
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/">
+      rTail
+      <span class="tag">2.0.0-rc.1</span>
+    </a>
+
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#explorer">Explorer</a>
+      <a href="#rql">rQL</a>
+      <a href="#ingest">Ingest</a>
+      <a href="#storage">Storage</a>
+      <a href="#install">Install</a>
+      <a href="/docs">Docs</a>
+      <a class="nav-cta" href="https://github.com/kilianc/rtail">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- hero -->
+  <section class="hero">
+    <div class="wrap">
+      <p class="badge">Private preview · 2.0.0-rc.1</p>
+
+      <h1>Still a UNIX pipe. Now a log store.</h1>
+
+      <p class="lede">
+        rTail has always put a stream of lines in your browser a second after they were
+        printed. With <code>--data</code> it now keeps them: every line lands in Parquet,
+        every field becomes a column, and one query language runs over the live tail and
+        the history alike.
+      </p>
+
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#install">Run the preview</a>
+        <a class="btn" href="#explorer">See the explorer</a>
+      </div>
+
+      <div class="facts">
+        <div>
+          <h2>The wire format</h2>
+          <p>Frozen, and always will be. The client you already have installed works against a v2 server unchanged.</p>
+        </div>
+        <div>
+          <h2>The server</h2>
+          <p>One Go binary with the webapp and DuckDB embedded. npm now carries only the client pipe.</p>
+        </div>
+        <div>
+          <h2>Without <code>--data</code></h2>
+          <p>It is what it always was: an in-memory ring, nothing on disk, nothing to clean up.</p>
+        </div>
+      </div>
+
+      <figure class="panel shell">
+        <figcaption class="panel-bar">
+          <span class="panel-label">on the host you are tailing</span>
+          <button class="copy" type="button" data-copy="node server.js 2>&amp;1 | rtail --id api.example.com">Copy</button>
+        </figcaption>
+        <pre><code><span class="p">$</span> node server.js 2&gt;&amp;1 | rtail <span class="f">--id</span> api.example.com</code></pre>
+      </figure>
+    </div>
+  </section>
+
+  <!-- the explorer -->
+  <section class="band" id="explorer">
+    <div class="wrap">
+      <header class="section-head">
+        <p class="eyebrow">The explorer</p>
+        <h2>One filter drives the tail and the history.</h2>
+        <p>
+          Type a query and the live tail narrows — the server compiles the same rQL to a
+          predicate over the ingest stream. Switch to history and it runs against Parquet.
+          Same semantics either way, because there is one parser behind both.
+        </p>
+      </header>
+
+      <div class="app">
+        <div>
+          <div class="app-inner">
+
+            <div class="app-bar">
+              <span class="app-brand">rTail</span>
+              <span class="app-chip">api <span>6</span></span>
+              <span class="app-live">History</span>
+              <span class="app-meta">1 file · 19ms</span>
+            </div>
+
+            <div class="app-query">
+              <div class="app-editor">
+                <div class="app-lines">1<br>2</div>
+                <div class="app-source">level&gt;=WARN service=api</div>
+              </div>
+              <div class="app-query-foot">
+                <span class="seg"><span class="on">rQL</span><span>SQL</span></span>
+                <span class="app-example">level&gt;=ERROR service=api latency_ms&gt;500 "connection reset"</span>
+                <span class="app-range">Last hour ›</span>
+                <span class="app-run">Run query <span>⌘⏎</span></span>
+              </div>
+            </div>
+
+            <div class="app-timeline">
+              <div class="app-timeline-head">
+                ⌄ Timeline
+                <span>1,105 events</span>
+              </div>
+              <div class="chart">
+                <div class="chart-axis" aria-hidden="true">
+                  <span>192</span>
+                  <span>96</span>
+                  <span>0</span>
+                </div>
+                <div class="chart-bars" role="img" aria-label="Counts per minute over the last hour: a flat band of warnings, and a spike of errors twenty minutes back.">
+                  <span></span><span></span><span></span><span></span><span></span>
+                  <span></span><span></span><span></span><span></span><span></span>
+                  <span></span><span></span><span></span><span></span><span></span>
+                  <span></span><span></span><span></span><span></span><span></span>
+                  <span></span><span></span><span></span><span></span><span></span>
+                  <span></span><span></span><span></span><span></span><span></span>
+                  <span class="e1"></span><span class="e2"></span><span class="e3"></span><span class="e3"></span>
+                  <span class="e4"></span>
+                  <span></span><span></span><span></span><span></span><span></span>
+                  <span></span><span></span><span></span><span></span>
+                </div>
+              </div>
+              <div class="chart-foot">
+                <span>Aug 14 07:47</span>
+                <span>60s buckets</span>
+                <span>Aug 14 08:47</span>
+              </div>
+            </div>
+
+            <div class="app-main">
+              <div class="app-fields">
+                <h3>Log fields</h3>
+                <div class="app-fields-filter">Filter fields</div>
+                <ul>
+                  <li><span class="caret" aria-hidden="true">›</span> region <span class="count">18,172</span></li>
+                  <li><span class="caret" aria-hidden="true">›</span> service <span class="count">18,172</span></li>
+                  <li><span class="caret" aria-hidden="true">›</span> host <span class="envelope">envelope</span></li>
+                  <li><span class="caret" aria-hidden="true">›</span> level <span class="envelope">envelope</span></li>
+                  <li><span class="caret" aria-hidden="true">›</span> stream <span class="envelope">envelope</span></li>
+                  <li><span class="caret" aria-hidden="true">›</span> latency_ms <span class="count">18,172</span></li>
+                  <li><span class="caret" aria-hidden="true">›</span> req <span class="count">18,172</span></li>
+                  <li><span class="caret" aria-hidden="true">›</span> user_id <span class="count">18,172</span></li>
+                </ul>
+              </div>
+
+              <div class="app-results">
+                <div class="row row-head">
+                  <span></span>
+                  <span>Sev</span>
+                  <span>Timestamp</span>
+                  <span class="field">service</span>
+                  <span class="field">latency_ms</span>
+                  <span class="field">region</span>
+                  <span>Summary</span>
+                </div>
+
+                <div class="row">
+                  <span class="caret" aria-hidden="true">›</span>
+                  <span><span class="sev sev-warn" role="img" aria-label="Warning">!</span></span>
+                  <span>08:46:24.212</span><span>api</span><span>50.6</span><span>eu-west-1</span>
+                  <span>retrying request</span>
+                </div>
+                <div class="row">
+                  <span class="caret" aria-hidden="true">›</span>
+                  <span><span class="sev sev-warn" role="img" aria-label="Warning">!</span></span>
+                  <span>08:46:13.902</span><span>api</span><span>61.9</span><span>us-west-2</span>
+                  <span>cache miss storm</span>
+                </div>
+                <div class="row">
+                  <span class="caret" aria-hidden="true">›</span>
+                  <span><span class="sev sev-warn" role="img" aria-label="Warning">!</span></span>
+                  <span>08:46:11.507</span><span>api</span><span>246.1</span><span>us-east-1</span>
+                  <span>slow query</span>
+                </div>
+                <div class="row row-error">
+                  <span class="caret" aria-hidden="true">›</span>
+                  <span><span class="sev sev-error" role="img" aria-label="Error">!</span></span>
+                  <span>08:45:45.463</span><span>api</span><span>1588.2</span><span>us-east-1</span>
+                  <span>upstream timeout</span>
+                </div>
+                <div class="row">
+                  <span class="caret" aria-hidden="true">›</span>
+                  <span><span class="sev sev-warn" role="img" aria-label="Warning">!</span></span>
+                  <span>08:45:33.064</span><span>api</span><span>207.7</span><span>us-west-2</span>
+                  <span>slow query</span>
+                </div>
+                <div class="row row-error">
+                  <span class="caret" aria-hidden="true">›</span>
+                  <span><span class="sev sev-error" role="img" aria-label="Error">!</span></span>
+                  <span>08:45:22.842</span><span>api</span><span>3755.1</span><span>eu-west-1</span>
+                  <span>connection reset by peer</span>
+                </div>
+                <div class="row row-error">
+                  <span class="caret" aria-hidden="true">›</span>
+                  <span><span class="sev sev-error" role="img" aria-label="Error">!</span></span>
+                  <span>08:45:10.310</span><span>api</span><span>3481.7</span><span>us-east-1</span>
+                  <span>payment declined</span>
+                </div>
+                <div class="row row-error">
+                  <span class="caret" aria-hidden="true">›</span>
+                  <span><span class="sev sev-error" role="img" aria-label="Error">!</span></span>
+                  <span>08:44:57.059</span><span>api</span><span>3507.3</span><span>us-west-2</span>
+                  <span>connection reset by peer</span>
+                </div>
+                <div class="row">
+                  <span class="caret" aria-hidden="true">›</span>
+                  <span><span class="sev sev-warn" role="img" aria-label="Warning">!</span></span>
+                  <span>08:44:31.008</span><span>api</span><span>67.8</span><span>us-east-1</span>
+                  <span>slow query</span>
+                </div>
+                <div class="row row-error">
+                  <span class="caret" aria-hidden="true">›</span>
+                  <span><span class="sev sev-error" role="img" aria-label="Error">!</span></span>
+                  <span>08:43:54.217</span><span>api</span><span>2824.2</span><span>us-east-1</span>
+                  <span>connection reset by peer</span>
+                </div>
+                <div class="row">
+                  <span class="caret" aria-hidden="true">›</span>
+                  <span><span class="sev sev-warn" role="img" aria-label="Warning">!</span></span>
+                  <span>08:43:42.818</span><span>api</span><span>241.5</span><span>eu-west-1</span>
+                  <span>retrying request</span>
+                </div>
+                <div class="row row-error">
+                  <span class="caret" aria-hidden="true">›</span>
+                  <span><span class="sev sev-error" role="img" aria-label="Error">!</span></span>
+                  <span>08:43:28.330</span><span>api</span><span>3475.7</span><span>us-east-1</span>
+                  <span>upstream timeout</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <p class="note">
+        A drawing of the explorer, dimensioned by the app's own tokens:
+        <code>level&gt;=WARN</code> on the api stream, with service, latency_ms and region
+        promoted to columns.
+      </p>
+
+      <div class="cards" style="margin-top: 40px">
+        <article>
+          <h3>The histogram is the navigation</h3>
+          <p>Counts over time, stacked by severity. Drag across it to zoom the range — the spike is the thing you came for, so it is also the control.</p>
+        </article>
+        <article>
+          <h3>Most queries are built by clicking</h3>
+          <p>Expand an event and every value carries <em>filter to this</em> and <em>exclude this</em>. The command bar updates to match, so what you built by pointing is something you could have typed.</p>
+        </article>
+        <article>
+          <h3>Every view is a link</h3>
+          <p>Stream, filter, time range, promoted columns and whether the timeline is open all live in the URL. A screenshot of a problem is a URL somebody can send you.</p>
+        </article>
+        <article>
+          <h3>Completion is real</h3>
+          <p>It comes from the catalog's key inventory — every field that has actually appeared, with its type and how often — not from a guess at what a log line might contain.</p>
+        </article>
+        <article>
+          <h3>The sidebar answers “what is in here”</h3>
+          <p>Top values of every field <em>within the current results</em>, before you know what to search for. The ⊞ beside one pulls it out into a column of its own.</p>
+        </article>
+        <article>
+          <h3>Keyboard, not mouse</h3>
+          <p><code>/</code> or <code>⌘K</code> focuses the editor, <code>⌘⏎</code> runs it — plain <code>⏎</code> is a newline, because it is an editor. <code>j</code> and <code>k</code> move between events.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- rQL -->
+  <section id="rql">
+    <div class="wrap">
+      <header class="section-head">
+        <p class="eyebrow">rQL</p>
+        <h2>Terse enough to type, exact enough to trust.</h2>
+        <p>
+          <code>k=v</code> is equality, <code>k:v</code> a case-insensitive substring,
+          <code>k:~re</code> a regular expression, <code>k&gt;n</code> a comparison,
+          <code>k=*</code> “the key exists”. Terms are ANDed unless you write
+          <code>OR</code>; parentheses group. And <code>level</code> compares by severity
+          rather than alphabetically, so <code>level&gt;=ERROR</code> matches FATAL too —
+          which is what you meant.
+        </p>
+      </header>
+
+      <div class="panel demo" data-demo>
+        <div class="demo-bar">
+          <label for="q">Query</label>
+          <input id="q" type="text" readonly value="level&gt;=ERROR service=api &quot;connection reset&quot;">
+          <span class="count" data-count>38 events</span>
+        </div>
+
+        <div class="chips" role="group" aria-label="Example queries">
+          <button class="chip" type="button" aria-pressed="true" data-set="0"
+                  data-count="38 events"
+                  data-hint="Severity compares by rank, not alphabetically, so this matches FATAL too. The bare phrase is full text across the message and the original line.">level&gt;=ERROR service=api "connection reset"</button>
+          <button class="chip" type="button" aria-pressed="false" data-set="1"
+                  data-count="1,240 events"
+                  data-hint="A dash negates, parentheses group, and OR is explicit — everything else is ANDed. The probe traffic goes, two regions stay.">-path:/health AND (region=us-east-1 OR region=us-west-2)</button>
+          <button class="chip" type="button" aria-pressed="false" data-set="2"
+                  data-count="211 events"
+                  data-hint="A numeric comparison on a promoted column, and a regular expression against a path nested inside the line. Nested objects stay JSON you can path into.">latency_ms&gt;500 req.path:~"^/v1/"</button>
+          <button class="chip" type="button" aria-pressed="false" data-set="3"
+                  data-count="94 events"
+                  data-hint="k=* asks whether the key exists at all. Quoting a value suppresses type coercion, so status=&quot;200&quot; is the string and status=200 is the number.">trace_id=* status="200"</button>
+        </div>
+
+        <p class="hint" data-hint>
+          Severity compares by rank, not alphabetically, so this matches FATAL too. The
+          bare phrase is full text across the message and the original line.
+        </p>
+
+        <div class="demo-rows">
+          <div data-set="0">
+            <div class="demo-row row-error">
+              <span><span class="sev sev-error" role="img" aria-label="Error">!</span></span>
+              <span>08:45:22.842</span><span>connection reset by peer</span><span class="tail">latency_ms=3755.1</span>
+            </div>
+            <div class="demo-row row-error">
+              <span><span class="sev sev-error" role="img" aria-label="Error">!</span></span>
+              <span>08:44:57.059</span><span>connection reset by peer</span><span class="tail">latency_ms=3507.3</span>
+            </div>
+            <div class="demo-row row-error">
+              <span><span class="sev sev-error" role="img" aria-label="Error">!</span></span>
+              <span>08:43:54.217</span><span>connection reset by peer</span><span class="tail">latency_ms=2824.2</span>
+            </div>
+          </div>
+
+          <div data-set="1" hidden>
+            <div class="demo-row">
+              <span><span class="sev sev-warn" role="img" aria-label="Warning">!</span></span>
+              <span>08:46:11.507</span><span>slow query</span><span class="tail">region=us-east-1</span>
+            </div>
+            <div class="demo-row">
+              <span><span class="sev sev-warn" role="img" aria-label="Warning">!</span></span>
+              <span>08:45:33.064</span><span>slow query</span><span class="tail">region=us-west-2</span>
+            </div>
+            <div class="demo-row row-error">
+              <span><span class="sev sev-error" role="img" aria-label="Error">!</span></span>
+              <span>08:44:57.059</span><span>connection reset by peer</span><span class="tail">region=us-west-2</span>
+            </div>
+          </div>
+
+          <div data-set="2" hidden>
+            <div class="demo-row row-error">
+              <span><span class="sev sev-error" role="img" aria-label="Error">!</span></span>
+              <span>08:45:45.463</span><span>upstream timeout</span><span class="tail">req.path=/v1/checkout</span>
+            </div>
+            <div class="demo-row row-error">
+              <span><span class="sev sev-error" role="img" aria-label="Error">!</span></span>
+              <span>08:45:10.310</span><span>payment declined</span><span class="tail">req.path=/v1/payments</span>
+            </div>
+            <div class="demo-row row-error">
+              <span><span class="sev sev-error" role="img" aria-label="Error">!</span></span>
+              <span>08:43:28.330</span><span>upstream timeout</span><span class="tail">req.path=/v1/checkout</span>
+            </div>
+          </div>
+
+          <div data-set="3" hidden>
+            <div class="demo-row">
+              <span><span class="sev sev-warn" role="img" aria-label="Warning">!</span></span>
+              <span>08:46:24.212</span><span>retrying request</span><span class="tail">trace_id=4f9c…</span>
+            </div>
+            <div class="demo-row">
+              <span><span class="sev sev-warn" role="img" aria-label="Warning">!</span></span>
+              <span>08:46:13.902</span><span>cache miss storm</span><span class="tail">trace_id=b210…</span>
+            </div>
+            <div class="demo-row">
+              <span><span class="sev sev-warn" role="img" aria-label="Warning">!</span></span>
+              <span>08:43:42.818</span><span>retrying request</span><span class="tail">trace_id=8e31…</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="more"><a href="/docs">Full rQL reference →</a></p>
+    </div>
+  </section>
+
+  <!-- ingest -->
+  <section class="band" id="ingest">
+    <div class="wrap">
+      <header class="section-head">
+        <p class="eyebrow">Getting logs in</p>
+        <h2>Four doors, one envelope.</h2>
+        <p>A record is indistinguishable once stored, whichever way it came in.</p>
+      </header>
+
+      <div class="doors">
+        <article class="panel">
+          <div class="door-body">
+            <h3>UNIX pipes</h3>
+            <p>The original, frozen forever. UDP, at-most-once, one datagram per line, and your process never blocks on it.</p>
+          </div>
+          <pre><code><span class="p">$</span> node server.js 2&gt;&amp;1 | rtail <span class="f">--id</span> api.example.com</code></pre>
+        </article>
+
+        <article class="panel">
+          <div class="door-body">
+            <h3>HTTP</h3>
+            <p>For anything that would mind losing a line. A 200 means the records are in the write-ahead log; anything else is safe to retry.</p>
+          </div>
+          <pre><code><span class="p">$</span> curl -XPOST \
+    localhost:8888/v1/ingest?stream=api \
+    --data-binary @events.ndjson</code></pre>
+        </article>
+
+        <article class="panel">
+          <div class="door-body">
+            <h3>OpenTelemetry</h3>
+            <p>Protobuf or JSON at <code>/v1/logs</code>. <code>service.name</code> becomes the stream, and <code>trace_id</code> and <code>span_id</code> are promoted so correlation actually works.</p>
+          </div>
+          <pre><code>exporters:
+  otlphttp:
+    logs_endpoint: http://rtail:8888/v1/logs</code></pre>
+        </article>
+
+        <article class="panel">
+          <div class="door-body">
+            <h3>Syslog</h3>
+            <p>RFC5424 and RFC3164, UDP and TCP on one port. The priority becomes a real severity, so <code>level&gt;=ERROR</code> works without anyone writing a parser.</p>
+          </div>
+          <pre><code><span class="p">$</span> rtail-server <span class="f">--data</span> ./logs <span class="f">--syslog-port</span> 5140</code></pre>
+        </article>
+      </div>
+
+      <p class="note">
+        Anything that can write NDJSON to an HTTP endpoint works without a plugin — Vector
+        and Fluent Bit are three lines of config each.
+      </p>
+    </div>
+  </section>
+
+  <!-- storage -->
+  <section id="storage">
+    <div class="wrap">
+      <header class="section-head">
+        <p class="eyebrow">Storage</p>
+        <h2>Your logs are just files.</h2>
+        <p>
+          Point <code>--data</code> at a directory and every line is written to Parquet.
+          There is no schema to define: the envelope is always there, each root-level JSON
+          key becomes its own typed column, and two files written a week apart with
+          completely different keys reconcile by name at read time.
+        </p>
+      </header>
+
+      <div class="split">
+        <div class="panel">
+          <div class="panel-bar"><span class="panel-label">The layout</span></div>
+          <pre><code>logs/
+  catalog.sqlite
+  wal/
+  streams/api.example.com/2026/08/11/L0-….parquet</code></pre>
+        </div>
+        <div class="panel">
+          <div class="panel-bar"><span class="panel-label">With rTail uninstalled</span></div>
+          <pre><code><span class="p">$</span> duckdb -c <span class="s">"
+    SELECT a_service, count(*)
+    FROM read_parquet('logs/streams/**/*.parquet',
+                      union_by_name := true)
+    WHERE level = 'ERROR' AND a_latency_ms &gt; 500
+    GROUP BY 1"</span></code></pre>
+        </div>
+      </div>
+
+      <p class="note">That is the point, and it is covered by a test rather than merely claimed.</p>
+
+      <div class="columns" style="margin-top: 40px">
+        <article>
+          <h3>Durability</h3>
+          <p>Lines land in a write-ahead log first, fsynced every 100ms, so an unclean shutdown costs at most that and a clean one costs nothing. Recovery is idempotent: crashing midway through a flush produces the same files, not duplicates.</p>
+        </article>
+        <article>
+          <h3>Compaction</h3>
+          <p>Sort order is the point, not the file count. Time-sorted files make range pruning exact at row-group granularity, and a low-cardinality leading column turns <code>level&gt;=ERROR</code> over a day into a skip instead of a scan.</p>
+        </article>
+        <article>
+          <h3>Retention</h3>
+          <p>Whole files are deleted once past the horizon; <code>--retention-raw</code> drops the original line but keeps every promoted column, which roughly halves the footprint.</p>
+        </article>
+      </div>
+
+      <div class="table-box" style="margin-top: 32px">
+        <div>
+          <table>
+            <caption>The compaction levels</caption>
+            <thead>
+              <tr>
+                <th scope="col">Level</th>
+                <th scope="col">Holds</th>
+                <th scope="col">Sorted by</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="lv">L0</td>
+                <td>one flush</td>
+                <td><code>seq</code> — the order it arrived in</td>
+              </tr>
+              <tr>
+                <td class="lv">L1</td>
+                <td>an hour</td>
+                <td><code>ts</code></td>
+              </tr>
+              <tr>
+                <td class="lv">L2</td>
+                <td>a day</td>
+                <td><code>(level, ts)</code>, or <code>--cluster-by</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- sql -->
+  <section class="band">
+    <div class="wrap split">
+      <div>
+        <p class="eyebrow">SQL</p>
+        <h2 style="margin: 0; font-size: var(--fs-h2); line-height: 1.1">And raw SQL for everything else.</h2>
+        <p style="margin-top: 16px; color: var(--muted-foreground)">
+          <code>logs</code> is a view over the pruned files. The query runs read-only in a
+          DuckDB sandbox that can see nothing but your data directory.
+        </p>
+        <p style="color: var(--muted-foreground)">
+          The time range is the partition pruner, not decoration: it is always applied — a
+          query without one gets the last 24 hours injected — and every response reports
+          the window it used along with how many files and rows the query implied reading.
+          A slow search can explain itself.
+        </p>
+      </div>
+      <div class="panel">
+        <div class="panel-bar"><span class="panel-label">POST /v1/sql</span></div>
+        <pre><code>{
+  <span class="k">"sql"</span>: <span class="s">"SELECT a_service, count(*) n,
+          quantile_cont(a_latency_ms, 0.95) p95
+          FROM logs WHERE level = 'ERROR'
+          GROUP BY 1 ORDER BY n DESC"</span>,
+  <span class="k">"from"</span>: <span class="s">"-6h"</span>
+}</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- install -->
+  <section id="install">
+    <div class="wrap">
+      <header class="section-head">
+        <p class="eyebrow">Install</p>
+        <h2>A server, and a pipe.</h2>
+        <p>
+          The server ships as a container image, which is the recommended way to run it.
+          Tagged releases also carry a binary for <code>linux_amd64</code>,
+          <code>linux_arm64</code>, <code>darwin_amd64</code> and
+          <code>darwin_arm64</code>. There is no Windows build: DuckDB is cgo and nobody
+          has asked.
+        </p>
+      </header>
+
+      <div class="steps">
+        <article class="panel">
+          <div class="panel-bar">
+            <span class="panel-label">01 · the server</span>
+            <button class="copy" type="button" data-copy="docker run -d --name rtail -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail">Copy</button>
+          </div>
+          <pre><code><span class="p">$</span> docker run -d --name rtail \
+    <span class="f">-p</span> 8888:8888 <span class="f">-p</span> 9999:9999/udp \
+    ghcr.io/kilianc/rtail</code></pre>
+          <p>Then open <a href="http://localhost:8888">localhost:8888</a> and start piping. Every flag is also an <code>RTAIL_*</code> environment variable.</p>
+        </article>
+
+        <article class="panel">
+          <div class="panel-bar">
+            <span class="panel-label">02 · keep the lines</span>
+            <button class="copy" type="button" data-copy="rtail-server --data ./logs --retention 30d --retention-raw 7d">Copy</button>
+          </div>
+          <pre><code><span class="p">$</span> rtail-server <span class="f">--data</span> ./logs \
+    <span class="f">--retention</span> 30d \
+    <span class="f">--retention-raw</span> 7d</code></pre>
+          <p>Without <code>--data</code> nothing touches the disk. With it, the directory is yours to read with any tool.</p>
+        </article>
+
+        <article class="panel">
+          <div class="panel-bar">
+            <span class="panel-label">03 · the client</span>
+            <button class="copy" type="button" data-copy="npm install -g rtail">Copy</button>
+          </div>
+          <pre><code><span class="p">$</span> npm install <span class="f">-g</span> rtail</code></pre>
+          <p>That is all npm ships in v2. It is a UNIX pipe, so it belongs on the host you are tailing, not in the container. Node.js 20 or newer.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- status -->
+  <section class="band">
+    <div class="wrap callouts">
+      <div class="warn">
+        <h2>Where 2.0 is</h2>
+        <p>
+          Storage, search, compaction, the explorer and the ingest protocols are done.
+          What is left before 2.0.0 ships is the operational edge: authentication, TLS,
+          and a release pipeline for the three cgo platforms. Everything outside the
+          frozen wire format is subject to change until then.
+        </p>
+      </div>
+      <div class="danger">
+        <h2>Before you put it on the internet</h2>
+        <p>
+          There is no authentication layer yet. The image binds <code>0.0.0.0</code>, so
+          published ports are reachable from your whole network. Keep it on a trusted
+          network, behind a VPN, or behind a reverse proxy that checks an
+          <code>Authorization</code> header.
+        </p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div class="footer-brand">
+      <p>rTail</p>
+      <p>
+        Released under the Apache-2.0 license.<br>
+        Copyright © 2014–2026 Kilian Ciuffolo.
+      </p>
+    </div>
+
+    <nav class="footer-links" aria-label="Footer">
+      <a href="https://github.com/kilianc/rtail">Source</a>
+      <a href="https://github.com/kilianc/rtail/releases">Releases</a>
+      <a href="https://www.npmjs.com/package/rtail">npm</a>
+      <a href="https://github.com/kilianc/rtail/pkgs/container/rtail">Container image</a>
+    </nav>
+  </div>
+</footer>
+
+<script type="module" src="site.js"></script>
+</body>
+</html>

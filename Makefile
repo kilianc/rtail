@@ -14,6 +14,8 @@
 #   make dist       build the webapp into web/dist (embedded into the binary)
 #   make release    build the fully self-contained server binary
 #   make npm-pack   lay out the npm packages under dist/npm
+#   make site       build the landing page into site/dist
+#   make site-serve build it and serve it on this worktree's port
 #   make ci         run everything CI runs, here, before you push
 #   make test       run the Go test suite
 #   make vet        go vet
@@ -58,8 +60,9 @@ DOCKER_RUN := docker run --rm \
 
 DEV_ENV := -e WEB_PORT=$(PORT) -e UDP_PORT=$(UDP_PORT) -p $(PORT):$(PORT)
 
-.PHONY: dev up down logs url server build dist release client npm-pack ci \
-        test go-test go-test-one vet typecheck fmt shell clean image deps
+.PHONY: dev up down logs url server build dist release client npm-pack site \
+        site-serve ci test go-test go-test-one vet typecheck fmt shell clean \
+        image deps
 
 ## Run the app in the foreground: builds and watches assets, serves the webapp
 ## from disk, and feeds it three live demo streams. Ctrl-C to stop.
@@ -117,6 +120,16 @@ build: image deps
 dist: image deps
 	$(DOCKER_RUN) $(IMAGE) npm run dist
 
+## The landing page (rtail.ciuffolo.com). Nothing to do with the product build
+## — this is what Vercel runs, and it is the only thing it runs.
+site: image deps
+	$(DOCKER_RUN) $(IMAGE) npm run build:site
+
+## ... and serve it, on the same port `make dev` would have used.
+site-serve: site
+	@echo "==> $(URL)"
+	$(DOCKER_RUN) -it -p $(PORT):$(PORT) $(IMAGE) npm run serve:site -- --port $(PORT)
+
 ## Everything CI runs, before you spend a runner minute finding out.
 ##
 ## The same tools/ci.sh the workflow calls, so the two cannot drift. Three
@@ -169,5 +182,5 @@ deps:
 
 clean: down
 	rm -rf node_modules bin app/css app/bundle.js app/bundle.js.map \
-	       .gocache .gomodcache .dev-data
+	       site/dist .gocache .gomodcache .dev-data
 	rm -rf web/dist && mkdir -p web/dist && touch web/dist/.gitkeep

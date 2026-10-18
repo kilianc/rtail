@@ -22,6 +22,10 @@ app/bundle.js.map
 web/dist/*
 !web/dist/.gitkeep
 
+# The built landing page. Vercel builds it on every deploy, so a committed
+# copy would only ever be a stale one.
+site/dist
+
 # Durable storage for `make dev`: parquet files and the catalog, rebuilt
 # from the demo streams on every run and never worth keeping.
 .dev-data
