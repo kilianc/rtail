@@ -65,7 +65,7 @@ setTimeout(() => {
   }
 
   console.log('')
-  console.log(`  rTail is up:  http://localhost:${PORT}/app`)
+  console.log(`  rtail is up:  http://localhost:${PORT}/app`)
   console.log('  Ctrl-C to stop.')
   console.log('')
 }, 1000)

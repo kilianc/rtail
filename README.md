@@ -388,7 +388,7 @@ Dropped, and why:
   which contradicts the design. `--backlog` covers the useful part.
 
 ## Sponsors
-❤ rTail? Consider sponsoring this project to keep it alive and free for the community.
+❤ rtail? Consider sponsoring this project to keep it alive and free for the community.
 
 * ? (wildcard TLS cert)
 * ? (.io domain)

@@ -116,14 +116,14 @@ export function TopBar({
           <button
             ref={infoRef}
             class="btn btn-info"
-            aria-label="About rTail"
+            aria-label="About rtail"
             aria-expanded={'info' === open}
             onClick={() => toggle('info')}
           />
 
           <a
             class="btn btn-github"
-            aria-label="rTail on GitHub"
+            aria-label="rtail on GitHub"
             href="https://github.com/kilianc/rtail"
             target="_blank"
             rel="noreferrer"

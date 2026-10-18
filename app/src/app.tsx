@@ -78,7 +78,7 @@ export function App() {
     saveActiveStream(activeStream)
     writeStream(activeStream)
 
-    document.title = activeStream ? `rTail : ${activeStream}` : 'rTail'
+    document.title = activeStream ? `rtail : ${activeStream}` : 'rtail'
   }, [activeStream])
 
   useEffect(() => onRouteChange((stream) => stream && setActiveStream(stream)), [])
