@@ -10,7 +10,7 @@
 
 import { formatClock } from '../lib/format.js'
 import { Button } from './Button.js'
-import { columnValue, highlight } from '../lib/query.js'
+import { columnValue, highlight, type Scalar } from '../lib/query.js'
 import type { Line } from '../lib/types.js'
 
 /**
@@ -23,10 +23,23 @@ const LIFTED = new Set([
   'timestamp', 'ts', 'time', '@timestamp', 'eventtime', 'datetime'
 ])
 
+/*!
+ * Envelope names a payload key can carry without having been lifted.
+ *
+ * A query resolves these to the envelope whatever the payload says — the
+ * server's resolver and its live predicate both check the envelope first — so
+ * a promoted `host` of `ip-10-0-4-21` filtered as `host=ip-10-0-4-21` was
+ * compared with the sender's address and matched nothing, and pinned it showed
+ * the sender's address in the column. The key is still shown; it just offers
+ * no action that would quietly act on a different value.
+ */
+const SHADOWED = new Set(['stream', 'host', 'seq', 'ingest_ts', 'raw', 'is_json'])
+
 export interface FilterAction {
   field: string
   op: string
-  value: string
+  /** Typed, so a clicked number or boolean is written as one. */
+  value: Scalar
   negated: boolean
 }
 
@@ -193,6 +206,26 @@ export function LogRow({ line, expanded, selected, active, needles, columns, num
                 filterable={false}
                 pinnable={false}
               />
+
+              {/*
+                The line as it arrived, when the summary shows something
+                else: a syslog frame's priority, version and timestamp are
+                cut away to leave its message on the row, and this is where
+                the frame is still there to read.
+              */}
+              {'object' !== line.type && line.msg && line.msg !== line.text && (
+                <Leaf
+                  label="raw"
+                  value={line.text}
+                  field="raw"
+                  active={active}
+                  columns={columns}
+                  onFilter={onFilter}
+                  onPin={onPin}
+                  filterable={false}
+                  pinnable={false}
+                />
+              )}
             </dl>
 
             {/*
@@ -223,6 +256,13 @@ export function LogRow({ line, expanded, selected, active, needles, columns, num
                     columns={columns}
                     onFilter={onFilter}
                     onPin={onPin}
+                    filterable={!SHADOWED.has(key)}
+                    pinnable={!SHADOWED.has(key)}
+                    note={
+                      SHADOWED.has(key)
+                        ? `A query for ${key} reads the envelope's ${key}, not this one, so it cannot be filtered or pinned from here`
+                        : undefined
+                    }
                   />
                 ))
               ) : (
@@ -290,16 +330,24 @@ interface LeafProps {
    * name.
    */
   pinnable?: boolean
+  /** Why this key offers no actions, when that is not self-evident. */
+  note?: string
   onFilter: (action: FilterAction) => void
   onPin: (field: string) => void
 }
 
-function Leaf({ label, field, value, active, columns, filterable = true, pinnable = true, onFilter, onPin }: LeafProps) {
+function Leaf({ label, field, value, active, columns, filterable = true, pinnable = true, note, onFilter, onPin }: LeafProps) {
   const nested = null !== value && 'object' === typeof value
   const pinned = columns.includes(field)
 
+  // The value as the record typed it. A number stays a number and a null
+  // stays null, so the filter written is `n=-5` or `x=null` rather than the
+  // string either would otherwise become.
+  const scalar: Scalar =
+    'number' === typeof value || 'boolean' === typeof value || null === value ? value : String(value)
+
   return (
-    <div class={`leaf ${active.includes(field) ? 'active' : ''}`}>
+    <div class={classes('leaf', active.includes(field) && 'active', note && 'shadowed')} title={note}>
       <dt class="leaf-key">{label}</dt>
 
       <dd class="leaf-value">
@@ -341,7 +389,7 @@ function Leaf({ label, field, value, active, columns, filterable = true, pinnabl
               class="leaf-filter"
               title={`Filter to ${field}=${String(value)}`}
               aria-label={`Filter to ${field} equals ${String(value)}`}
-              onClick={() => onFilter({ field, op: '=', value: String(value), negated: false })}
+              onClick={() => onFilter({ field, op: '=', value: scalar, negated: false })}
             >
               ⊕
             </Button>
@@ -350,7 +398,7 @@ function Leaf({ label, field, value, active, columns, filterable = true, pinnabl
               class="leaf-filter"
               title={`Exclude ${field}=${String(value)}`}
               aria-label={`Exclude ${field} equals ${String(value)}`}
-              onClick={() => onFilter({ field, op: '=', value: String(value), negated: true })}
+              onClick={() => onFilter({ field, op: '=', value: scalar, negated: true })}
             >
               ⊖
             </Button>

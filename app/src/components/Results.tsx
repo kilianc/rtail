@@ -43,6 +43,8 @@ interface Props {
   paused: boolean
   /** How many arrived while it was held. */
   pending: number
+  /** How many the server skipped because this tab fell behind. */
+  dropped: number
   emptyHint?: string
   onFilter: (action: FilterAction) => void
   onLoadMore: () => void
@@ -68,6 +70,7 @@ export function Results({
   hasMore,
   paused,
   pending,
+  dropped,
   emptyHint,
   onFilter,
   onLoadMore,
@@ -213,7 +216,17 @@ export function Results({
       if (event.metaKey || event.ctrlKey || event.altKey) return
 
       const target = event.target as HTMLElement | null
-      if (target && (/^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(target.tagName) || target.isContentEditable)) return
+      if (target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable)) return
+
+      // A popover keeps every key, Escape above all: it closes the popover,
+      // and must not also collapse the rows underneath it.
+      if (target?.closest('.popover')) return
+
+      // A button or a link owns only the keys that activate it. Clicking one
+      // leaves it focused, and bailing on every key there left j, k and
+      // Escape dead after any click in the list until something else took
+      // focus.
+      if (target && /^(BUTTON|A)$/.test(target.tagName) && ('Enter' === event.key || ' ' === event.key)) return
 
       switch (event.key) {
         case 'j':
@@ -362,6 +375,20 @@ export function Results({
               </ul>
             )}
           </Popover>
+        )}
+
+        {/*
+          Loss, beside the switch and the pending count it carries. Quiet,
+          because there is nothing to press — but a tail that skipped lines
+          must not look like one that did not, and the title says why.
+        */}
+        {live && dropped > 0 && (
+          <span
+            class="results-dropped"
+            title={`The server skipped ${dropped.toLocaleString()} lines because this tab could not keep up with the feed. They were stored all the same; only this view missed them.`}
+          >
+            {dropped.toLocaleString()} dropped
+          </span>
         )}
 
         {/*

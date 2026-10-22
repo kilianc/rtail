@@ -103,12 +103,38 @@ const server = createServer(async (req, res) => {
 
   const ext = file.slice(file.lastIndexOf('.'))
 
-  res.writeHead(200, {
-    'content-type': TYPES[ext] ?? 'application/octet-stream',
-    'cache-control': 'no-store'
+  /*!
+   * A file that cannot be read after all is a 500, not a crash.
+   *
+   * It can vanish or turn unreadable between the stat and the open — a
+   * rebuild clearing site/dist under an open tab, a permission change — and a
+   * stream's 'error' with nobody listening is thrown, which took the process
+   * down like the malformed escape above used to. So the 200 waits for the
+   * file to actually open, an error before then gets an answer, and one after
+   * it cuts the response short. A client that leaves early releases the file.
+   */
+  const stream = createReadStream(file)
+
+  stream.on('open', () => {
+    res.writeHead(200, {
+      'content-type': TYPES[ext] ?? 'application/octet-stream',
+      'cache-control': 'no-store'
+    })
+
+    stream.pipe(res)
   })
 
-  createReadStream(file).pipe(res)
+  stream.on('error', () => {
+    if (res.headersSent) {
+      res.destroy()
+      return
+    }
+
+    res.writeHead(500, { 'content-type': TYPES['.txt'] })
+    res.end('could not read file\n')
+  })
+
+  res.on('close', () => stream.destroy())
 })
 
 server.listen(port, '0.0.0.0', () => {

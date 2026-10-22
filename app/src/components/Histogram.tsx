@@ -259,6 +259,14 @@ function stack(bucket: Bucket): { level: string; share: number }[] {
     .reverse()
     .map((level) => ({ level, share: counts[level] / bucket.total }))
 
+  // A level nobody canonicalised — AUDIT, say — is counted by name like any
+  // other, and was drawn as nothing because only the known names were read
+  // back out. One `other` part holds them all; levelClass styles it.
+  const known = LEVELS.reduce((sum, level) => sum + (counts[level] ?? 0), 0)
+  if (named > known) {
+    parts.push({ level: 'other', share: (named - known) / bucket.total })
+  }
+
   // Records with no level at all still have to be drawn, or a bar of unlabelled
   // lines renders as empty space and reads as "nothing happened".
   if (named < bucket.total) {

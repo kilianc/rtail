@@ -17,7 +17,7 @@
  * needs no rewrite rules in whatever proxy ends up in front of it.
  */
 
-import { DEFAULT_RANGE, type Range } from './timerange.js'
+import { DEFAULT_RANGE, isRelative, type Range } from './timerange.js'
 
 export interface ViewState {
   stream: string | null
@@ -60,17 +60,21 @@ export function read(): ViewState {
 
   const lang = 'sql' === params.get('lang') ? 'sql' : 'rql'
 
+  const range: Range = {
+    from: params.get('from') || DEFAULT_RANGE.from,
+    to: params.get('to') ?? ''
+  }
+
   return {
     stream: params.get('stream') || null,
     query: params.get('q') ?? '',
-    range: {
-      from: params.get('from') || DEFAULT_RANGE.from,
-      to: params.get('to') ?? ''
-    },
+    range,
     // SQL forces history, the same as switching to it does: the tail compiles
     // rQL and nothing else, so `lang=sql` is a search whatever the link says
-    // about streaming — and saying nothing about it reads as live.
-    live: 'sql' !== lang && 'false' !== params.get('live'),
+    // about streaming — and saying nothing about it reads as live. So does a
+    // pinned window: a link to last Tuesday's spike that leaves out
+    // `live=false` opened as a tail streaming into a range that had ended.
+    live: 'sql' !== lang && isRelative(range) && 'false' !== params.get('live'),
     // Comma-separated, because a field name cannot contain one and the URL
     // stays readable — `cols=service,latency_ms` says what it is at a glance.
     columns: (params.get('cols') ?? '').split(',').map((name) => name.trim()).filter(Boolean),

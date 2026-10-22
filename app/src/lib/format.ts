@@ -13,15 +13,30 @@ import type { Line, WireLine } from './types.js'
 
 hljs.registerLanguage('json', json)
 
-const ansi = new AnsiUp()
+/*!
+ * A converter per line, because ansi_up is a terminal and keeps state.
+ *
+ * One shared instance carried whatever a line left open into the next: an
+ * unclosed `\x1b[31m` turned the following, unrelated line red, a trailing
+ * bare ESC ate the start of the next one, and an unterminated OSC-8 link
+ * blanked every row after it. Log lines are separate records, often from
+ * separate processes, not one terminal session — so each starts clean.
+ * Building the palette costs a few microseconds a line, which is noise beside
+ * rendering the row.
+ */
+function ansiToHtml(text: string): string {
+  const ansi = new AnsiUp()
 
-// Emit `ansi-red-fg` style classes rather than inline colours, so the palette
-// stays in the stylesheet and follows the active theme.
-ansi.use_classes = true
+  // Emit `ansi-red-fg` style classes rather than inline colours, so the palette
+  // stays in the stylesheet and follows the active theme.
+  ansi.use_classes = true
 
-// Belt and braces: ansi_up escapes by default, and log lines are attacker
-// controlled (they are whatever a piped process printed).
-ansi.escape_html = true
+  // Belt and braces: ansi_up escapes by default, and log lines are attacker
+  // controlled (they are whatever a piped process printed).
+  ansi.escape_html = true
+
+  return ansi.ansi_to_html(text)
+}
 
 const clockFormat = new Intl.DateTimeFormat(undefined, {
   hour: '2-digit',
@@ -63,7 +78,14 @@ export function formatLine(wire: WireLine): Line {
         '</span>'
   } else {
     text = String(wire.content)
-    html = ansi.ansi_to_html(text)
+
+    // A syslog record is text with structure: the line as it arrived leads
+    // with its priority, version, timestamp and host, and the message is what
+    // ingest cut out of it. The summary shows the message, as it does for a
+    // JSON record; the frame stays in `text`, for copying and for the expanded
+    // view. A plain line's message is the line itself, so nothing changes for
+    // one.
+    html = ansiToHtml(wire.msg && wire.msg !== text ? wire.msg : text)
   }
 
   return { ...wire, html, text, key: nextKey++ }

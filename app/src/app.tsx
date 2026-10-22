@@ -23,7 +23,7 @@ import { api, PAGE, QueryError, type Bucket, type Field, type Params, type Scann
 import { connect, type Connection } from './lib/connection.js'
 import { formatLine } from './lib/format.js'
 import { loadPrefs, savePrefs } from './lib/prefs.js'
-import { fieldsUsed, highlightTerms, toggleTerm } from './lib/query.js'
+import { fieldsUsed, highlightTerms, toggleTerm, type Scalar } from './lib/query.js'
 import { absolute, isRelative, resolve, type Range } from './lib/timerange.js'
 import type { Line, Prefs } from './lib/types.js'
 import { onChange, read, write, type ViewState } from './lib/urlstate.js'
@@ -37,13 +37,16 @@ const LIVE_BUFFER = 2000
  * Resuming the tail from a pinned window has to unpin it, or the tail would
  * stream into a range that has already ended. And it has to be rQL: SQL forces
  * history (see setLang), and the tail compiles nothing else, so a SQL filter
- * sent to it would be read as rQL.
+ * sent to it would be read as rQL. Relabelling the expression did exactly
+ * that, so coming from SQL the tail starts unfiltered — the caller clears the
+ * draft to match.
  */
 function streaming(current: ViewState): ViewState {
   return {
     ...current,
     live: true,
     lang: 'rql',
+    query: 'sql' === current.lang ? '' : current.query,
     range: isRelative(current.range) ? current.range : { from: '-1h', to: '' }
   }
 }
@@ -80,6 +83,19 @@ export function App() {
   const [held, setHeld] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
   const heldRef = useRef(false)
+
+  /** Lines the server skipped because this tab fell behind, this subscription. */
+  const [dropped, setDropped] = useState(0)
+
+  /*!
+   * How many times the query has been run.
+   *
+   * Not part of the view and not in the URL: it exists so that Run with the
+   * text unchanged still runs. Nothing else changes then, so no effect fired,
+   * and a relative window could not be brought up to date nor a transient
+   * failure retried without editing the query to something else and back.
+   */
+  const [runs, setRuns] = useState(0)
 
   const socket = useRef<Connection | null>(null)
   const pending = useRef<AbortController | null>(null)
@@ -159,6 +175,10 @@ export function App() {
    * Reopened whenever the stream or the committed filter changes, because both
    * are part of the subscription URL. The draft is deliberately not — narrowing
    * a live tail on every keystroke would reconnect on every keystroke.
+   *
+   * Nor is `runs`. Run on an unchanged live query refreshes the histogram, but
+   * the tail is already the latest there is; re-opening it would only replay
+   * the backlog and collapse whatever row was open.
    */
   useEffect(() => {
     if (!view.live) {
@@ -172,7 +192,17 @@ export function App() {
 
     connection.on('streams', setStreams)
 
+    /*!
+     * A backlog while held is ignored.
+     *
+     * One arrives on every re-open, and not only the one resume asks for: the
+     * server draining on a restart and the retry after a 502 re-open the feed
+     * too. Taken while held, it swapped the list from under a reader and
+     * collapsed the row they had open. Resuming re-opens the feed, and the
+     * backlog that brings is the one that lands.
+     */
     connection.on('backlog', (backlog) => {
+      if (heldRef.current) return
       setLines((backlog ?? []).map(formatLine))
     })
 
@@ -189,11 +219,18 @@ export function App() {
       })
     })
 
+    connection.on('dropped', (count) => setDropped((n) => n + count))
+
     connection.on('error', (message, position) => setError({ message, position }))
 
     heldRef.current = false
     setHeld(false)
     setPendingCount(0)
+    setDropped(0)
+
+    // Whatever the last search said is about a query that is no longer
+    // running: a history 500 stayed red over a tail that was working fine.
+    setError(null)
 
     connection.subscribe(view.stream, view.query)
 
@@ -321,9 +358,10 @@ export function App() {
       .catch(() => setBuckets([]))
 
     return () => controller.abort()
-  }, [params.q, params.lang, params.stream, params.from, params.to])
+  }, [params.q, params.lang, params.stream, params.from, params.to, runs])
 
-  // In history mode the query runs whenever the committed state changes.
+  // In history mode the query runs whenever the committed state changes, and
+  // whenever it is run again.
   useEffect(() => {
     /*!
      * Going live cancels a search still in flight.
@@ -342,7 +380,7 @@ export function App() {
     setCursor(undefined)
     runSearch(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view.live, params.q, params.lang, params.stream, params.from, params.to])
+  }, [view.live, params.q, params.lang, params.stream, params.from, params.to, runs])
 
   /*!
    * Switching language.
@@ -371,6 +409,7 @@ export function App() {
    */
   const commit = useCallback((query: string = draft) => {
     setView((current) => ({ ...current, query }))
+    setRuns((n) => n + 1)
   }, [draft])
 
   /*!
@@ -398,12 +437,20 @@ export function App() {
     }))
   }, [])
 
+  /*!
+   * Clicking a value writes rQL.
+   *
+   * Appended to a SQL expression it was a 400 from DuckDB, so from SQL the
+   * click starts over in rQL with just the clicked term — the same switch the
+   * language toggle makes, and like it, one that leaves a search a search.
+   */
   const applyFilter = useCallback(
-    (field: string, op: string, value: string, negated: boolean) => {
+    (field: string, op: string, value: Scalar, negated: boolean) => {
       setView((current) => {
-        const query = toggleTerm(current.query, field, op, value, negated)
+        const base = 'sql' === current.lang ? '' : current.query
+        const query = toggleTerm(base, field, op, value, negated)
         setDraft(query)
-        return { ...current, query }
+        return { ...current, lang: 'rql', query }
       })
     },
     []
@@ -444,17 +491,29 @@ export function App() {
     heldRef.current = false
     setHeld(false)
     setPendingCount(0)
+    setDropped(0)
     socket.current?.reconnect()
   }, [])
 
+  // Going live from SQL drops the expression (see streaming), and the command
+  // bar has to stop showing it too.
   const toggleLive = useCallback(() => {
-    setView((current) => (current.live ? { ...current, live: false } : streaming(current)))
+    setView((current) => {
+      if (current.live) return { ...current, live: false }
+      if ('sql' === current.lang) setDraft('')
+      return streaming(current)
+    })
   }, [])
 
   // "Back to live" in the time range, which is going live rather than picking
   // a range: setRange keeps a history view in history, so a preset alone left
   // the view relative and still not streaming.
-  const goLive = useCallback(() => setView(streaming), [])
+  const goLive = useCallback(() => {
+    setView((current) => {
+      if ('sql' === current.lang) setDraft('')
+      return streaming(current)
+    })
+  }, [])
 
   return (
     <>
@@ -536,6 +595,7 @@ export function App() {
           hasMore={!!cursor}
           paused={held}
           pending={pendingCount}
+          dropped={dropped}
           emptyHint={
             view.live
               ? 'Waiting for events — pipe something into rtail'
