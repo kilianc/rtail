@@ -71,6 +71,13 @@ job_server() {
   # CGO_ENABLED=0 build fails at link time rather than quietly losing search.
   step 'build the server'
   CGO_ENABLED=1 go build -trimpath -o /tmp/rtail-server ./cmd/rtail-server
+
+  # install.sh is the one piece of this project that runs on a stranger's
+  # machine, straight off the internet, before they have read it. A syntax
+  # error there is a broken install for everyone, so it is parsed here.
+  step 'parse install.sh'
+  sh -n install.sh
+  command -v shellcheck >/dev/null 2>&1 && shellcheck -s sh install.sh || true
 }
 
 # ** webapp **

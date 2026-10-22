@@ -70,7 +70,10 @@ The client is a UNIX pipe and belongs on the host whose output you are tailing,
 not in the container. It is a single Go binary, about 2.6 MB, with no runtime
 of any kind:
 
-    # already in the release tarball, next to rtail-server
+    # the short way
+    $ curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/v2/install.sh | sh
+
+    # or take the tarball yourself — it is what the line above downloads
     $ tar -xzf rtail_2.0.0_darwin_arm64.tar.gz && sudo mv rtail /usr/local/bin
 
     # or, if you have Go
@@ -78,6 +81,21 @@ of any kind:
 
     # or, if you are already standing in a project
     $ npm install -g rtail
+
+While 2.0 is still a release candidate, add `RTAIL_PRERELEASE=1` — GitHub's
+"latest release" skips prereleases, so without it you get the last stable one:
+
+    $ curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/v2/install.sh | RTAIL_PRERELEASE=1 sh
+
+[`install.sh`](install.sh) detects your platform, checks the download against
+the release's own `checksums.txt` and refuses to continue on a mismatch,
+installs one binary into `/usr/local/bin` — or `~/.local/bin` if that is not
+writable, because a script piped from the internet should not be the thing
+that asks for your password — and touches nothing else. It never calls `sudo`
+and never edits your shell profile. `RTAIL_VERSION`, `RTAIL_INSTALL_DIR` and
+`RTAIL_SERVER=1` override the obvious things. It is a hundred lines of POSIX
+sh; `curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/v2/install.sh | less` reads the whole of it,
+and doing that before you pipe anything into `sh` is a good habit generally.
 
 The npm route is a convenience, not a dependency: the package holds a short
 launcher and one optional dependency per platform, each carrying a prebuilt
