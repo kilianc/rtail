@@ -2,7 +2,7 @@
 #
 # install.sh — put the rtail pipe on this machine.
 #
-#   curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/v2/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/main/install.sh | sh
 #
 # Options, as environment variables because this is usually run through a pipe
 # and has no argv worth speaking of:

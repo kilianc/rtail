@@ -9,19 +9,20 @@
 
 ## Terminal output to the browser in seconds, using UNIX pipes.
 
-> **v2 — private preview.** This branch is the rewrite described in
-> [`docs/proposal-logging-system.md`](docs/proposal-logging-system.md): rtail is
-> growing into a durable, searchable log store backed by Parquet and SQL. The
-> server is now a single Go binary with the webapp embedded, and the npm
-> package carries only the client pipe.
+> **v2 — release candidate.** rtail is the rewrite described in
+> [`docs/proposal-logging-system.md`](docs/proposal-logging-system.md): a
+> durable, searchable log store backed by Parquet and SQL. The server is a
+> single Go binary with the webapp embedded, and the npm package carries only
+> the client pipe.
 >
 > The `cmd | rtail` wire format is frozen and always will be — the client you
-> already have installed works against a v2 server unchanged. Everything else
-> on this branch is subject to change until 2.0.0 ships.
+> already have installed works against a v2 server unchanged.
 >
-> **Where it is:** P0–P5 are done — storage, search, compaction, the explorer
-> and the ingest protocols. What is left before 2.0.0 is the operational edges:
-> authentication, TLS, and a release pipeline for the three cgo platforms.
+> **Where it is:** everything described below is built and tested — storage,
+> search, compaction, the explorer, the four ingest protocols, authentication,
+> TLS, and a release pipeline that publishes four tarballs, six npm packages
+> and a container image per tag. `2.0.0-rc.2` is the current release; until
+> `2.0.0` is tagged, reaching it takes `RTAIL_PRERELEASE=1` — see below.
 
 `rtail` is a command line utility that grabs every line in `stdin` and broadcasts it over **UDP**. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using `rtail` broadcasting to an `rtail-server` – See multiple streams in the browser, in realtime.
 
@@ -71,21 +72,28 @@ not in the container. It is a single Go binary, about 2.6 MB, with no runtime
 of any kind:
 
     # the short way
-    $ curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/v2/install.sh | sh
+    $ curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/main/install.sh | sh
 
     # or take the tarball yourself — it is what the line above downloads
-    $ tar -xzf rtail_2.0.0_darwin_arm64.tar.gz && sudo mv rtail /usr/local/bin
+    $ tar -xzf rtail_2.0.0-rc.2_darwin_arm64.tar.gz && sudo mv rtail /usr/local/bin
 
     # or, if you have Go
     $ go install github.com/kilianc/rtail/v2/cmd/rtail@latest
 
     # or, if you are already standing in a project
-    $ npm install -g rtail
+    $ npm install -g rtail@next
 
-While 2.0 is still a release candidate, add `RTAIL_PRERELEASE=1` — GitHub's
-"latest release" skips prereleases, so without it you get the last stable one:
+**While 2.0 is a release candidate, two of those four need telling.** GitHub's
+"latest release" skips prereleases, and npm's `latest` tag still points at
+`0.2.1` — the v1 Node client — so the plain forms quietly hand you something
+older:
 
-    $ curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/v2/install.sh | RTAIL_PRERELEASE=1 sh
+    $ curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/main/install.sh | RTAIL_PRERELEASE=1 sh
+    $ npm install -g rtail@next
+
+`go install …@latest` needs nothing: there is no `v2` release tag yet, so Go
+resolves it to the newest prerelease. Taking the tarball by name needs nothing
+either. When `2.0.0` is tagged, all four plain forms are correct.
 
 [`install.sh`](install.sh) detects your platform, checks the download against
 the release's own `checksums.txt` and refuses to continue on a mismatch,
@@ -94,7 +102,7 @@ writable, because a script piped from the internet should not be the thing
 that asks for your password — and touches nothing else. It never calls `sudo`
 and never edits your shell profile. `RTAIL_VERSION`, `RTAIL_INSTALL_DIR` and
 `RTAIL_SERVER=1` override the obvious things. It is a hundred lines of POSIX
-sh; `curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/v2/install.sh | less` reads the whole of it,
+sh; `curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/main/install.sh | less` reads the whole of it,
 and doing that before you pipe anything into `sh` is a good habit generally.
 
 The npm route is a convenience, not a dependency: the package holds a short
@@ -395,7 +403,9 @@ For fun and debugging:
 
 `rtail-server` receives all messages broadcast from every `rtail` client, displaying all incoming log streams in a realtime web view. **Under the hood it is a single static Go binary with the webapp embedded, pushing every incoming UDP message to the browser over server-sent events.**
 
-There is little to no configuration – The default UDP/HTTP ports can be changed, but that's it.
+Everything is a flag, or the same name as an `RTAIL_*` environment variable.
+The defaults are chosen so that `rtail-server` with no arguments is the v1
+behaviour: both listeners on loopback, an in-memory ring, nothing on disk.
 
 ## Examples
 
@@ -415,34 +425,63 @@ Open your browser and start tailing logs!
 
 ## Params
 
-    $ rtail-server --help
-    Usage: rtail-server [OPTIONS]
+`rtail-server --help` prints the lot. Grouped by what they touch:
 
-    Every option is also settable as RTAIL_*, e.g. RTAIL_WEB_PORT.
+**Listening**
 
-      -udp-host string   the listening UDP hostname     (default "127.0.0.1")
-      -udp-port int      the listening UDP port         (default 9999)
-      -web-host string   the listening HTTP hostname    (default "127.0.0.1")
-      -web-port int      the listening HTTP port        (default 8888)
-      -backlog int       lines of history kept per stream (default 100)
-      -data string       directory for durable storage  (unset: memory only)
-      -web-root string   serve the webapp from this directory instead of the binary
-      -auth-token string require this bearer token on the API and webapp
-      -tls-cert string   serve HTTPS with this certificate (PEM)
-      -tls-key string    the private key for --tls-cert (PEM)
-      -insecure          allow a non-loopback address with no --auth-token
-      -verbose           log at debug level
-      -version           print the version and exit
+| flag | default | |
+|---|---|---|
+| `--web-host` | `127.0.0.1` | HTTP listen address |
+| `--web-port` | `8888` | HTTP port |
+| `--udp-host` | `127.0.0.1` | UDP listen address |
+| `--udp-port` | `9999` | UDP port |
+| `--syslog-host` | `--udp-host` | syslog listen address |
+| `--syslog-port` | `0` | syslog on this port, UDP and TCP; `0` disables it |
 
-The v1 short aliases still work: `--uh`, `--up`, `--wh`, `--wp`, `-b`.
+**Storage** — see [Storage](#storage)
 
-Every option can also be set as an environment variable, prefixed with
-`RTAIL_` — `RTAIL_WEB_PORT=8080`, `RTAIL_BACKLOG=500`, and so on. This is how
-the container image is configured.
+| flag | default | |
+|---|---|---|
+| `--data` | unset | directory for durable storage; unset is memory only |
+| `--backlog` | `100` | lines of live history kept per stream |
+| `--compact-interval` | `5m` | how often to compact; `0` disables it |
+| `--cluster-by` | `level` | leading sort column for daily files; empty is time only |
+| `--retention` | `0` | delete data older than this; `0` keeps it forever |
+| `--retention-raw` | `0` | drop the original line after this, keeping the columns |
+| `--downsample-after` | `0` | discard low-severity records older than this |
+| `--downsample-level` | `WARN` | the lowest severity `--downsample-after` keeps |
+
+**Ingest**
+
+| flag | default | |
+|---|---|---|
+| `--ingest-stream` | `http` | stream for HTTP records that name none |
+| `--max-body-mb` | `32` | largest accepted ingest request |
+
+**Access** — see [Authentication](#authentication)
+
+| flag | default | |
+|---|---|---|
+| `--auth-token` | unset | require this bearer token on the HTTP API and webapp |
+| `--insecure` | off | allow a non-loopback address with no `--auth-token` |
+| `--tls-cert`, `--tls-key` | unset | serve HTTPS; both or neither |
+
+**Everything else**
+
+| flag | default | |
+|---|---|---|
+| `--web-root` | unset | serve the webapp from this directory instead of the binary |
+| `--verbose` | off | log at debug level |
+| `--version` | | print the version and exit |
+
+Each one is also an environment variable, upper-cased and prefixed with
+`RTAIL_` — `RTAIL_WEB_PORT=8080`, `RTAIL_BACKLOG=500`,
+`RTAIL_DATA=/var/log/rtail`. That is how the container image is configured.
+The v1 short aliases still work too: `--uh`, `--up`, `--wh`, `--wp`, `-b`.
 
 Note that `--backlog` is about the *live view* — how many recent lines a
-freshly opened browser tab is handed. It has nothing to do with how much is
-kept on disk, which is everything until retention exists.
+freshly opened browser tab is handed. How much is kept on disk is
+`--retention`'s business, and is unlimited until you set it.
 
 ## API
 
@@ -522,8 +561,8 @@ a certificate is the one thing every reverse proxy already solves.
 
 Note there are two images, and they are not the same thing:
 [`Dockerfile`](Dockerfile) is the server you deploy, and
-[`tools/Dockerfile`](tools/Dockerfile) below is the development toolchain,
-which mounts your checkout.
+[`tools/Dockerfile`](tools/Dockerfile) is the development toolchain, which
+mounts your checkout.
 
 The toolchain lives in a container ([`tools/Dockerfile`](tools/Dockerfile)), so Docker is
 the only thing you need installed — no Node.js, no Go, no npm, no global CLIs.
@@ -550,13 +589,16 @@ To leave it running in the background instead:
 Other targets:
 
     $ make server     # build bin/rtail-server
+    $ make client     # build bin/rtail
     $ make release    # build the self-contained server, webapp embedded
     $ make build      # build the webapp into app/ (development)
     $ make dist       # build the minified webapp into web/dist
-    $ make test       # run the Go and Node test suites
+    $ make ci         # everything CI runs, before you spend a runner minute
+    $ make test       # go test -race ./...
     $ make vet        # go vet
     $ make fmt        # gofmt the Go sources
     $ make typecheck  # type-check the webapp
+    $ make npm-pack   # lay out the npm packages under dist/npm
     $ make shell      # open a shell inside the toolchain container
     $ make clean      # remove generated assets, binaries and dependencies
 
@@ -571,9 +613,11 @@ receives a log line.
 `make url` reports the current one. Override with `make dev PORT=9000
 UDP_PORT=9001`.
 
-If you do have a Node.js toolchain on your machine, the same targets are plain
-npm scripts — `npm install && npm run dev`. Node builds the webapp and is not
-in the product: the server embeds the bundle, and the client is a Go binary.
+If you have Node on your machine, the webapp targets are plain npm scripts —
+`npm install`, then `npm run build`, `npm run dist`, `npm run typecheck`.
+`npm run dev` also spawns `bin/rtail-server` and `bin/rtail`, so it needs Go
+as well, or a `make server client` first. Node builds the webapp and is not in
+the product: the server embeds the bundle, and the client is a Go binary.
 
 ### The stack
 
@@ -581,9 +625,9 @@ in the product: the server embeds the bundle, and the client is a Go binary.
 | --- | --- |
 | Client | Go, one static binary, [json5](https://github.com/titanous/json5) its only dependency |
 | Server | Go + [DuckDB](https://duckdb.org) + [parquet-go](https://github.com/parquet-go/parquet-go) |
-| Webapp | [Preact](https://preactjs.com) + TypeScript, ~33 KB gzipped |
+| Webapp | [Preact](https://preactjs.com) + TypeScript, ~31 KB of JS and ~13 KB of CSS, gzipped |
 | Build | [esbuild](https://esbuild.github.io); the stylesheets are plain CSS |
-| Tests | `go test ./...` |
+| Tests | `go test -race ./...` |
 
 The webapp has no framework runtime beyond Preact: routing, preferences,
 popovers, and timestamp formatting are a few dozen lines each over the
@@ -591,22 +635,24 @@ platform (`history`, `localStorage`, `Intl`) rather than dependencies.
 
 # How to contribute
 
-This project follows the awesome [Vincent Driessen](http://nvie.com/about/) [branching model](http://nvie.com/posts/a-successful-git-branching-model/).
+There is one long-lived branch, `main`. Work on a branch of your own and open
+a pull request against it; a version bump landing on `main` is what cuts a
+release.
 
-* You must add a new feature on its own branch
-* You must contribute to hot-fixing, directly into the master branch (and pull-request to it)
+Before you push, run what CI runs:
 
-The test suite is `make test`, which is `go test -race ./...` inside the
-toolchain image. Use it to check whether your contribution breaks some part of
-the library, and be sure to add new tests for each new feature.
+    $ make ci
 
-    $ make test
+That is the same [`tools/ci.sh`](tools/ci.sh) the workflow calls, so a green
+run here is a green run there — `go vet`, `gofmt`, `go test -race ./...`, the
+webapp typecheck and production build, the npm packaging smoke-tested through
+real tarballs, and the container image. The two things it cannot cover are the
+macOS server build and the Node 20 webapp build, because both need a second
+machine.
 
-The webapp is TypeScript; please keep it type-clean:
-
-    $ make typecheck
-
-CI runs both, plus the production build, on Node 20 and 22.
+Add tests with each new feature, and keep the webapp type-clean — `make
+typecheck` on its own is the quick version. CI builds the webapp on Node 20
+and 22.
 
 ## Contributors
 
@@ -618,10 +664,6 @@ CI runs both, plus the production build, on Node 20 and 22.
 
 ## Roadmap (aka where you can help)
 
-* Optional HTTP basic auth on the web port, and a shared secret on UDP ingest.
-  Full OAuth ([#44](https://github.com/kilianc/rtail/issues/44)) needs a user
-  model and session storage, which is a lot of machinery for a tool with no
-  persistence layer — basic auth covers the actual risk.
 * A catch-all docker logs image: watch `docker events`, pipe every container's
   `docker logs -f` into a stream named after it.
 * Broaden the test suite, particularly around the UDP ingest path.
@@ -634,6 +676,13 @@ Dropped, and why:
   than DockerHub, since it needs no separate account or secrets.
 * ~~Write a rock solid test suite~~ — a suite exists and runs in CI. Deepening
   it is the open item above.
+* ~~Optional HTTP basic auth on the web port~~ — done, though as one shared
+  bearer token rather than basic auth; see
+  [Authentication](#authentication). Full OAuth
+  ([#44](https://github.com/kilianc/rtail/issues/44)) is still declined: it
+  needs a user model and session storage, which is a lot of machinery for a
+  single-node tool. A shared secret on UDP ingest is the one part that cannot
+  be done — the v1 wire format is frozen and has nowhere to carry one.
 * ~~Allow use of DTLS~~ — the linked PR was against `joyent/node`, a repo that
   no longer exists, and Node core still has no DTLS. Run rtail over WireGuard
   or Tailscale instead; that is the modern answer to this problem.
