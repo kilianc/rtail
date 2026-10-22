@@ -19,17 +19,33 @@ import (
 )
 
 /*!
- * hourBase is a clean hour boundary a few hours back.
+ * hoursAgo is a clean hour boundary n hours back.
  *
  * Tests add minute offsets to it and then assert on the number of L1 files.
- * Anchoring to `now - 3h` instead makes that assertion depend on the time of
- * day: compaction groups L1 by hour, so a base of 15:35 puts +10m and +20m in
- * one hour and +30m in the next, and the test passes or fails according to
- * when it happens to run. Truncating removes the ambiguity rather than hiding
- * it behind a retry.
+ * Anchoring to a bare `now - n` instead makes that assertion depend on the
+ * time of day: compaction groups L1 by hour, so a base of 15:35 puts +10m and
+ * +20m in one hour and +30m in the next, and the test passes or fails
+ * according to when it happens to run. Truncating removes the ambiguity rather
+ * than hiding it behind a retry.
  */
+func hoursAgo(n int) time.Time {
+	return time.Now().UTC().Truncate(time.Hour).Add(-time.Duration(n) * time.Hour)
+}
+
+// hourBase is the offset most of these tests want.
 func hourBase() time.Time {
-	return time.Now().UTC().Truncate(time.Hour).Add(-3 * time.Hour)
+	return hoursAgo(3)
+}
+
+/*!
+ * daysAgo is the same guarantee one level up: midnight UTC, n days back.
+ *
+ * L2 groups by day rather than by hour, so a test that promotes that far needs
+ * its base away from a day boundary too — a bare `now - 72h` run at 23:58
+ * straddles two days exactly as 15:35 straddles two hours.
+ */
+func daysAgo(n int) time.Time {
+	return time.Now().UTC().Truncate(24 * time.Hour).Add(-time.Duration(n) * 24 * time.Hour)
 }
 
 /*!
@@ -606,7 +622,7 @@ func TestRetentionDropsRawOnceOldEnough(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	old := time.Now().UTC().Add(-48 * time.Hour)
+	old := hoursAgo(48)
 
 	for batch := range 3 {
 		h.flush(t, "api", old.Add(time.Duration(batch)*time.Minute), lines("b", 4))
@@ -685,7 +701,7 @@ func TestDownsamplingDiscardsLowSeverityOldRecords(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	old := time.Now().UTC().Add(-48 * time.Hour)
+	old := hoursAgo(48)
 
 	// lines() makes every fourth record an error.
 	for batch := range 3 {
@@ -756,7 +772,7 @@ func TestQuietStreamsAreCompactedOnAge(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	old := time.Now().UTC().Add(-6 * time.Hour)
+	old := hoursAgo(6)
 
 	// Two files: below the count threshold, but well past the age one.
 	h.flush(t, "api", old, []string{`{"msg":"one"}`})
@@ -844,7 +860,7 @@ func TestPromotionToL2ClustersByLevel(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	old := time.Now().UTC().Add(-72 * time.Hour)
+	old := daysAgo(3)
 
 	for batch := range 4 {
 		h.flush(t, "api", old.Add(time.Duration(batch)*time.Minute), lines("b", 6))

@@ -103,7 +103,7 @@ func TestCrashBetweenWriteAndPublishLosesNothing(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	base := time.Now().UTC().Add(-3 * time.Hour)
+	base := hourBase()
 
 	for batch := range 5 {
 		h.flush(t, "api", base.Add(time.Duration(batch)*time.Minute), lines("b", 6))
@@ -153,7 +153,7 @@ func TestCatalogNeverPointsAtAMissingFile(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	base := time.Now().UTC().Add(-3 * time.Hour)
+	base := hourBase()
 
 	for batch := range 4 {
 		h.flush(t, "api", base.Add(time.Duration(batch)*time.Minute), lines("b", 4))
@@ -191,7 +191,7 @@ func TestRepeatedCrashesConverge(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	base := time.Now().UTC().Add(-3 * time.Hour)
+	base := hourBase()
 
 	for batch := range 5 {
 		h.flush(t, "api", base.Add(time.Duration(batch)*time.Minute), lines("b", 5))
@@ -230,7 +230,7 @@ func TestQueryResultsAreIdenticalAcrossCompaction(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	base := time.Now().UTC().Add(-2 * time.Hour)
+	base := hoursAgo(2)
 
 	// Heterogeneous on purpose: keys that appear late, a key whose type
 	// disagrees, and lines that are not JSON at all.
@@ -324,7 +324,7 @@ func TestGarbageCollectionRemovesOnlyRetiredFiles(t *testing.T) {
 	// the way; this test drives collection itself, and a 1ms grace makes the
 	// two race for the same tombstones.
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true, Grace: time.Hour})
-	base := time.Now().UTC().Add(-3 * time.Hour)
+	base := hourBase()
 
 	for batch := range 4 {
 		h.flush(t, "api", base.Add(time.Duration(batch)*time.Minute), lines("b", 4))
@@ -382,7 +382,7 @@ func TestCompactedStateSurvivesRestart(t *testing.T) {
 	ctx := context.Background()
 
 	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
-	base := time.Now().UTC().Add(-3 * time.Hour)
+	base := hourBase()
 
 	for batch := range 4 {
 		h.flush(t, "api", base.Add(time.Duration(batch)*time.Minute), lines("b", 5))
