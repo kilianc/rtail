@@ -101,14 +101,98 @@ func TestInvalidValuesAreRejected(t *testing.T) {
 	}
 }
 
-// A malformed environment value falls back to the default rather than failing
-// to boot — a container that will not start because of a stray quote in a
-// compose file is worse than one that ignores it.
-func TestMalformedEnvironmentFallsBack(t *testing.T) {
-	t.Setenv("RTAIL_WEB_PORT", "not a number")
+/*!
+ * A malformed environment value is an error naming the variable.
+ *
+ * Falling back to the default looked kind and was not: RTAIL_RETENTION="30
+ * days" became "keep everything forever", and RTAIL_WEB_PORT=80a became 8888,
+ * and nobody was told either.
+ */
+func TestMalformedEnvironmentIsAnError(t *testing.T) {
+	for name, value := range map[string]string{
+		"RTAIL_WEB_PORT":  "80a",
+		"RTAIL_RETENTION": "30 days",
+		"RTAIL_INSECURE":  "yes please",
+		"RTAIL_BACKLOG":   "lots",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(name, value)
 
-	if cfg := parse(t); 8888 != cfg.WebPort {
-		t.Errorf("web-port = %d, want the default 8888", cfg.WebPort)
+			_, err := Parse(nil, "test", io.Discard)
+			if nil == err {
+				t.Fatalf("%s=%q was accepted", name, value)
+			}
+			if !strings.Contains(err.Error(), name) {
+				t.Errorf("the error should name %s, got: %v", name, err)
+			}
+		})
+	}
+}
+
+/*!
+ * Durations that would do the opposite of what was meant.
+ *
+ * A negative retention is a cutoff in the future, and the compactor deletes
+ * every file older than the cutoff — which is all of them.
+ */
+func TestNegativeDurationsAreRefused(t *testing.T) {
+	for _, flag := range []string{"--retention", "--retention-raw", "--downsample-after", "--compact-interval"} {
+		if _, err := Parse([]string{flag, "-30d"}, "test", io.Discard); nil == err {
+			t.Errorf("%s -30d was accepted", flag)
+		} else if !strings.Contains(err.Error(), flag) {
+			t.Errorf("%s: the error should name the flag, got: %v", flag, err)
+		}
+	}
+
+	t.Setenv("RTAIL_RETENTION", "-1w")
+	if _, err := Parse(nil, "test", io.Discard); nil == err {
+		t.Error("RTAIL_RETENTION=-1w was accepted")
+	}
+}
+
+func TestBodyLimitMustBePositive(t *testing.T) {
+	for _, value := range []string{"0", "-1"} {
+		if _, err := Parse([]string{"--max-body-mb", value}, "test", io.Discard); nil == err {
+			t.Errorf("--max-body-mb %s was accepted", value)
+		}
+	}
+}
+
+func TestDurationsThatOverflowAreRejected(t *testing.T) {
+	for _, input := range []string{"1e10w", "-1e300d"} {
+		if _, err := ParseDuration(input); nil == err {
+			t.Errorf("ParseDuration(%q) was accepted", input)
+		}
+	}
+}
+
+// The level is canonicalised the way ingest stores it, and a name nobody has
+// heard of is refused rather than ranked as "unknown".
+func TestDownsampleLevelIsALevel(t *testing.T) {
+	if cfg := parse(t, "--downsample-level", "warning", "--downsample-after", "14d"); "WARN" != cfg.DownsampleLevel {
+		t.Errorf("downsample-level = %q, want WARN", cfg.DownsampleLevel)
+	}
+	if cfg := parse(t); "WARN" != cfg.DownsampleLevel {
+		t.Errorf("default downsample-level = %q, want WARN", cfg.DownsampleLevel)
+	}
+	if _, err := Parse([]string{"--downsample-level", "LOUD"}, "test", io.Discard); nil == err {
+		t.Error("--downsample-level LOUD was accepted")
+	}
+	if _, err := Parse([]string{"--downsample-level", "", "--downsample-after", "14d"}, "test", io.Discard); nil == err {
+		t.Error("an empty level with --downsample-after set was accepted")
+	}
+}
+
+// A token of spaces is no token: auth.New trims it away, so it must not count
+// as one when deciding whether an open address is allowed.
+func TestAWhitespaceTokenIsNoToken(t *testing.T) {
+	if _, err := Parse([]string{"--web-host", "0.0.0.0", "--auth-token", "   "}, "test", io.Discard); nil == err {
+		t.Error("a whitespace-only token allowed binding 0.0.0.0")
+	}
+
+	cfg := parse(t, "--web-host", "0.0.0.0", "--auth-token", " s3cret\n")
+	if "s3cret" != cfg.AuthToken {
+		t.Errorf("token = %q, want it trimmed as the guard trims it", cfg.AuthToken)
 	}
 }
 
@@ -143,6 +227,9 @@ func TestParseDurationAcceptsDaysAndWeeks(t *testing.T) {
 		{"12h", 12 * time.Hour},
 		{"90m", 90 * time.Minute},
 		{"", 0},
+		// Signed, as the search API's relative from/to are.
+		{"-7d", -7 * 24 * time.Hour},
+		{"+1w", 7 * 24 * time.Hour},
 	}
 
 	for _, tc := range cases {
@@ -158,7 +245,7 @@ func TestParseDurationAcceptsDaysAndWeeks(t *testing.T) {
 }
 
 func TestParseDurationRejectsNonsense(t *testing.T) {
-	for _, input := range []string{"soon", "30x", "d", "--"} {
+	for _, input := range []string{"soon", "30x", "d", "--", "7dw", "Infd", "-NaNw"} {
 		if _, err := ParseDuration(input); nil == err {
 			t.Errorf("ParseDuration(%q) was accepted", input)
 		}

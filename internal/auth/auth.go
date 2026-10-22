@@ -119,17 +119,30 @@ func (g *Guard) Wrap(next http.Handler, open ...string) http.Handler {
 		}
 
 		/*!
-		 * A token in the query string, accepted once and immediately spent.
+		 * A token in the query string.
 		 *
-		 * Putting a secret in a URL is bad practice — it lands in proxy logs,
-		 * browser history and anything that records a Referer — but "open this
-		 * link and you are in" is how people actually share a view of their
-		 * logs, and the alternative is that they paste the token into chat
-		 * instead, which is worse. The compromise: honour it, set the cookie,
-		 * then redirect to the same URL without it so it does not linger in
-		 * the address bar or get bookmarked.
+		 * It is the shared token itself, not a one-time code: nothing is
+		 * spent, and a link carrying it keeps working for as long as the
+		 * token does. Putting a secret in a URL is bad practice — it lands in
+		 * proxy logs, browser history and anything that records a Referer —
+		 * but "open this link and you are in" is how people actually share a
+		 * view of their logs, and the alternative is that they paste the
+		 * token into chat instead, which is worse. The compromise, for a
+		 * browser opening a page: honour it, set the cookie, then redirect to
+		 * the same URL without it so it does not linger in the address bar or
+		 * get bookmarked.
+		 *
+		 * Only for GET and HEAD. A 303 turns any other request into a GET of
+		 * the new address and drops its body, so `POST /v1/ingest?token=…`
+		 * lost every line it carried; those are authenticated where they
+		 * stand instead.
 		 */
 		if token := r.URL.Query().Get("token"); "" != token && g.matches(token) {
+			if http.MethodGet != r.Method && http.MethodHead != r.Method {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			g.SetCookie(w)
 
 			stripped := *r.URL

@@ -13,12 +13,15 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/kilianc/rtail/v2/internal/auth"
+	"github.com/kilianc/rtail/v2/internal/normalize"
+	"github.com/kilianc/rtail/v2/internal/rql"
 )
 
 // Config is the server's runtime configuration.
@@ -101,6 +104,23 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 
 	var showVersion bool
 
+	/*!
+	 * A malformed RTAIL_* is an error, naming the variable.
+	 *
+	 * It used to fall back to the default, on the theory that a container
+	 * refusing to start over a stray quote is worse than one that ignores
+	 * it. The defaults are what made that wrong: RTAIL_RETENTION="30 days"
+	 * fell back to keeping everything forever, and RTAIL_WEB_PORT=80a to
+	 * listening somewhere nobody was looking — both silent, both found out
+	 * about much later. A container that will not start says why at once.
+	 */
+	var envErr error
+	noteEnv := func(err error) {
+		if nil == envErr {
+			envErr = err
+		}
+	}
+
 	// Each option is registered under its long name and its v1 short alias,
 	// both pointing at the same field, so either spelling works.
 	str := func(field *string, fallback, long, short, usage string) {
@@ -112,7 +132,8 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 	}
 
 	dur := func(field *time.Duration, fallback time.Duration, long, usage string) {
-		value := envDuration(long, fallback)
+		value, err := envDuration(long, fallback)
+		noteEnv(err)
 		set.Func(long, usage+" (default "+value.String()+")", func(raw string) error {
 			parsed, err := ParseDuration(raw)
 			if nil != err {
@@ -125,7 +146,8 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 	}
 
 	num := func(field *int, fallback int, long, short, usage string) {
-		value := envInt(long, fallback)
+		value, err := envInt(long, fallback)
+		noteEnv(err)
 		set.IntVar(field, long, value, usage)
 		if "" != short {
 			set.IntVar(field, short, value, "alias for --"+long)
@@ -156,8 +178,14 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 	str(&cfg.TLSCert, "", "tls-cert", "", "serve HTTPS with this certificate (PEM)")
 	str(&cfg.TLSKey, "", "tls-key", "", "the private key for --tls-cert (PEM)")
 
-	set.BoolVar(&cfg.Insecure, "insecure", envBool("insecure", false), "allow a non-loopback address with no --auth-token")
-	set.BoolVar(&cfg.Verbose, "verbose", envBool("verbose", false), "log at debug level")
+	boolean := func(field *bool, fallback bool, long, usage string) {
+		value, err := envBool(long, fallback)
+		noteEnv(err)
+		set.BoolVar(field, long, value, usage)
+	}
+
+	boolean(&cfg.Insecure, false, "insecure", "allow a non-loopback address with no --auth-token")
+	boolean(&cfg.Verbose, false, "verbose", "log at debug level")
 	set.BoolVar(&showVersion, "version", false, "print the version and exit")
 	set.BoolVar(&showVersion, "v", false, "alias for --version")
 
@@ -176,12 +204,18 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 		return nil, flag.ErrHelp
 	}
 
+	if nil != envErr {
+		return nil, envErr
+	}
+
 	if cfg.Backlog < 1 {
 		return nil, fmt.Errorf("--backlog must be a positive integer")
 	}
 
-	if cfg.UDPPort < 0 || cfg.UDPPort > 65535 || cfg.WebPort < 0 || cfg.WebPort > 65535 {
-		return nil, fmt.Errorf("ports must be between 0 and 65535")
+	for _, port := range []int{cfg.UDPPort, cfg.WebPort, cfg.SyslogPort} {
+		if port < 0 || port > 65535 {
+			return nil, fmt.Errorf("ports must be between 0 and 65535")
+		}
 	}
 
 	if err := cfg.Validate(); nil != err {
@@ -194,11 +228,12 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 /*!
  * Validate refuses the configurations that are quietly dangerous.
  *
- * There is exactly one rule here and it is the whole point of the flag: a
- * server reachable from another machine must either require a token or be told
- * explicitly that it should not. Every other check in this file is about
- * typos; this one is about the difference between a log viewer and a public
- * archive of everything your application has ever printed.
+ * The rule that is the whole point of the flag: a server reachable from
+ * another machine must either require a token or be told explicitly that it
+ * should not. The other checks here are about values that would do something
+ * other than what was meant (see validateValues); this one is about the
+ * difference between a log viewer and a public archive of everything your
+ * application has ever printed.
  *
  * The check is on the bind address rather than on a --production flag,
  * because the bind address is the thing that is actually true. Someone who
@@ -206,9 +241,18 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
  * off loopback is asked, once, at startup, rather than discovering it later.
  */
 func (c *Config) Validate() error {
+	if err := c.validateValues(); nil != err {
+		return err
+	}
+
 	if ("" == c.TLSCert) != ("" == c.TLSKey) {
 		return fmt.Errorf("--tls-cert and --tls-key must be given together")
 	}
+
+	// Trimmed the way the guard trims it, before it is checked: a token of
+	// spaces passed this check as "a token" and then became no token at all
+	// in auth.New, which served 0.0.0.0 with nothing in front of it.
+	c.AuthToken = strings.TrimSpace(c.AuthToken)
 
 	if "" != c.AuthToken || c.Insecure {
 		return nil
@@ -225,6 +269,50 @@ func (c *Config) Validate() error {
 	)
 }
 
+/*!
+ * validateValues refuses values that would quietly do the opposite of what
+ * was meant.
+ *
+ * A negative retention is the one that matters: the compactor deletes files
+ * older than now minus the retention, and now minus a negative month is a
+ * month from now — every file there is. The others are the same mistake with
+ * smaller consequences: a negative interval panics the compactor's ticker, a
+ * downsample level nobody has heard of ranks as "unknown" and keeps or drops
+ * the wrong records, and a zero body limit rejects every ingest request.
+ */
+func (c *Config) validateValues() error {
+	for _, knob := range []struct {
+		name  string
+		value time.Duration
+	}{
+		{"--compact-interval", c.CompactInterval},
+		{"--retention", c.Retention},
+		{"--retention-raw", c.RetentionRaw},
+		{"--downsample-after", c.DownsampleAfter},
+	} {
+		if knob.value < 0 {
+			return fmt.Errorf("%s cannot be negative (got %s); 0 turns it off", knob.name, knob.value)
+		}
+	}
+
+	if c.MaxBody <= 0 {
+		return fmt.Errorf("--max-body-mb must be a positive number of megabytes")
+	}
+
+	// Written the way ingest would store it, so `warning` means WARN here as
+	// it does in a query. Empty is allowed only while nothing uses it.
+	level := normalize.Level(c.DownsampleLevel)
+	if "" != level || c.DownsampleAfter > 0 {
+		if _, known := rql.SeverityRank[level]; !known {
+			return fmt.Errorf("--downsample-level %q is not a level: use one of %s",
+				c.DownsampleLevel, strings.Join(rql.Levels, ", "))
+		}
+	}
+	c.DownsampleLevel = level
+
+	return nil
+}
+
 // envKey maps a flag name onto its environment variable: udp-host -> RTAIL_UDP_HOST.
 func envKey(name string) string {
 	return "RTAIL_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
@@ -237,22 +325,32 @@ func env(name, fallback string) string {
 	return fallback
 }
 
-func envInt(name string, fallback int) int {
-	if value, ok := os.LookupEnv(envKey(name)); ok {
-		if n, err := strconv.Atoi(value); nil == err {
-			return n
-		}
+func envInt(name string, fallback int) (int, error) {
+	value, ok := os.LookupEnv(envKey(name))
+	if !ok {
+		return fallback, nil
 	}
-	return fallback
+
+	n, err := strconv.Atoi(strings.TrimSpace(value))
+	if nil != err {
+		return fallback, fmt.Errorf("%s=%q is not a whole number", envKey(name), value)
+	}
+
+	return n, nil
 }
 
-func envBool(name string, fallback bool) bool {
-	if value, ok := os.LookupEnv(envKey(name)); ok {
-		if b, err := strconv.ParseBool(value); nil == err {
-			return b
-		}
+func envBool(name string, fallback bool) (bool, error) {
+	value, ok := os.LookupEnv(envKey(name))
+	if !ok {
+		return fallback, nil
 	}
-	return fallback
+
+	b, err := strconv.ParseBool(strings.TrimSpace(value))
+	if nil != err {
+		return fallback, fmt.Errorf("%s=%q is not true or false", envKey(name), value)
+	}
+
+	return b, nil
 }
 
 /*!
@@ -281,8 +379,15 @@ func ParseDuration(value string) (time.Duration, error) {
 	}
 
 	if 0 != multiplier {
-		count, err := strconv.ParseFloat(strings.TrimRight(trimmed, "dw"), 64)
-		if nil != err {
+		// One suffix, and a finite count: "7dw" is not a week, and ParseFloat
+		// is happy to read "Inf", which no duration conversion survives.
+		//
+		// And one that fits: converting a float past the int64 range is
+		// implementation-defined in Go, and on amd64 a thousand millennia
+		// comes out as a large negative number.
+		count, err := strconv.ParseFloat(trimmed[:len(trimmed)-1], 64)
+		if nil != err || math.IsNaN(count) || math.IsInf(count, 0) ||
+			math.Abs(count*float64(multiplier)) >= math.MaxInt64 {
 			return 0, fmt.Errorf("bad duration %q", value)
 		}
 		return time.Duration(count * float64(multiplier)), nil
@@ -296,11 +401,16 @@ func ParseDuration(value string) (time.Duration, error) {
 	return parsed, nil
 }
 
-func envDuration(name string, fallback time.Duration) time.Duration {
-	if value, ok := os.LookupEnv(envKey(name)); ok {
-		if parsed, err := ParseDuration(value); nil == err {
-			return parsed
-		}
+func envDuration(name string, fallback time.Duration) (time.Duration, error) {
+	value, ok := os.LookupEnv(envKey(name))
+	if !ok {
+		return fallback, nil
 	}
-	return fallback
+
+	parsed, err := ParseDuration(value)
+	if nil != err {
+		return fallback, fmt.Errorf("%s: %w", envKey(name), err)
+	}
+
+	return parsed, nil
 }

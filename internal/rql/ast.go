@@ -178,7 +178,9 @@ func String(node Node) string {
 		return n.Field + n.Op.String() + n.Value.String()
 
 	case *Text:
-		if needsQuoting(n.Value) {
+		// A phrase that is a keyword has to stay quoted: bare, `"OR"` would
+		// come back as the operator rather than the word.
+		if needsQuoting(n.Value) || "AND" == n.Value || "OR" == n.Value || "NOT" == n.Value {
 			return `"` + strings.ReplaceAll(n.Value, `"`, `\"`) + `"`
 		}
 		return n.Value
@@ -228,8 +230,11 @@ func group(node Node, insideOr bool) string {
 /*!
  * Fields lists every field the query references, deduplicated.
  *
- * The planner uses this to decide which columns it needs to resolve, and the
- * catalog uses it to prune on key presence.
+ * What it does not do is prune files. A file without a column for a key can
+ * still match a query that names it: through raw, which the resolver falls
+ * back to, or through `-k=v` and `OR`, which match exactly the records that
+ * lack it. The planner prunes on time and stream only, and resolves each
+ * field as the compiler asks for it.
  */
 func Fields(node Node) []string {
 	seen := map[string]bool{}

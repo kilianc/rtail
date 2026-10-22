@@ -90,8 +90,6 @@ func NewResolver(files []catalog.File, columns map[int64][]catalog.Column) *Reso
 			r.withRaw++
 		}
 
-		seen := map[string]bool{}
-
 		for _, column := range columns[file.ID] {
 			facts, ok := r.facts[column.SourceKey]
 			if !ok {
@@ -100,7 +98,6 @@ func NewResolver(files []catalog.File, columns map[int64][]catalog.Column) *Reso
 			}
 
 			facts.present++
-			seen[column.SourceKey] = true
 
 			// A key that is an int in one file and a string in another cannot
 			// be read as either without a cast.
@@ -115,14 +112,18 @@ func NewResolver(files []catalog.File, columns map[int64][]catalog.Column) *Reso
 				facts.column = ""
 			}
 		}
+	}
 
-		// Files that lack a key still count, because that is what forces the
-		// coalesce.
-		for key, facts := range r.facts {
-			if !seen[key] {
-				facts.missing++
-			}
-		}
+	/*!
+	 * Files that lack a key still count, because that is what forces the
+	 * coalesce — and every one of them counts, not only those after the key
+	 * was first seen. Counting inside the loop missed the files read before
+	 * it, and the planner hands them over oldest first: an older file that
+	 * kept the key only in raw resolved to the bare column, which reads NULL
+	 * there, and its records silently stopped matching.
+	 */
+	for _, facts := range r.facts {
+		facts.missing = r.files - facts.present
 	}
 
 	return r

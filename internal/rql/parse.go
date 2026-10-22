@@ -4,12 +4,17 @@
  * The grammar, informally:
  *
  *     query      := or
- *     or         := and (("OR" | "or") and)*
- *     and        := unary (("AND" | "and")? unary)*      // AND is implicit
+ *     or         := and ("OR" and)*
+ *     and        := unary ("AND"? unary)*      // AND is implicit
  *     unary      := ("-" | "NOT") unary | primary
  *     primary    := "(" or ")" | comparison | text
  *     comparison := field op value
  *     op         := "=" | ":" | ":~" | "<" | "<=" | ">" | ">="
+ *
+ * The keywords are upper case and only upper case, as they are in
+ * Stackdriver's language. Lower-case words are what people search for —
+ * `user not found`, `read or write` — and reading them as operators turns a
+ * phrase into a boolean nobody wrote.
  *
  * The awkward part of a search bar is that people do not put spaces around
  * operators, and values contain characters that look like operators:
@@ -29,6 +34,7 @@ package rql
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"unicode"
@@ -92,6 +98,8 @@ func lex(input string) ([]token, error) {
 			i++
 
 		case '"', '\'':
+			// A chunk that starts with a quote is a quoted string. Inside a
+			// chunk only `"` breaks it; see opensQuote for the apostrophe.
 			text, next, err := lexQuoted(runes, i)
 			if nil != err {
 				return nil, err
@@ -103,7 +111,8 @@ func lex(input string) ([]token, error) {
 			for i < len(runes) &&
 				!unicode.IsSpace(runes[i]) &&
 				'(' != runes[i] && ')' != runes[i] &&
-				'"' != runes[i] && '\'' != runes[i] {
+				'"' != runes[i] &&
+				!('\'' == runes[i] && opensQuote(string(runes[start:i]))) {
 				i++
 			}
 			tokens = append(tokens, token{kind: tokenWord, text: string(runes[start:i]), pos: start, adjacent: !space})
@@ -113,6 +122,24 @@ func lex(input string) ([]token, error) {
 	}
 
 	return append(tokens, token{kind: tokenEOF, pos: len(runes)}), nil
+}
+
+/*!
+ * opensQuote reports whether an apostrophe after this much of a chunk begins a
+ * quoted string.
+ *
+ * Only right after the negating `-` or right after the chunk's operator —
+ * `-'a b'`, `msg:'a b'`. Anywhere else it is a letter: `don't` and
+ * `user's` are words people search for, and treating the apostrophe as an
+ * opening quote made both fail as an unterminated string.
+ */
+func opensQuote(prefix string) bool {
+	if "-" == prefix {
+		return true
+	}
+
+	_, _, rest, found := splitOperator(prefix)
+	return found && "" == rest
 }
 
 // lexQuoted reads a quoted string, honouring backslash escapes.
@@ -212,9 +239,10 @@ func (p *parser) next() token { t := p.tokens[p.pos]; p.pos++; return t }
 func (p *parser) rewind()     { p.pos-- }
 func (p *parser) atEnd() bool { return tokenEOF == p.peek().kind }
 
-// keyword reports whether an unquoted token is the given bare keyword.
+// keyword reports whether an unquoted token is the given bare keyword, which
+// is upper case: `not` is a word, `NOT` is an operator.
 func keyword(t token, word string) bool {
-	return tokenWord == t.kind && strings.EqualFold(t.text, word)
+	return tokenWord == t.kind && word == t.text
 }
 
 func (p *parser) parseOr() (Node, error) {
@@ -297,6 +325,28 @@ func (p *parser) parseUnary() (Node, error) {
 		}
 
 		return &Not{Child: child}, nil
+	}
+
+	/*!
+	 * A `-` with nothing after it in its chunk negates the quoted phrase or
+	 * group pressed against it: `-"connection reset"`, `-(a=1 OR b=2)`. The
+	 * lexer ends a word at a quote or a parenthesis, so the `-` arrives as a
+	 * chunk of its own — and without this it was searched for as text, beside
+	 * the phrase it was meant to exclude. String renders a negated phrase
+	 * exactly this way, so this is also what makes that rendering parse back.
+	 */
+	if t := p.peek(); tokenWord == t.kind && "-" == t.text {
+		// Never out of range: the token is a word, so EOF is still after it.
+		if next := p.tokens[p.pos+1]; next.adjacent && (tokenString == next.kind || tokenLParen == next.kind) {
+			p.next()
+
+			child, err := p.parsePrimary()
+			if nil != err {
+				return nil, err
+			}
+
+			return &Not{Child: child}, nil
+		}
 	}
 
 	// A leading `-` on a chunk negates it: `-path:/health`. The rest of the
@@ -427,6 +477,11 @@ func splitOperator(chunk string) (field string, op Op, rest string, found bool) 
  * Quoting suppresses all of this — `status="200"` is the string, `status=200`
  * is the number — which is the escape hatch for a field whose values happen to
  * look like something else.
+ *
+ * A number is a finite decimal. ParseFloat also reads `nan`, `inf`,
+ * `Infinity` and hex floats, which made `name=nan` a comparison against NaN:
+ * false for every value in the live predicate and a text match in SQL. Those
+ * stay words.
  */
 func literalOf(text string) Literal {
 	switch strings.ToLower(text) {
@@ -438,7 +493,8 @@ func literalOf(text string) Literal {
 		return Literal{Kind: KindNull, Str: text}
 	}
 
-	if n, err := strconv.ParseFloat(text, 64); nil == err {
+	if n, err := strconv.ParseFloat(text, 64); nil == err &&
+		!math.IsNaN(n) && !math.IsInf(n, 0) && !strings.ContainsAny(text, "xX") {
 		return Literal{Kind: KindNumber, Num: n, Str: text}
 	}
 

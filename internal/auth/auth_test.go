@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -184,5 +185,38 @@ func TestIsLoopback(t *testing.T) {
 		if got := IsLoopback(test.host); got != test.want {
 			t.Errorf("IsLoopback(%q) = %v, want %v", test.host, got, test.want)
 		}
+	}
+}
+
+/*!
+ * A query token on anything but a page load authenticates in place.
+ *
+ * A 303 makes the client re-issue the request as a GET without its body, so
+ * redirecting `POST /v1/ingest?token=…` silently threw the lines away.
+ */
+func TestQueryTokenOnAPostIsNotARedirect(t *testing.T) {
+	var body string
+	handler := New("s3cret", false).Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := new(strings.Builder)
+		io.Copy(buf, r.Body)
+		body = buf.String()
+		w.WriteHeader(http.StatusAccepted)
+	}))
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest("POST", "/v1/ingest?token=s3cret", strings.NewReader("a line\n")))
+
+	if http.StatusAccepted != recorder.Code {
+		t.Fatalf("code = %d, want the handler's 202", recorder.Code)
+	}
+	if "a line\n" != body {
+		t.Errorf("body = %q, want the request's own", body)
+	}
+
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest("POST", "/v1/ingest?token=wrong", strings.NewReader("x")))
+
+	if http.StatusUnauthorized != recorder.Code {
+		t.Errorf("a wrong query token on a POST: code = %d, want 401", recorder.Code)
 	}
 }

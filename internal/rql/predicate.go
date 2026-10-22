@@ -9,8 +9,14 @@
  * differ only in what they emit.
  *
  * Where they cannot be identical is stated rather than hidden: see
- * predicate_test.go, which runs the same corpus through both and asserts they
- * agree.
+ * internal/query/agreement_test.go, which runs the same corpus through both
+ * and asserts they agree.
+ *
+ * The one known gap is a key that went polymorphic. Storage keeps such a
+ * column as text, so SQL sees the number 200 and the string "200" as the same
+ * three characters, while a live record still knows which one it holds:
+ * `code="200"` matches a numeric 200 in history and not on the tail. Nothing
+ * on the read side can recover the type the writer discarded.
  */
 
 package rql
@@ -18,11 +24,14 @@ package rql
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kilianc/rtail/v2/internal/model"
+	"github.com/kilianc/rtail/v2/internal/normalize"
 )
 
 // Predicate reports whether a record matches.
@@ -143,15 +152,32 @@ func comparisonPredicate(n *Comparison) (Predicate, error) {
 		}, nil
 	}
 
-	// Severity ordering, matching the SQL compiler.
+	// Severity, matching the SQL compiler: the level as stored, equality by
+	// name and ordering by rank.
 	if isSeverityField(field) {
-		want := Rank(n.Value.Str)
+		level := normalize.Level(n.Value.Str)
+		want := Rank(level)
 		return func(rec *model.Record) bool {
 			value, ok := lookup(rec, field)
 			if !ok {
 				return false
 			}
+			if OpEquals == n.Op {
+				return value.Text() == level
+			}
 			return compareInts(Rank(value.Text()), want, n.Op)
+		}, nil
+	}
+
+	// Event and ingest time compare as instants, parsed by the same function
+	// the SQL compiler binds.
+	if isTimestampField(field) {
+		at, err := Timestamp(n.Value)
+		if nil != err {
+			return nil, err
+		}
+		return func(rec *model.Record) bool {
+			return compareTimes(timestampOf(rec, field), at, n.Op)
 		}, nil
 	}
 
@@ -169,6 +195,23 @@ func comparisonPredicate(n *Comparison) (Predicate, error) {
 func isSeverityField(field string) bool {
 	return "level" == field || "severity" == field
 }
+
+func isTimestampField(field string) bool {
+	return "ts" == field || "time" == field || "ingest_ts" == field
+}
+
+// timestampOf reads ts or ingest_ts at the precision storage keeps, so a
+// record compares the same live as it will once it is a Parquet row.
+func timestampOf(rec *model.Record, field string) time.Time {
+	if "ingest_ts" == field {
+		return rec.IngestTs.UTC().Truncate(time.Microsecond)
+	}
+	return rec.Ts.UTC().Truncate(time.Microsecond)
+}
+
+// timestampText is DuckDB's rendering of a TIMESTAMP as VARCHAR, which is what
+// `ts:2024-01` and `ts:~...` match against in SQL.
+const timestampText = "2006-01-02 15:04:05.999999"
 
 /*!
  * lookup reads a field off a record.
@@ -207,6 +250,14 @@ func lookup(rec *model.Record, field string) (model.Value, bool) {
 
 	case "seq":
 		return model.Int(int64(rec.Seq)), true
+
+	// The rest of the envelope the SQL resolver knows. Without them a tail
+	// filtered on `ts>...` streamed nothing while search returned everything.
+	case "ts", "time", "ingest_ts":
+		return model.Str(timestampOf(rec, field).Format(timestampText)), true
+
+	case "is_json":
+		return model.Bool(rec.IsObject()), true
 	}
 
 	if value, ok := rec.Fields[field]; ok {
@@ -233,6 +284,11 @@ func lookup(rec *model.Record, field string) (model.Value, bool) {
  * Deliberately minimal: no array indexing, no wildcards. The live-tail path
  * has to keep up with ingest, and the historical path — which is where deep
  * queries actually get run — has DuckDB's full JSON support behind it.
+ *
+ * A scalar comes back as text, because that is what SQL reads it as: `->>`
+ * returns VARCHAR whatever the JSON held. So `req.status="200"` matches a
+ * nested 200 in both, and `req.status>100` still compares numbers in both,
+ * through the same read-as-a-number rule any text field gets.
  */
 func jsonPath(document, path string) (model.Value, bool) {
 	current := any(nil)
@@ -257,12 +313,12 @@ func jsonPath(document, path string) (model.Value, bool) {
 	case nil:
 		return model.Value{}, false
 	case bool:
-		return model.Bool(value), true
+		return model.Str(model.Bool(value).Text()), true
 	case float64:
 		if value == float64(int64(value)) {
-			return model.Int(int64(value)), true
+			return model.Str(model.Int(int64(value)).Text()), true
 		}
-		return model.Float(value), true
+		return model.Str(model.Float(value).Text()), true
 	case string:
 		return model.Str(value), true
 	default:
@@ -274,25 +330,38 @@ func jsonPath(document, path string) (model.Value, bool) {
 	}
 }
 
-// compareValue orders a record value against a literal.
+/*!
+ * compareValue orders a record value against a literal, by the rules the SQL
+ * compiler applies to the column the value would be stored in.
+ *
+ * A number or a boolean answers only its own kind of literal, as a typed
+ * column does in SQL, where anything else folds to FALSE. That is what makes
+ * `status="200"` the string the docs say it is: it used to string-compare
+ * against a numeric 200 here and match, while search returned nothing.
+ *
+ * Text — and JSON, which SQL reads as text — reads a bare number as a number,
+ * so a value that arrived as "12" still answers `user_id=12` and range
+ * queries. Anything else compares as written.
+ */
 func compareValue(value model.Value, literal Literal, op Op) bool {
-	// Numbers compare numerically when both sides can be read as numbers, so
-	// a value that arrived as text still answers a range query correctly.
-	if KindNumber == literal.Kind {
-		if number, ok := numericOf(value); ok {
-			return compareFloats(number, literal.Num, op)
-		}
-		if OpEquals == op {
+	switch value.Kind {
+	case model.KindInt, model.KindFloat:
+		if KindNumber != literal.Kind {
 			return false
 		}
-		return false
-	}
+		number, _ := numericOf(value)
+		return compareFloats(number, literal.Num, op)
 
-	if KindBool == literal.Kind {
-		if model.KindBool != value.Kind {
+	case model.KindBool:
+		if KindBool != literal.Kind {
 			return false
 		}
 		return compareBools(value.Bool, literal.Bool, op)
+	}
+
+	if KindNumber == literal.Kind {
+		number, ok := numericOf(value)
+		return ok && compareFloats(number, literal.Num, op)
 	}
 
 	return compareStrings(value.Text(), literal.Str, op)
@@ -304,27 +373,52 @@ func numericOf(value model.Value) (float64, bool) {
 		return float64(value.Int), true
 	case model.KindFloat:
 		return value.Float, true
-	case model.KindString:
+	case model.KindString, model.KindJSON:
 		n, err := strconv.ParseFloat(strings.TrimSpace(value.Str), 64)
 		return n, nil == err
 	}
 	return 0, false
 }
 
+/*!
+ * compareFloats orders two numbers the way DuckDB does.
+ *
+ * Which differs from Go in one place: DuckDB puts NaN above every other
+ * number and equal to itself, where Go makes every comparison with it false.
+ * A NaN can reach a record — OTLP carries IEEE doubles, and "nan" reads as a
+ * number — and `x>5` has to give the same answer live as in history.
+ */
 func compareFloats(a, b float64, op Op) bool {
+	order := 0
+	switch {
+	case math.IsNaN(a) && math.IsNaN(b):
+	case math.IsNaN(a), a > b:
+		order = 1
+	case math.IsNaN(b), a < b:
+		order = -1
+	}
+
+	return compareOrder(order, op)
+}
+
+func compareOrder(order int, op Op) bool {
 	switch op {
 	case OpEquals:
-		return a == b
+		return 0 == order
 	case OpLess:
-		return a < b
+		return order < 0
 	case OpLessEqual:
-		return a <= b
+		return order <= 0
 	case OpGreater:
-		return a > b
+		return order > 0
 	case OpGreaterEqual:
-		return a >= b
+		return order >= 0
 	}
 	return false
+}
+
+func compareTimes(a, b time.Time, op Op) bool {
+	return compareOrder(a.Compare(b), op)
 }
 
 func compareInts(a, b int, op Op) bool {
@@ -347,11 +441,17 @@ func compareStrings(a, b string, op Op) bool {
 	return false
 }
 
+// compareBools orders false before true, as SQL does, so `ok<true` finds the
+// false ones in both places rather than only in history.
 func compareBools(a, b bool, op Op) bool {
-	if OpEquals == op {
-		return a == b
+	order := 0
+	switch {
+	case a && !b:
+		order = 1
+	case !a && b:
+		order = -1
 	}
-	return false
+	return compareOrder(order, op)
 }
 
 // Thin wrappers so the JSON dependency stays in one place.
