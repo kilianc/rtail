@@ -43,6 +43,12 @@ Options are flags, or `RTAIL_*` environment variables:
     $ docker run -d -p 8888:8888 -p 9999:9999/udp \
         ghcr.io/kilianc/rtail --backlog 500
 
+The image is memory-only until you give it somewhere to write. `/data` is
+there for that, owned by the user the server runs as:
+
+    $ docker run -d -p 8888:8888 -p 9999:9999/udp \
+        -e RTAIL_DATA=/data -v rtail-data:/data ghcr.io/kilianc/rtail
+
 The image binds `0.0.0.0` inside the container, so **the published ports are
 reachable from your whole network**. It has no authentication — keep it on a
 trusted network, or put a reverse proxy in front of it.
@@ -73,7 +79,8 @@ of any kind:
     $ curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/main/install.sh | sh
 
     # or take the tarball yourself — it is what the line above downloads
-    $ tar -xzf rtail_2.0.0-rc.2_darwin_arm64.tar.gz && sudo mv rtail /usr/local/bin
+    $ tar -xzf rtail_2.0.0-rc.2_darwin_arm64.tar.gz
+    $ sudo mv rtail_2.0.0-rc.2_darwin_arm64/rtail /usr/local/bin
 
     # or, if you have Go
     $ go install github.com/kilianc/rtail/v2/cmd/rtail@latest
@@ -165,13 +172,18 @@ indistinguishable once stored, whichever door it came through.
     $ node server.js 2>&1 | rtail --id api.example.com
 
 **HTTP**, for anything that would mind losing a line. UDP is at-most-once and
-capped at one datagram; this acknowledges, so a 200 means the records are in
-the write-ahead log and anything else is safe to retry:
+capped at one datagram; this acknowledges, so a 200 means every line is in the
+write-ahead log:
 
-    $ curl -XPOST localhost:8888/v1/ingest?stream=api --data-binary @- <<'JSON'
+    $ curl -XPOST 'localhost:8888/v1/ingest?stream=api' --data-binary @- <<'JSON'
     {"level":"error","msg":"upstream timeout","service":"api","latency_ms":30004}
     a plain line works too
     JSON
+
+Anything else may arrive after part of the batch was already stored — a store
+that fails halfway through is a 503, a body past `--max-body-mb` a 413 — so
+every response says how many lines it `accepted`, and those first lines are
+durable. Resume after them rather than replaying the batch.
 
 Newline-delimited JSON or plain text — the content type is not consulted,
 because the normalizer already decides per line what it is looking at. `gzip`
@@ -335,11 +347,15 @@ so `status=200` is the number and `status="200"` is the string.
 
 **Raw SQL**, for everything else:
 
-    curl -XPOST localhost:8888/v1/sql -d '{
-      "sql": "SELECT a_service, count(*) n, quantile_cont(a_latency_ms, 0.95) p95
-              FROM logs WHERE level = '"'"'ERROR'"'"' GROUP BY 1 ORDER BY n DESC",
+    $ curl -XPOST localhost:8888/v1/sql --data-binary @- <<'JSON'
+    {
+      "sql": "SELECT a_service, count(*) n, quantile_cont(a_latency_ms, 0.95) p95 FROM logs WHERE level = 'ERROR' GROUP BY 1 ORDER BY n DESC",
       "from": "-6h"
-    }'
+    }
+    JSON
+
+The query is one line because JSON strings cannot hold a raw newline; write
+`\n` if you want the SQL to keep its shape.
 
 `logs` is a view over the pruned files. The query runs read-only in a DuckDB
 sandbox that can see nothing but your data directory.
@@ -399,7 +415,7 @@ For fun and debugging:
 
 ## `rtail-server(1)`
 
-`rtail-server` receives all messages broadcast from every `rtail` client, displaying all incoming log streams in a realtime web view. **Under the hood it is a single static Go binary with the webapp embedded, pushing every incoming UDP message to the browser over server-sent events.**
+`rtail-server` receives all messages broadcast from every `rtail` client, displaying all incoming log streams in a realtime web view. **Under the hood it is a single Go binary with the webapp embedded, pushing every incoming UDP message to the browser over server-sent events.**
 
 Everything is a flag, or the same name as an `RTAIL_*` environment variable.
 The defaults are chosen so that `rtail-server` with no arguments is the v1
@@ -474,7 +490,7 @@ Open your browser and start tailing logs!
 
 Each one is also an environment variable, upper-cased and prefixed with
 `RTAIL_` — `RTAIL_WEB_PORT=8080`, `RTAIL_BACKLOG=500`,
-`RTAIL_DATA=/var/log/rtail`. That is how the container image is configured.
+`RTAIL_DATA=/data`. That is how the container image is configured.
 The v1 short aliases still work too: `--uh`, `--up`, `--wh`, `--wp`, `-b`.
 
 Note that `--backlog` is about the *live view* — how many recent lines a
@@ -488,7 +504,7 @@ The webapp is a client of a small documented API, so anything else can be too:
 | endpoint | what it does |
 |---|---|
 | `GET /v1/streams` | every known stream |
-| `GET /v1/tail?stream=<name>` | SSE feed: `streams`, `backlog`, then `line` events. Omit `stream` to watch the stream list only |
+| `GET /v1/tail?stream=<name>` | SSE feed: `streams`, `backlog`, then `line` events. Omit `stream` to tail every stream at once, backlog merged |
 | `GET /v1/search` | matching records, keyset-paginated |
 | `GET /v1/histogram` | match counts over time, split by severity |
 | `GET /v1/fields?field=<name>` | the most common values of a field, within the current filter |
@@ -496,10 +512,10 @@ The webapp is a client of a small documented API, so anything else can be too:
 | `POST /v1/sql` | read-only SQL over a `logs` view |
 | `POST /v1/ingest` | NDJSON or plain lines, optionally gzip/zstd |
 | `POST /v1/logs` | OTLP logs, protobuf or JSON |
-| `GET /healthz` | version, stream count, per-receiver ingest counters |
+| `GET /healthz` | version, stream count, store size, per-receiver ingest counters |
 
 The search endpoints share their parameters: `q` (filter), `stream`, `from` and
-`to` (RFC3339, epoch millis, or a relative `-6h`), `limit`, `cursor`, `order`.
+`to` (RFC3339, epoch millis, or a relative `-6h` or `-7d`), `limit`, `cursor`, `order`.
 They return 503 with an explanation when the server is running without
 `--data`, since there is nothing to search.
 
@@ -520,13 +536,16 @@ as a header; browsers sign in once and get a cookie.
 
 `X-Rtail-Token` works too, for clients that reserve `Authorization`. In a
 browser, opening the server without one gives you a sign-in form, and
-`https://logs.example.com/?token=…` signs you in from a link — the token is
-spent immediately and redirected out of the address bar so it does not end up
-in your history.
+`https://logs.example.com/?token=…` signs you in from a link. It is the shared
+token itself, not a one-time code, so treat the link as the secret it is: the
+server sets the cookie and redirects the token out of the address bar so it
+does not end up in your history or a bookmark.
 
 `/healthz` is deliberately left open, so a container healthcheck or a load
-balancer keeps working without being handed the secret. It reports liveness
-and stream names; everything that could show a log line is behind the token.
+balancer keeps working without being handed the secret. It reports liveness,
+the version and a handful of numbers — how many streams, how much is stored,
+what each receiver has counted — and never a name; everything that could show
+a log line is behind the token.
 
 **Running with no token is refused on any address but loopback.** This is the
 one rule the server enforces on your behalf:
@@ -614,8 +633,11 @@ UDP_PORT=9001`.
 If you have Node on your machine, the webapp targets are plain npm scripts —
 `npm install`, then `npm run build`, `npm run dist`, `npm run typecheck`.
 `npm run dev` also spawns `bin/rtail-server` and `bin/rtail`, so it needs Go
-as well, or a `make server client` first. Node builds the webapp and is not in
-the product: the server embeds the bundle, and the client is a Go binary.
+as well, to build those two for your machine. `make server client` is not a
+substitute on a Mac: both build inside the Linux toolchain container, so what
+lands in `bin/` is a Linux binary — right for `make dev`, which runs there, and
+not something macOS will start. Node builds the webapp and is not in the
+product: the server embeds the bundle, and the client is a Go binary.
 
 ### The stack
 
@@ -634,8 +656,9 @@ platform (`history`, `localStorage`, `Intl`) rather than dependencies.
 # How to contribute
 
 There is one long-lived branch, `main`. Work on a branch of your own and open
-a pull request against it; a version bump landing on `main` is what cuts a
-release.
+a pull request against it. Releases are cut by pushing a `v*` tag — the
+version in `package.json` has to match it, or the release fails before it
+publishes anything.
 
 Before you push, run what CI runs:
 

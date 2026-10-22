@@ -71,6 +71,9 @@ dev: image deps server client
 	$(DOCKER_RUN) -it $(DEV_ENV) $(IMAGE) npm run dev
 
 ## Same, detached. Survives between commands; stop it with `make down`.
+##
+## The wait gives up after two minutes, or as soon as the container exits, and
+## prints the container's last output rather than a row of dots that never ends.
 up: image deps server client down
 	@docker run -d --name $(CONTAINER) \
 		-u "$$(id -u):$$(id -g)" \
@@ -78,7 +81,15 @@ up: image deps server client down
 		$(DEV_ENV) \
 		-v "$$(pwd):/work" -w /work $(IMAGE) npm run dev >/dev/null
 	@printf '==> waiting for the server '
-	@until curl -sf -o /dev/null --max-time 2 $(URL); do printf '.'; sleep 1; done; echo
+	@for n in $$(seq 1 120); do \
+		curl -sf -o /dev/null --max-time 2 $(URL) && break; \
+		if [ $$n -eq 120 ] || [ "$$(docker inspect -f '{{.State.Running}}' $(CONTAINER) 2>/dev/null)" != true ]; then \
+			echo; echo '!! the server did not come up; its last output:' >&2; \
+			docker logs --tail 40 $(CONTAINER) >&2; \
+			exit 1; \
+		fi; \
+		printf '.'; sleep 1; \
+	done; echo
 	@echo "==> $(URL)"
 
 down:
@@ -91,7 +102,8 @@ url:
 	@echo "$(URL)"
 
 ## The server binary, for development: the webapp is served from app/ with
-## --web-root, so this does not need `make dist` first.
+## --web-root, so this does not need `make dist` first. Built in the Linux
+## toolchain container, for the container — on a Mac it will not run on the host.
 server: image
 	$(DOCKER_RUN) $(IMAGE) go build -ldflags "$(LDFLAGS)" -o bin/rtail-server ./cmd/rtail-server
 
@@ -104,7 +116,9 @@ release: image deps dist
 		go build -trimpath -ldflags "-s -w $(LDFLAGS)" -o bin/rtail-server ./cmd/rtail-server
 	@echo "==> bin/rtail-server $(VERSION)"
 
-## Build the client for this machine.
+## Build the client. Like `server`, this builds inside the toolchain container,
+## so it is a Linux binary even on a Mac — the one `make dev` runs, not one for
+## the host.
 client: image
 	$(DOCKER_RUN) -e CGO_ENABLED=0 $(IMAGE) \
 		go build -trimpath -ldflags "-s -w $(LDFLAGS)" -o bin/rtail ./cmd/rtail
@@ -173,11 +187,12 @@ image:
 		docker build -t $(IMAGE) tools/; \
 	}
 
-## Install dependencies if they are missing.
+## Install dependencies if they are missing. --ignore-scripts, as CI and the
+## image do: nothing in the lockfile needs an install script to work.
 deps:
 	@[ -d node_modules ] || { \
 		echo "==> installing dependencies"; \
-		$(DOCKER_RUN) $(IMAGE) npm install --no-audit --no-fund; \
+		$(DOCKER_RUN) $(IMAGE) npm install --ignore-scripts --no-audit --no-fund; \
 	}
 
 clean: down

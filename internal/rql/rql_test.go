@@ -388,3 +388,178 @@ func (f fakeResolver) Resolve(field string) (string, rql.FieldKind, bool) {
 	}
 	return "a_" + field, rql.FieldString, true
 }
+
+/*!
+ * A `-` pressed against a phrase or a group negates it.
+ *
+ * The lexer ends a word at a quote or a parenthesis, so `-"foo bar"` used to
+ * arrive as the text "-" beside the phrase — and String renders a negated
+ * phrase exactly that way, so the round trip broke too.
+ */
+func TestDashNegatesAPhraseOrAGroup(t *testing.T) {
+	for input, want := range map[string]string{
+		`-"foo bar"`:      `-"foo bar"`,
+		`-'foo bar'`:      `-"foo bar"`,
+		`-(a=1 OR b=2)`:   `NOT (a=1 OR b=2)`,
+		`x -"foo bar" y`:  `x -"foo bar" y`,
+		`NOT "foo bar"`:   `-"foo bar"`,
+		`-msg:"foo bar"`:  `-msg:"foo bar"`,
+		`a - b`:           `a "-" b`,
+		`-"foo" OR "bar"`: `-foo OR bar`,
+	} {
+		node := parse(t, input)
+		if got := rql.String(node); got != want {
+			t.Errorf("String(Parse(%q)) = %q, want %q", input, got, want)
+		}
+		if again := rql.String(parse(t, rql.String(node))); again != rql.String(node) {
+			t.Errorf("%q does not survive a second round trip: %q", input, again)
+		}
+	}
+
+	not, ok := parse(t, `-"foo bar"`).(*rql.Not)
+	if !ok {
+		t.Fatalf(`-"foo bar" parsed to %T, want Not`, parse(t, `-"foo bar"`))
+	}
+	if text, ok := not.Child.(*rql.Text); !ok || "foo bar" != text.Value {
+		t.Errorf("negated child = %#v, want the phrase", not.Child)
+	}
+}
+
+// The keywords are upper case only. `user not found` is three words somebody
+// is looking for, not `user AND NOT found`.
+func TestLowerCaseKeywordsAreWords(t *testing.T) {
+	for _, input := range []string{`user not found`, `read or write`, `this and that`} {
+		and, ok := parse(t, input).(*rql.And)
+		if !ok {
+			t.Errorf("%q parsed to %T, want three ANDed words", input, parse(t, input))
+			continue
+		}
+		for _, child := range and.Children {
+			if _, ok := child.(*rql.Text); !ok {
+				t.Errorf("%q has a %T child, want only text", input, child)
+			}
+		}
+	}
+
+	if _, ok := parse(t, `a NOT b`).(*rql.And).Children[1].(*rql.Not); !ok {
+		t.Error("upper-case NOT stopped negating")
+	}
+	if _, ok := parse(t, `a OR b`).(*rql.Or); !ok {
+		t.Error("upper-case OR stopped being an operator")
+	}
+
+	// And a keyword written as a phrase stays a phrase when rendered.
+	if got := rql.String(parse(t, `"OR"`)); `"OR"` != got {
+		t.Errorf(`String(Parse("\"OR\"")) = %q, want it still quoted`, got)
+	}
+}
+
+// An apostrophe inside a word is a letter. It opens a quote only where a
+// value or a negated phrase starts.
+func TestApostrophesInsideWordsAreLetters(t *testing.T) {
+	for input, want := range map[string]string{
+		`don't`:          "don't",
+		`user's profile`: "user's",
+	} {
+		node := parse(t, input)
+		if and, ok := node.(*rql.And); ok {
+			node = and.Children[0]
+		}
+		if text, ok := node.(*rql.Text); !ok || want != text.Value {
+			t.Errorf("%q parsed to %#v, want the word %q", input, node, want)
+		}
+	}
+
+	comparison, ok := parse(t, `msg:'connection reset'`).(*rql.Comparison)
+	if !ok || "connection reset" != comparison.Value.Str || !comparison.Value.Quoted {
+		t.Errorf(`msg:'connection reset' parsed to %#v, want a quoted value`, parse(t, `msg:'connection reset'`))
+	}
+
+	if comparison, ok := parse(t, `name=o'brien`).(*rql.Comparison); !ok || "o'brien" != comparison.Value.Str {
+		t.Errorf(`name=o'brien parsed to %#v, want the value o'brien`, parse(t, `name=o'brien`))
+	}
+}
+
+// nan, inf and hex are words, not numbers: the predicate cannot match NaN and
+// SQL compared the text, so the two disagreed about `name=nan`.
+func TestNonFiniteBarewordsStayStrings(t *testing.T) {
+	for _, input := range []string{`n=nan`, `n=NaN`, `n=inf`, `n=-Infinity`, `n=0x1p4`, `n=1e999`} {
+		comparison, ok := parse(t, input).(*rql.Comparison)
+		if !ok {
+			t.Errorf("%q did not parse to a comparison", input)
+			continue
+		}
+		if rql.KindString != comparison.Value.Kind {
+			t.Errorf("%q kind = %v, want a string", input, comparison.Value.Kind)
+		}
+	}
+}
+
+// A bad pattern is the query's fault, and both compilers say so the same way.
+func TestBadRegexIsAParseError(t *testing.T) {
+	node := parse(t, `msg:~"("`)
+
+	_, sqlErr := rql.ToSQL(node, fakeResolver{})
+	_, predicateErr := rql.ToPredicate(node)
+
+	for name, err := range map[string]error{"sql": sqlErr, "predicate": predicateErr} {
+		var parseErr *rql.Error
+		if !asError(err, &parseErr) {
+			t.Errorf("%s: err = %v (%T), want *rql.Error", name, err, err)
+			continue
+		}
+		if !strings.Contains(parseErr.Message, "regular expression") {
+			t.Errorf("%s: message = %q", name, parseErr.Message)
+		}
+	}
+}
+
+// Equality on level compares the stored name, after the alias a person typed
+// is turned into it; ordering compares ranks.
+func TestLevelEqualityComparesCanonicalNames(t *testing.T) {
+	compiled, err := rql.ToSQL(parse(t, `level=warning`), fakeResolver{})
+	if nil != err {
+		t.Fatal(err)
+	}
+	if "(level = ?)" != compiled.Expr || "WARN" != compiled.Args[0] {
+		t.Errorf("level=warning compiled to %s %v, want level = WARN", compiled.Expr, compiled.Args)
+	}
+
+	ordered, err := rql.ToSQL(parse(t, `level>=warning`), fakeResolver{})
+	if nil != err {
+		t.Fatal(err)
+	}
+	if rql.Rank("WARN") != ordered.Args[0] {
+		t.Errorf("level>=warning bound %v, want WARN's rank", ordered.Args)
+	}
+}
+
+func TestTimestampLiterals(t *testing.T) {
+	for _, text := range []string{
+		"2024-01-02", "2024-01-02T15:04", "2024-01-02T15:04:05", "2024-01-02 15:04:05.5",
+		"2024-01-02T15:04:05Z", "2024-01-02T17:04:05+02:00",
+	} {
+		if _, err := rql.Timestamp(rql.Literal{Str: text}); nil != err {
+			t.Errorf("Timestamp(%q): %v", text, err)
+		}
+	}
+
+	// An offset is applied, not dropped.
+	at, _ := rql.Timestamp(rql.Literal{Str: "2024-01-02T17:04:05+02:00"})
+	if want := "2024-01-02T15:04:05Z"; want != at.Format("2006-01-02T15:04:05Z07:00") {
+		t.Errorf("offset time = %s, want %s", at, want)
+	}
+
+	if _, err := rql.ToSQL(parse(t, `ts>yesterday`), timestampResolver{}); nil == err {
+		t.Error("ts>yesterday compiled")
+	}
+	if _, err := rql.ToPredicate(parse(t, `ts>yesterday`)); nil == err {
+		t.Error("ts>yesterday compiled to a predicate")
+	}
+}
+
+type timestampResolver struct{}
+
+func (timestampResolver) Resolve(string) (string, rql.FieldKind, bool) {
+	return "ts", rql.FieldTimestamp, true
+}

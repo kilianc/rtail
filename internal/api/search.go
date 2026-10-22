@@ -18,10 +18,12 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/kilianc/rtail/v2/internal/config"
 	"github.com/kilianc/rtail/v2/internal/query"
 	"github.com/kilianc/rtail/v2/internal/rql"
 )
@@ -78,6 +80,10 @@ func (s *Server) searchRequest(r *http.Request) (query.Request, error) {
  * The relative form is what the time picker actually sends, and it is
  * deliberately resolved server-side: a browser with a skewed clock asking for
  * "the last six hours" should get the server's six hours, not its own.
+ *
+ * Offsets take d and w as well as Go's units, through the same parser
+ * --retention uses. The time picker offers "-7d", and a range the UI can draw
+ * but the server answers with a 400 is a picker that only half works.
  */
 func parseTime(value string) (time.Time, error) {
 	if "" == value {
@@ -85,7 +91,7 @@ func parseTime(value string) (time.Time, error) {
 	}
 
 	if '-' == value[0] || '+' == value[0] {
-		offset, err := time.ParseDuration(value)
+		offset, err := config.ParseDuration(value)
 		if nil != err {
 			return time.Time{}, badRequest("bad relative time " + strconv.Quote(value))
 		}
@@ -428,11 +434,22 @@ func (s *Server) sql(w http.ResponseWriter, r *http.Request) {
  *
  * A malformed rQL query is the normal state of a search bar, not a server
  * fault, and the position in the message is what lets the UI underline the
- * offending character.
+ * offending character. SQL the caller wrote is theirs to get wrong too — a
+ * misspelt column, or one this window's files do not have — and gets DuckDB's
+ * own message with the same 400.
+ *
+ * A genuine failure is logged in full and answered with nothing but the fact
+ * of it. The engine's error quotes the statement we generated, whose FROM
+ * clause names every file the query read by absolute path, and none of it is
+ * anything a client can act on. There is no `detail` field any more: the
+ * webapp only ever shows `message` or `error`, and `detail` was the field the
+ * statement leaked through.
  */
 func (s *Server) failQuery(w http.ResponseWriter, err error) {
 	payload := map[string]any{"error": err.Error()}
 	status := http.StatusInternalServerError
+
+	var failure *query.Failure
 
 	switch e := err.(type) {
 	case badRequest:
@@ -442,12 +459,15 @@ func (s *Server) failQuery(w http.ResponseWriter, err error) {
 		payload["position"] = e.Position
 		payload["message"] = e.Message
 	default:
+		if errors.As(err, &failure) && failure.UserFault() {
+			status = http.StatusBadRequest
+			payload["error"] = failure.Public()
+			payload["message"] = failure.Public()
+			break
+		}
+
 		s.opts.Log.Error("query failed", "err", err)
-		// The underlying engine error is useful and not sensitive — the data
-		// directory is the operator's own — but it is verbose, so it goes in
-		// a field of its own rather than in the headline.
 		payload["error"] = "query failed"
-		payload["detail"] = err.Error()
 	}
 
 	writeJSON(w, status, payload)

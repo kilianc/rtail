@@ -17,8 +17,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kilianc/rtail/v2/internal/catalog"
 	"github.com/kilianc/rtail/v2/internal/model"
 	"github.com/kilianc/rtail/v2/internal/normalize"
+	"github.com/kilianc/rtail/v2/internal/parquetio"
 	"github.com/kilianc/rtail/v2/internal/rql"
 )
 
@@ -55,39 +57,66 @@ type Request struct {
  * rows to throw them away, whereas a keyset predicate lets the engine skip
  * whole row groups. The pair is unique and totally ordered, so pages stay
  * stable even while new records land.
+ *
+ * It also carries the window the first page resolved, because the request
+ * for the next one does not have it: the time picker sends `-6h`, which means
+ * something later every time it is asked. Re-resolved per page, the window's
+ * start moved forward while the cursor walked backward, and whatever lay
+ * between the two was never shown.
  */
 type Cursor struct {
 	Ts  time.Time
 	Seq uint64
+	// From and To are the effective window of the page that issued this
+	// cursor. Zero in a cursor written before they existed.
+	From time.Time
+	To   time.Time
 }
 
 // String encodes a cursor for a URL.
 func (c *Cursor) String() string {
-	return strconv.FormatInt(c.Ts.UnixMicro(), 10) + ":" + strconv.FormatUint(c.Seq, 10)
+	text := strconv.FormatInt(c.Ts.UnixMicro(), 10) + ":" + strconv.FormatUint(c.Seq, 10)
+
+	if !c.From.IsZero() || !c.To.IsZero() {
+		text += ":" + strconv.FormatInt(c.From.UnixMicro(), 10) + ":" + strconv.FormatInt(c.To.UnixMicro(), 10)
+	}
+
+	return text
 }
 
-// ParseCursor reads a cursor back.
+// ParseCursor reads a cursor back, with or without its window.
 func ParseCursor(text string) (*Cursor, error) {
 	if "" == text {
 		return nil, nil
 	}
 
-	micros, seq, found := strings.Cut(text, ":")
-	if !found {
+	parts := strings.Split(text, ":")
+	if 2 != len(parts) && 4 != len(parts) {
 		return nil, fmt.Errorf("malformed cursor")
 	}
 
-	ts, err := strconv.ParseInt(micros, 10, 64)
+	ts, err := strconv.ParseInt(parts[0], 10, 64)
 	if nil != err {
 		return nil, fmt.Errorf("malformed cursor timestamp")
 	}
 
-	sequence, err := strconv.ParseUint(seq, 10, 64)
+	sequence, err := strconv.ParseUint(parts[1], 10, 64)
 	if nil != err {
 		return nil, fmt.Errorf("malformed cursor sequence")
 	}
 
-	return &Cursor{Ts: time.UnixMicro(ts).UTC(), Seq: sequence}, nil
+	cursor := &Cursor{Ts: time.UnixMicro(ts).UTC(), Seq: sequence}
+
+	if 4 == len(parts) {
+		from, fromErr := strconv.ParseInt(parts[2], 10, 64)
+		to, toErr := strconv.ParseInt(parts[3], 10, 64)
+		if nil != fromErr || nil != toErr {
+			return nil, fmt.Errorf("malformed cursor window")
+		}
+		cursor.From, cursor.To = time.UnixMicro(from).UTC(), time.UnixMicro(to).UTC()
+	}
+
+	return cursor, nil
 }
 
 // Result is one page of matches.
@@ -132,11 +161,11 @@ func (e *Engine) predicate(req Request, plan *Plan) (*rql.SQL, error) {
 /*!
  * sqlPredicate accepts a raw boolean expression.
  *
- * The expression is spliced into a WHERE clause, so it is parenthesised: an
- * `OR 1=1` then applies inside the parentheses rather than defeating the time
- * range and the stream filter beside it. A semicolon is rejected outright,
- * because it is the one character that could end our statement and begin
- * another.
+ * The expression becomes the WHERE clause of a query over a subquery that
+ * already holds the time range, the stream and the cursor — see scoped — so
+ * an `OR 1=1`, or an unbalanced `TRUE) OR (TRUE`, can widen nothing but the
+ * filter itself. A semicolon is rejected outright, because it is the one
+ * character that could end our statement and begin another.
  *
  * This is deliberately not the security boundary. The connection is: DuckDB is
  * opened read-only over an in-memory database with external access disabled,
@@ -159,11 +188,48 @@ func sqlPredicate(expr string) (*rql.SQL, error) {
 	}
 
 	if err := rejectMutations(trimmed); nil != err {
-		return nil, &rql.Error{Message: err.Error()}
+		return nil, err
 	}
 
 	return &rql.SQL{Expr: "(" + trimmed + ")"}, nil
 }
+
+/*!
+ * scoped renders the rows a request may see at all — its window, its stream
+ * and, for a later page, its keyset position — as a subquery, with the
+ * arguments it binds.
+ *
+ * The filter goes outside it, never beside it. Spliced in next to these
+ * clauses, a lang=sql filter had only its own parentheses keeping it in, and
+ * `TRUE) OR (TRUE` closes them: the window and the cursor stopped applying,
+ * and every page was the first page of everything. Over this subquery the
+ * worst a stray parenthesis can do is match the whole window. A filter set on
+ * reading other rows can still find a way — so can /v1/sql, which is why the
+ * sandbox and not this is the boundary.
+ *
+ * DuckDB flattens the subquery and pushes both sets of filters into the
+ * Parquet scan, so row-group pruning is exactly what it was.
+ */
+func (e *Engine) scoped(plan *Plan, stream, keyset string, keysetArgs ...any) (string, []any) {
+	where := []string{"ts >= ? AND ts <= ?"}
+	args := []any{plan.From, plan.To}
+
+	if "" != stream {
+		where = append(where, "stream = ?")
+		args = append(args, stream)
+	}
+
+	if "" != keyset {
+		where = append(where, keyset)
+		args = append(args, keysetArgs...)
+	}
+
+	return fmt.Sprintf("(\n\t\t\tSELECT * FROM %s\n\t\t\tWHERE %s\n\t\t)",
+		e.Source(plan), strings.Join(where, "\n\t\t\t  AND ")), args
+}
+
+// DefaultLimit is a page when the request does not ask for a size.
+const DefaultLimit = 200
 
 /*!
  * Search runs a filter and returns a page of records.
@@ -171,7 +237,13 @@ func sqlPredicate(expr string) (*rql.SQL, error) {
 func (e *Engine) Search(ctx context.Context, req Request) (*Result, error) {
 	started := time.Now()
 
-	plan, err := e.Plan(ctx, req.Stream, req.From, req.To, e.referenced(req))
+	// A later page reads the window the first one did; see Cursor.
+	from, to := req.From, req.To
+	if nil != req.Cursor && !req.Cursor.From.IsZero() {
+		from, to = req.Cursor.From, req.Cursor.To
+	}
+
+	plan, err := e.Plan(ctx, req.Stream, from, to)
 	if nil != err {
 		return nil, err
 	}
@@ -181,26 +253,26 @@ func (e *Engine) Search(ctx context.Context, req Request) (*Result, error) {
 		return nil, err
 	}
 
+	// Asking for more than the cap gets the cap, not the default: a client
+	// asking for 5,000 rows wants as many as it may have, and silently
+	// handing back 200 looked like the end of the results.
 	limit := req.Limit
-	if limit <= 0 || limit > e.limits.MaxRows {
-		limit = min(e.limits.MaxRows, 200)
+	switch {
+	case limit <= 0:
+		limit = min(e.limits.MaxRows, DefaultLimit)
+	case limit > e.limits.MaxRows:
+		limit = e.limits.MaxRows
 	}
-
-	where := []string{"ts >= ? AND ts <= ?"}
-	args := []any{plan.From, plan.To}
-
-	if "" != req.Stream {
-		where = append(where, "stream = ?")
-		args = append(args, req.Stream)
-	}
-
-	where = append(where, predicate.Expr)
-	args = append(args, predicate.Args...)
 
 	direction, comparison := "DESC", "<"
 	if req.Ascending {
 		direction, comparison = "ASC", ">"
 	}
+
+	var (
+		keyset     string
+		keysetArgs []any
+	)
 
 	if nil != req.Cursor {
 		/*!
@@ -214,9 +286,12 @@ func (e *Engine) Search(ctx context.Context, req Request) (*Result, error) {
 		 * nothing is the worst kind: pagination still "worked", it just
 		 * returned page one forever.
 		 */
-		where = append(where, fmt.Sprintf("(ts %s ? OR (ts = ? AND seq %s ?))", comparison, comparison))
-		args = append(args, req.Cursor.Ts, req.Cursor.Ts, int64(req.Cursor.Seq))
+		keyset = fmt.Sprintf("(ts %s ? OR (ts = ? AND seq %s ?))", comparison, comparison)
+		keysetArgs = []any{req.Cursor.Ts, req.Cursor.Ts, int64(req.Cursor.Seq)}
 	}
+
+	source, args := e.scoped(plan, req.Stream, keyset, keysetArgs...)
+	args = append(args, predicate.Args...)
 
 	statement := fmt.Sprintf(`
 		SELECT ts, ingest_ts, stream, seq, level, msg, host, is_json, raw
@@ -224,23 +299,28 @@ func (e *Engine) Search(ctx context.Context, req Request) (*Result, error) {
 		WHERE %s
 		ORDER BY ts %s, seq %s
 		LIMIT %d`,
-		e.Source(plan),
-		strings.Join(where, "\n\t\t  AND "),
+		source,
+		predicate.Expr,
 		direction, direction,
 		// One extra row tells us whether another page exists without a second
 		// query or a count.
 		limit+1,
 	)
 
-	rows, done, err := e.query(ctx, statement, args...)
+	user := LangSQL == req.Lang
+
+	rows, done, err := e.query(ctx, user, statement, args...)
 	if nil != err {
 		return nil, err
 	}
-	defer done()
 
+	// Released as soon as the page is read, not when Search returns:
+	// restoreFields below takes slots of its own, and holding this one while
+	// it waits for them is a deadlock whenever every slot is a Search.
 	records, err := scanRecords(rows)
+	done()
 	if nil != err {
-		return nil, err
+		return nil, e.failure(err, statement, user)
 	}
 
 	result := &Result{
@@ -256,8 +336,12 @@ func (e *Engine) Search(ctx context.Context, req Request) (*Result, error) {
 
 	if len(records) > limit {
 		last := records[limit-1]
-		result.Next = &Cursor{Ts: last.Ts, Seq: last.Seq}
+		result.Next = &Cursor{Ts: last.Ts, Seq: last.Seq, From: plan.From, To: plan.To}
 		records = records[:limit]
+	}
+
+	if err := e.restoreFields(ctx, plan, records); nil != err {
+		return nil, err
 	}
 
 	result.Records = records
@@ -266,24 +350,168 @@ func (e *Engine) Search(ctx context.Context, req Request) (*Result, error) {
 }
 
 /*!
- * referenced lists the fields a query mentions, for catalog pruning.
+ * restoreFields reads back the fields of records whose raw cannot supply them.
  *
- * Only rQL can be introspected this way. A raw SQL expression names physical
- * columns rather than source keys, and parsing it to find them would mean
- * carrying a second SQL parser purely to make a hint — so a SQL filter simply
- * prunes on time and stream, which is the bulk of the win anyway.
+ * scanRecords re-promotes from raw, which covers every JSON line whose raw is
+ * still there. Two kinds of record have no such raw: a syslog line, whose raw
+ * is the line as sent and whose fields the receiver parsed out of it, and a
+ * JSON line past --retention-raw, whose raw is gone. Both still have their
+ * fields on disk as promoted columns — keeping those is the point of dropping
+ * raw — but search reads only the envelope, so they came back with none. The
+ * tail showed facility, app and structured data; the same line on a history
+ * page had nothing for the field explorer or click-to-filter to work with.
+ *
+ * So the columns are read for those records alone: a file at a time, only
+ * the files whose seq range holds one of them, only the columns each file
+ * has, and only the rows by seq, which is unique per store. A page of JSON
+ * lines with raw intact costs nothing extra. The catalog says what each
+ * column was called before it was mangled and what kind it holds, so
+ * `exampleSDID@32473.iut` comes back under its own name, and an int as an int.
  */
-func (e *Engine) referenced(req Request) []string {
-	if LangSQL == req.Lang {
-		return nil
+func (e *Engine) restoreFields(ctx context.Context, plan *Plan, records []*model.Record) error {
+	missing := map[uint64]*model.Record{}
+	for _, rec := range records {
+		if nil == rec.Fields {
+			missing[rec.Seq] = rec
+		}
 	}
 
-	node, err := rql.Parse(req.Query)
+	for _, file := range plan.Files {
+		if 0 == len(missing) {
+			return nil
+		}
+
+		columns := plan.Columns[file.ID]
+		if 0 == len(columns) {
+			continue
+		}
+
+		var seqs []any
+		for seq, rec := range missing {
+			if seq >= file.MinSeq && seq <= file.MaxSeq && rec.Stream == file.Stream {
+				seqs = append(seqs, int64(seq))
+			}
+		}
+		if 0 == len(seqs) {
+			continue
+		}
+
+		if err := e.readFields(ctx, file, columns, seqs, missing); nil != err {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// readFields fills in the fields of the records at seqs from one file's
+// promoted columns, and takes each record it found off missing.
+func (e *Engine) readFields(
+	ctx context.Context,
+	file catalog.File,
+	columns []catalog.Column,
+	seqs []any,
+	missing map[uint64]*model.Record,
+) error {
+	kinds := make([]model.Kind, len(columns))
+	selects := make([]string, len(columns))
+
+	/*!
+	 * Each column is cast to the Go type its kind scans into. A JSON column
+	 * is Parquet text annotated JSON, which the driver would otherwise hand
+	 * back already decoded; the record keeps JSON as its text. A polymorphic
+	 * key is stored as text, so it comes back as one — the same widening the
+	 * writer did.
+	 */
+	for i, column := range columns {
+		kind := parquetio.ParseKind(column.Kind)
+		if column.Polymorphic {
+			kind = model.KindString
+		}
+
+		cast := "VARCHAR"
+		switch kind {
+		case model.KindBool:
+			cast = "BOOLEAN"
+		case model.KindInt:
+			cast = "BIGINT"
+		case model.KindFloat:
+			cast = "DOUBLE"
+		}
+
+		kinds[i] = kind
+		selects[i] = fmt.Sprintf(`CAST("%s" AS %s)`, column.Name, cast)
+	}
+
+	marks := strings.TrimSuffix(strings.Repeat("?, ", len(seqs)), ", ")
+
+	statement := fmt.Sprintf(`SELECT seq, %s FROM read_parquet(%s) WHERE seq IN (%s)`,
+		strings.Join(selects, ", "), quote(e.root+"/"+file.Path), marks)
+
+	rows, done, err := e.query(ctx, false, statement, seqs...)
 	if nil != err {
-		return nil
+		return err
+	}
+	defer done()
+
+	values := make([]any, len(columns)+1)
+	targets := make([]any, len(values))
+	for i := range values {
+		targets[i] = &values[i]
 	}
 
-	return rql.Fields(node)
+	for rows.Next() {
+		if err := rows.Scan(targets...); nil != err {
+			return e.failure(err, statement, false)
+		}
+
+		seq, ok := values[0].(int64)
+		if !ok {
+			continue
+		}
+
+		rec := missing[uint64(seq)]
+		if nil == rec {
+			continue
+		}
+
+		// Absent and null are the same thing in a column: a key this
+		// record never had is not one of its fields.
+		rec.Fields = map[string]model.Value{}
+		for i, column := range columns {
+			if value, ok := valueOf(kinds[i], values[i+1]); ok {
+				rec.Fields[column.SourceKey] = value
+			}
+		}
+
+		delete(missing, uint64(seq))
+	}
+
+	if err := rows.Err(); nil != err {
+		return e.failure(err, statement, false)
+	}
+
+	return nil
+}
+
+// valueOf builds a field value from what the driver scanned, reporting false
+// for a null.
+func valueOf(kind model.Kind, scanned any) (model.Value, bool) {
+	switch value := scanned.(type) {
+	case bool:
+		return model.Bool(value), true
+	case int64:
+		return model.Int(value), true
+	case float64:
+		return model.Float(value), true
+	case string:
+		if model.KindJSON == kind {
+			return model.JSON(value), true
+		}
+		return model.Str(value), true
+	default:
+		return model.Null(), false
+	}
 }
 
 /*!
@@ -308,7 +536,7 @@ func (e *Engine) Histogram(ctx context.Context, req Request, buckets int) ([]Buc
 		buckets = 60
 	}
 
-	plan, err := e.Plan(ctx, req.Stream, req.From, req.To, e.referenced(req))
+	plan, err := e.Plan(ctx, req.Stream, req.From, req.To)
 	if nil != err {
 		return nil, 0, err
 	}
@@ -322,15 +550,7 @@ func (e *Engine) Histogram(ctx context.Context, req Request, buckets int) ([]Buc
 	// of bars, rounded to something a person would choose.
 	width := niceInterval(plan.To.Sub(plan.From) / time.Duration(buckets))
 
-	where := []string{"ts >= ? AND ts <= ?"}
-	args := []any{plan.From, plan.To}
-
-	if "" != req.Stream {
-		where = append(where, "stream = ?")
-		args = append(args, req.Stream)
-	}
-
-	where = append(where, predicate.Expr)
+	source, args := e.scoped(plan, req.Stream, "")
 	args = append(args, predicate.Args...)
 
 	statement := fmt.Sprintf(`
@@ -342,11 +562,13 @@ func (e *Engine) Histogram(ctx context.Context, req Request, buckets int) ([]Buc
 		GROUP BY 1, 2
 		ORDER BY 1`,
 		width.Microseconds(),
-		e.Source(plan),
-		strings.Join(where, "\n\t\t  AND "),
+		source,
+		predicate.Expr,
 	)
 
-	rows, done, err := e.query(ctx, statement, args...)
+	user := LangSQL == req.Lang
+
+	rows, done, err := e.query(ctx, user, statement, args...)
 	if nil != err {
 		return nil, 0, err
 	}
@@ -363,7 +585,7 @@ func (e *Engine) Histogram(ctx context.Context, req Request, buckets int) ([]Buc
 		)
 
 		if err := rows.Scan(&at, &level, &total); nil != err {
-			return nil, 0, err
+			return nil, 0, e.failure(err, statement, user)
 		}
 
 		bucket, ok := byTime[at.UnixMicro()]
@@ -380,7 +602,7 @@ func (e *Engine) Histogram(ctx context.Context, req Request, buckets int) ([]Buc
 	}
 
 	if err := rows.Err(); nil != err {
-		return nil, 0, err
+		return nil, 0, e.failure(err, statement, user)
 	}
 
 	out := make([]Bucket, 0, len(ordered))
@@ -412,7 +634,7 @@ func (e *Engine) FieldValues(ctx context.Context, req Request, field string, lim
 		limit = 10
 	}
 
-	plan, err := e.Plan(ctx, req.Stream, req.From, req.To, append(e.referenced(req), field))
+	plan, err := e.Plan(ctx, req.Stream, req.From, req.To)
 	if nil != err {
 		return nil, err
 	}
@@ -427,17 +649,11 @@ func (e *Engine) FieldValues(ctx context.Context, req Request, field string, lim
 		return nil, err
 	}
 
-	where := []string{"ts >= ? AND ts <= ?"}
-	args := []any{plan.From, plan.To}
-
-	if "" != req.Stream {
-		where = append(where, "stream = ?")
-		args = append(args, req.Stream)
-	}
-
-	where = append(where, predicate.Expr, "value IS NOT NULL")
+	source, args := e.scoped(plan, req.Stream, "")
 	args = append(args, predicate.Args...)
 
+	// The null check is outside the filter's WHERE rather than ANDed into
+	// it, so it holds whatever precedence the filter's own operators have.
 	statement := fmt.Sprintf(`
 		WITH matched AS (
 			SELECT CAST(%s AS VARCHAR) AS value
@@ -446,15 +662,18 @@ func (e *Engine) FieldValues(ctx context.Context, req Request, field string, lim
 		)
 		SELECT value, count(*) AS total, count(*) * 1.0 / sum(count(*)) OVER () AS share
 		FROM matched
+		WHERE value IS NOT NULL
 		GROUP BY 1
 		ORDER BY total DESC, value
 		LIMIT %d`,
-		expr, e.Source(plan),
-		strings.Join(where, "\n\t\t\t  AND "),
+		expr, source,
+		predicate.Expr,
 		limit,
 	)
 
-	rows, done, err := e.query(ctx, statement, args...)
+	user := LangSQL == req.Lang
+
+	rows, done, err := e.query(ctx, user, statement, args...)
 	if nil != err {
 		return nil, err
 	}
@@ -465,12 +684,16 @@ func (e *Engine) FieldValues(ctx context.Context, req Request, field string, lim
 	for rows.Next() {
 		var value FieldValue
 		if err := rows.Scan(&value.Value, &value.Count, &value.Share); nil != err {
-			return nil, err
+			return nil, e.failure(err, statement, user)
 		}
 		values = append(values, value)
 	}
 
-	return values, rows.Err()
+	if err := rows.Err(); nil != err {
+		return nil, e.failure(err, statement, user)
+	}
+
+	return values, nil
 }
 
 /*!
@@ -488,7 +711,7 @@ func (e *Engine) SQL(ctx context.Context, statement string, req Request) (column
 		return nil, nil, Scanned{}, err
 	}
 
-	plan, planErr := e.Plan(ctx, req.Stream, req.From, req.To, nil)
+	plan, planErr := e.Plan(ctx, req.Stream, req.From, req.To)
 	if nil != planErr {
 		return nil, nil, Scanned{}, planErr
 	}
@@ -505,7 +728,7 @@ func (e *Engine) SQL(ctx context.Context, statement string, req Request) (column
 		SELECT * FROM (%s) LIMIT %d`,
 		e.Source(plan), statement, limit)
 
-	result, done, queryErr := e.query(ctx, wrapped, plan.From, plan.To)
+	result, done, queryErr := e.query(ctx, true, wrapped, plan.From, plan.To)
 	if nil != queryErr {
 		return nil, nil, Scanned{}, queryErr
 	}
@@ -513,7 +736,7 @@ func (e *Engine) SQL(ctx context.Context, statement string, req Request) (column
 
 	columns, err = result.Columns()
 	if nil != err {
-		return nil, nil, Scanned{}, err
+		return nil, nil, Scanned{}, e.failure(err, wrapped, true)
 	}
 
 	for result.Next() {
@@ -524,14 +747,14 @@ func (e *Engine) SQL(ctx context.Context, statement string, req Request) (column
 		}
 
 		if err := result.Scan(targets...); nil != err {
-			return nil, nil, Scanned{}, err
+			return nil, nil, Scanned{}, e.failure(err, wrapped, true)
 		}
 
 		rows = append(rows, cells)
 	}
 
 	if err := result.Err(); nil != err {
-		return nil, nil, Scanned{}, err
+		return nil, nil, Scanned{}, e.failure(err, wrapped, true)
 	}
 
 	return columns, rows, Scanned{
@@ -550,7 +773,8 @@ func (e *Engine) SQL(ctx context.Context, statement string, req Request) (column
  * The real boundary is the connection: DuckDB is configured with external
  * access disabled and the database is in-memory with no tables of its own, so
  * there is nothing to write to and no filesystem to reach. This exists to turn
- * "DROP TABLE" into a clear error rather than a confusing one.
+ * "DROP TABLE" into a clear error rather than a confusing one — and a 400
+ * with a position, because it is the query's fault, not the server's.
  */
 func rejectMutations(statement string) error {
 	lowered := strings.ToLower(statement)
@@ -559,8 +783,11 @@ func rejectMutations(statement string) error {
 		"attach", "copy ", "create ", "delete ", "drop ", "export",
 		"insert ", "install", "load ", "pragma", "update ", "call ",
 	} {
-		if strings.Contains(lowered, word) {
-			return fmt.Errorf("only read-only queries are allowed here (found %q)", strings.TrimSpace(word))
+		if at := strings.Index(lowered, word); at >= 0 {
+			return &rql.Error{
+				Message:  fmt.Sprintf("only read-only queries are allowed here (found %q)", strings.TrimSpace(word)),
+				Position: at,
+			}
 		}
 	}
 
@@ -656,7 +883,7 @@ func (e *Engine) FieldCounts(ctx context.Context, req Request, fields []string) 
 		return map[string]int64{}, nil
 	}
 
-	plan, err := e.Plan(ctx, req.Stream, req.From, req.To, append(e.referenced(req), fields...))
+	plan, err := e.Plan(ctx, req.Stream, req.From, req.To)
 	if nil != err {
 		return nil, err
 	}
@@ -665,17 +892,6 @@ func (e *Engine) FieldCounts(ctx context.Context, req Request, fields []string) 
 	if nil != err {
 		return nil, err
 	}
-
-	where := []string{"ts >= ? AND ts <= ?"}
-	args := []any{plan.From, plan.To}
-
-	if "" != req.Stream {
-		where = append(where, "stream = ?")
-		args = append(args, req.Stream)
-	}
-
-	where = append(where, predicate.Expr)
-	args = append(args, predicate.Args...)
 
 	/*!
 	 * Fields the resolver cannot name are skipped rather than counted as
@@ -701,14 +917,19 @@ func (e *Engine) FieldCounts(ctx context.Context, req Request, fields []string) 
 		return map[string]int64{}, nil
 	}
 
+	source, args := e.scoped(plan, req.Stream, "")
+	args = append(args, predicate.Args...)
+
 	statement := fmt.Sprintf(
 		"SELECT %s FROM %s WHERE %s",
 		strings.Join(projections, ", "),
-		e.Source(plan),
-		strings.Join(where, "\n\t\t  AND "),
+		source,
+		predicate.Expr,
 	)
 
-	rows, done, err := e.query(ctx, statement, args...)
+	user := LangSQL == req.Lang
+
+	rows, done, err := e.query(ctx, user, statement, args...)
 	if nil != err {
 		return nil, err
 	}
@@ -724,7 +945,7 @@ func (e *Engine) FieldCounts(ctx context.Context, req Request, fields []string) 
 		}
 
 		if err := rows.Scan(dest...); nil != err {
-			return nil, err
+			return nil, e.failure(err, statement, user)
 		}
 
 		for i, name := range names {
@@ -732,5 +953,9 @@ func (e *Engine) FieldCounts(ctx context.Context, req Request, fields []string) 
 		}
 	}
 
-	return counts, rows.Err()
+	if err := rows.Err(); nil != err {
+		return nil, e.failure(err, statement, user)
+	}
+
+	return counts, nil
 }

@@ -245,8 +245,13 @@ export function LogRow({ line, expanded, selected, active, needles, columns, num
             >
               copy as JSON
             </Button>
+            {/*
+              What it does, not a count it never kept to: the window is the
+              thirty seconds either side of this line, unfiltered, however
+              many lines that turns out to be.
+            */}
             <Button variant="outline" size="sm" onClick={onContext}>
-              surrounding 50 lines
+              surrounding lines (±30s)
             </Button>
           </div>
         </div>

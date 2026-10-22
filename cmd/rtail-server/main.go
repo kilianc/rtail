@@ -76,6 +76,8 @@ func run() error {
 		store  logstore.Store
 		engine *query.Engine
 		cat    *catalog.Catalog
+		// compacted closes when the compactor has stopped, if there is one.
+		compacted chan struct{}
 	)
 
 	if "" == cfg.DataDir {
@@ -120,7 +122,11 @@ func run() error {
 			Log: log,
 		})
 
-		go compactor.Run(ctx, cfg.CompactInterval)
+		compacted = make(chan struct{})
+		go func() {
+			defer close(compacted)
+			compactor.Run(ctx, cfg.CompactInterval)
+		}()
 
 		log.Info("storing logs as parquet",
 			"data", cfg.DataDir,
@@ -130,6 +136,22 @@ func run() error {
 	}
 
 	defer store.Close()
+
+	/*!
+	 * The compactor stops before the store and the engine close, not after.
+	 *
+	 * It merges through the catalog and the storage backend, and nothing
+	 * waited for a pass in progress before store.Close() took both away
+	 * from under it. Deferred after store.Close() so that it runs first; it
+	 * cancels the context itself, because an early return — a port already
+	 * in use — gets here with the signal context still live.
+	 */
+	if nil != compacted {
+		defer func() {
+			stop()
+			<-compacted
+		}()
+	}
 
 	udp, err := ingest.ListenUDP(cfg.UDPHost, cfg.UDPPort, store, log)
 	if nil != err {
@@ -201,13 +223,28 @@ func run() error {
 		return fmt.Errorf("binding HTTP: %w", err)
 	}
 
+	/*!
+	 * Requests run on a context of their own, cancelled only once the grace
+	 * period is over.
+	 *
+	 * They used to run on the signal context, so SIGTERM cancelled every
+	 * in-flight search at the same instant Shutdown began waiting for them to
+	 * finish: nothing ever drained, it was all cut off. Tails are the
+	 * exception that should end at once — they never finish by themselves —
+	 * and the API is told to end them through RegisterOnShutdown.
+	 */
+	requests, cancelRequests := context.WithCancel(context.Background())
+	defer cancelRequests()
+
 	http1 := &http.Server{
 		Handler: server.Handler(),
 		// No write timeout: a tail connection is meant to stay open for hours.
-		// The heartbeat in the SSE handler is what detects a dead peer.
+		// The SSE handler bounds each write instead, and its heartbeat is
+		// what notices a dead peer.
 		ReadHeaderTimeout: 10 * time.Second,
-		BaseContext:       func(net.Listener) context.Context { return ctx },
+		BaseContext:       func(net.Listener) context.Context { return requests },
 	}
+	http1.RegisterOnShutdown(server.Drain)
 
 	errs := make(chan error, 2)
 
@@ -267,5 +304,16 @@ func run() error {
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	return http1.Shutdown(shutdown)
+	err = http1.Shutdown(shutdown)
+	cancelRequests()
+
+	// Out of grace is not a failure of the server: whatever was still running
+	// is cut off, as the signal asked, and the exit is still a clean one.
+	if errors.Is(err, context.DeadlineExceeded) {
+		log.Warn("requests still running after the grace period were cut off")
+		http1.Close()
+		return nil
+	}
+
+	return err
 }

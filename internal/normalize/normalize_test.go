@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/kilianc/rtail/v2/internal/model"
 )
@@ -139,6 +140,78 @@ func TestImplausibleTimestampsAreIgnored(t *testing.T) {
 		rec := FromPayload("api", "", 0, client, json.RawMessage(payload))
 		if !rec.Ts.Equal(client) {
 			t.Errorf("%s → ts %s, want the client timestamp %s", payload, rec.Ts, client)
+		}
+	}
+}
+
+// The client's own timestamp gets the same plausibility window as one found
+// in the payload: seconds sent where milliseconds belong must not land the
+// record in 1970.
+func TestImplausibleClientTimestampsAreIgnored(t *testing.T) {
+	before := time.Now()
+
+	for _, client := range []time.Time{time.UnixMilli(1786724529).UTC(), time.Now().AddDate(5, 0, 0)} {
+		rec := FromPayload("api", "", 0, client, json.RawMessage(`"hello"`))
+		if rec.Ts.Before(before) || rec.Ts.After(time.Now()) {
+			t.Errorf("client ts %s → ts %s, want the receive time", client, rec.Ts)
+		}
+	}
+}
+
+/*!
+ * Invalid UTF-8 never reaches storage.
+ *
+ * One Latin-1 byte stored as-is makes DuckDB refuse the whole Parquet file it
+ * lands in, so every way a line can carry one is pinned: a plain text line, a
+ * JSON line with a raw high byte inside a string — which json.Valid accepts —
+ * and the stream and host a receiver passes in.
+ */
+func TestFromLineReplacesInvalidUTF8(t *testing.T) {
+	latin1 := "caf\xe9"
+
+	cases := [][]byte{
+		[]byte("plain " + latin1 + " line"),
+		[]byte(`{"msg":"` + latin1 + `","user":"` + latin1 + `","req":{"path":"/` + latin1 + `"}}`),
+		[]byte(`{"` + latin1 + `":1}`),
+	}
+
+	for _, raw := range cases {
+		rec := FromLine("api"+latin1, "host"+latin1, 0, raw)
+		assertValidUTF8(t, string(raw), rec)
+	}
+
+	rec := FromLine("api", "", 0, cases[1])
+	if "caf\uFFFD" != rec.Msg {
+		t.Errorf("msg = %q, want the bad byte replaced", rec.Msg)
+	}
+	if !json.Valid(rec.JSON) {
+		t.Errorf("json = %q, no longer valid JSON", rec.JSON)
+	}
+	if "{\"path\":\"/caf\uFFFD\"}" != rec.Fields["req"].Str {
+		t.Errorf("req = %q, want the nested object's bad byte replaced", rec.Fields["req"].Str)
+	}
+}
+
+func TestFromPayloadReplacesInvalidUTF8(t *testing.T) {
+	rec := FromPayload("api", "", 0, time.Time{}, json.RawMessage("{\"msg\":\"caf\xe9\",\"tags\":[\"\xff\"]}"))
+	assertValidUTF8(t, "object payload", rec)
+}
+
+func assertValidUTF8(t *testing.T, input string, rec *model.Record) {
+	t.Helper()
+
+	for name, text := range map[string]string{
+		"stream": rec.Stream, "host": rec.Host, "level": rec.Level,
+		"msg": rec.Msg, "raw": rec.Raw, "json": string(rec.JSON),
+	} {
+		if !utf8.ValidString(text) {
+			t.Errorf("%q: %s = %q is not valid UTF-8", input, name, text)
+		}
+	}
+
+	for key, value := range rec.Fields {
+		if !utf8.ValidString(key) || !utf8.ValidString(value.Str) {
+			t.Errorf("%q: field %q = %q is not valid UTF-8", input, key, value.Str)
 		}
 	}
 }

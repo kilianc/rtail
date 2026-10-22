@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/kilianc/rtail/v2/internal/auth"
@@ -51,6 +52,11 @@ type Options struct {
 	// intermediaries from treating an idle stream as a dead one.
 	Heartbeat time.Duration
 
+	// StallTimeout is how long one write to a tail connection may block
+	// before the client is taken to have stopped reading. Per write, not per
+	// connection: a healthy tail stays open for hours.
+	StallTimeout time.Duration
+
 	// Guard authenticates every route except /healthz. A nil Guard, or one
 	// built with no token, leaves the server open — which is the default and
 	// is refused off loopback by config.Validate rather than here.
@@ -60,10 +66,19 @@ type Options struct {
 // Server routes the API and the webapp.
 type Server struct {
 	opts Options
+
+	// draining closes when the HTTP server starts shutting down; see Drain.
+	draining chan struct{}
+	drain    sync.Once
 }
 
 // DefaultHeartbeat is comfortably under the 60s idle timeout most proxies use.
 const DefaultHeartbeat = 20 * time.Second
+
+// DefaultStallTimeout is long enough for a slow network and short enough that
+// a peer that went away without closing is noticed well inside a heartbeat or
+// two, rather than never.
+const DefaultStallTimeout = 15 * time.Second
 
 // New builds a server.
 func New(opts Options) *Server {
@@ -73,8 +88,25 @@ func New(opts Options) *Server {
 	if 0 == opts.Heartbeat {
 		opts.Heartbeat = DefaultHeartbeat
 	}
+	if 0 == opts.StallTimeout {
+		opts.StallTimeout = DefaultStallTimeout
+	}
 
-	return &Server{opts: opts}
+	return &Server{opts: opts, draining: make(chan struct{})}
+}
+
+/*!
+ * Drain ends every open tail, for http.Server.RegisterOnShutdown.
+ *
+ * Shutdown waits for in-flight requests to finish, and a tail never does on
+ * its own — it is meant to stay open for hours. Without this a graceful stop
+ * waited out its whole grace period on every connected browser, while
+ * searches that could have finished in it were the ones being held up.
+ * EventSource reconnects by itself, so ending the stream costs the client
+ * nothing it would not have lost anyway.
+ */
+func (s *Server) Drain() {
+	s.drain.Do(func() { close(s.draining) })
 }
 
 // Handler returns the routed handler.

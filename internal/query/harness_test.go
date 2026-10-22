@@ -28,13 +28,20 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
+	return openHarness(t, true)
+}
+
+// openHarness is newHarness with the choice of keeping raw, for the tests
+// about records whose raw is gone.
+func openHarness(t *testing.T, keepRaw bool) *harness {
+	t.Helper()
 
 	ctx := context.Background()
 	dir := t.TempDir()
 
 	store, err := logstore.OpenDurable(ctx, dir, logstore.DurableOptions{
 		Backlog:       1000,
-		KeepRaw:       true,
+		KeepRaw:       keepRaw,
 		FlushInterval: time.Hour,
 		SyncInterval:  -1,
 		Grace:         time.Hour,

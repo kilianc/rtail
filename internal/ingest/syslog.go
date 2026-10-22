@@ -28,6 +28,7 @@ import (
 
 	"github.com/kilianc/rtail/v2/internal/logstore"
 	"github.com/kilianc/rtail/v2/internal/model"
+	"github.com/kilianc/rtail/v2/internal/normalize"
 )
 
 /*!
@@ -66,10 +67,33 @@ type Syslog struct {
 	udp   *net.UDPConn
 	tcp   net.Listener
 	stats SyslogStats
+	// idle is idleTimeout, held here so a test can shorten it.
+	idle time.Duration
 }
 
 // DefaultSyslogStream names messages that carry no app-name.
 const DefaultSyslogStream = "syslog"
+
+const (
+	/*!
+	 * idleTimeout is how long a TCP connection may wait for its next message.
+	 *
+	 * TCP keepalive already finds a peer that has vanished; this is for one
+	 * that is still there and sends nothing, which otherwise holds a
+	 * goroutine and a 64KB buffer for as long as it likes — a few thousand of
+	 * them is a denial of service. Five minutes outlasts the gap between
+	 * messages of anything that is actually logging. A sender quiet for
+	 * longer is disconnected and reconnects with its next message, as rsyslog
+	 * and syslog-ng both do — at the cost, on plain TCP, of the one message
+	 * that discovers the connection is gone.
+	 */
+	idleTimeout = 5 * time.Minute
+
+	// maxOctetDigits bounds an octet count. maxLine has seven digits; ten
+	// leaves room for leading zeros without letting a peer that sends digits
+	// forever grow the header without limit.
+	maxOctetDigits = 10
+)
 
 /*!
  * ListenSyslog binds both transports on the same port.
@@ -104,7 +128,7 @@ func ListenSyslog(host string, port int, opts SyslogOptions) (*Syslog, error) {
 		return nil, fmt.Errorf("binding syslog TCP: %w", err)
 	}
 
-	return &Syslog{opts: opts, udp: udp, tcp: tcp}, nil
+	return &Syslog{opts: opts, udp: udp, tcp: tcp, idle: idleTimeout}, nil
 }
 
 // Addr reports the bound UDP address, which is how tests find an ephemeral port.
@@ -171,22 +195,35 @@ func (s *Syslog) serveTCP(ctx context.Context) error {
  * serveConn reads one TCP connection.
  *
  * RFC6587 allows two framings on a stream and gives no way to negotiate which,
- * so the first byte decides: a digit means octet counting ("123 <13>1 ..."),
- * anything else means newline-delimited. Guessing per message rather than per
- * connection would be worse — a message body starting with a digit is common.
+ * so the first byte of each message decides: a digit means octet counting
+ * ("123 <13>1 ..."), anything else means newline-delimited. Deciding per
+ * message is safe because a syslog message always opens with its "<"
+ * priority — the bodies that start with a digit, which are common, start
+ * after it, never at a frame boundary — and it costs nothing to accept a
+ * sender that mixes the two.
+ *
+ * Every read is bounded: a line at maxLine, an octet count at
+ * maxOctetDigits, and the wait for the next message at idleTimeout, so a
+ * peer can hold neither unbounded memory nor a connection it has stopped
+ * using.
  */
 func (s *Syslog) serveConn(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
 
-	go func() {
-		<-ctx.Done()
-		conn.Close()
-	}()
+	// Closing on shutdown is what unblocks a pending read. AfterFunc rather
+	// than a goroutine waiting on ctx.Done(), which would never return for a
+	// connection that simply ended, and leak one goroutine per connection.
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	defer stop()
 
 	host, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 	reader := bufio.NewReaderSize(conn, 64<<10)
 
+	var line []byte
+
 	for {
+		conn.SetReadDeadline(time.Now().Add(s.idle))
+
 		first, err := reader.Peek(1)
 		if nil != err {
 			return
@@ -199,7 +236,11 @@ func (s *Syslog) serveConn(ctx context.Context, conn net.Conn) {
 			continue
 		}
 
-		line, err := reader.ReadBytes('\n')
+		var cut bool
+		line, cut, err = readLine(reader, line[:0])
+		if cut {
+			s.opts.Log.Debug("truncating an over-long syslog line", "from", host, "limit", maxLine)
+		}
 		if 0 != len(line) {
 			s.stats.Bytes.Add(uint64(len(line)))
 			s.handle(ctx, line, host)
@@ -212,15 +253,31 @@ func (s *Syslog) serveConn(ctx context.Context, conn net.Conn) {
 
 // readCounted reads one octet-counted frame: "<length> <message>".
 func (s *Syslog) readCounted(ctx context.Context, reader *bufio.Reader, host string) error {
-	header, err := reader.ReadString(' ')
-	if nil != err {
-		return err
+	// int64, so that ten digits cannot wrap around on a 32-bit int and come
+	// out as a small, plausible length.
+	var length int64
+
+	for digits := 0; ; digits++ {
+		char, err := reader.ReadByte()
+		if nil != err {
+			return err
+		}
+
+		if ' ' == char && 0 != digits {
+			break
+		}
+
+		if char < '0' || char > '9' || maxOctetDigits == digits {
+			s.stats.Invalid.Add(1)
+			return fmt.Errorf("bad octet count: %q after %d digit(s)", char, digits)
+		}
+
+		length = 10*length + int64(char-'0')
 	}
 
-	length, err := strconv.Atoi(strings.TrimSpace(header))
-	if nil != err || length <= 0 || length > maxLine {
+	if length <= 0 || length > maxLine {
 		s.stats.Invalid.Add(1)
-		return fmt.Errorf("bad octet count %q", strings.TrimSpace(header))
+		return fmt.Errorf("bad octet count %d", length)
 	}
 
 	message := make([]byte, length)
@@ -300,6 +357,8 @@ func parseSyslog(raw []byte, host, defaultStream string) *model.Record {
 		rec.Msg = text
 	}
 
+	normalize.Sanitize(rec)
+
 	return rec
 }
 
@@ -347,7 +406,9 @@ func parse5424(rec *model.Record, rest string) {
 		return
 	}
 
-	if ts, err := time.Parse(time.RFC3339Nano, fields[0]); nil == err {
+	// A device whose clock was never set sends 1970; it is filed by when it
+	// arrived instead, as FromLine files any other implausible stamp.
+	if ts, err := time.Parse(time.RFC3339Nano, fields[0]); nil == err && normalize.Plausible(ts) {
 		rec.Ts = ts.UTC()
 	}
 
@@ -433,7 +494,10 @@ func parseElement(rec *model.Record, element string) {
 			continue
 		}
 
-		value = strings.Trim(value, `"`)
+		// Exactly one quote off each end, then unescape. strings.Trim would
+		// also take an escaped quote that ends the value, turning
+		// "say \"hi\"" into say "hi\ .
+		value = strings.TrimSuffix(strings.TrimPrefix(value, `"`), `"`)
 		value = strings.NewReplacer(`\"`, `"`, `\\`, `\`, `\]`, `]`).Replace(value)
 
 		// Namespaced by the element id, because two elements may use the same
@@ -484,12 +548,24 @@ func splitParams(params string) []string {
  * Loosely, because it was never really specified — implementations disagree
  * about nearly every field. Anything that does not fit is left as the message,
  * which is the only part that always exists.
+ *
+ * The one disagreement worth handling is the stamp: rsyslog's forwarding
+ * template, and much else that has heard of time zones, writes RFC3339 where
+ * the BSD stamp would go. Not recognising it reads the stamp as the hostname
+ * and the hostname as part of the tag.
  */
 func parse3164(rec *model.Record, rest string) {
 	rest = strings.TrimLeft(rest, " ")
 
-	// "Jan  2 15:04:05" is fifteen characters, with a space-padded day.
-	if len(rest) > 15 {
+	stamp, remainder, _ := strings.Cut(rest, " ")
+
+	if ts, err := time.Parse(time.RFC3339Nano, stamp); nil == err {
+		if normalize.Plausible(ts) {
+			rec.Ts = ts.UTC()
+		}
+		rest = strings.TrimLeft(remainder, " ")
+	} else if len(rest) > 15 {
+		// "Jan  2 15:04:05" is fifteen characters, with a space-padded day.
 		if ts, err := time.Parse(time.Stamp, rest[:15]); nil == err {
 			rec.Ts = resolve3164(ts, time.Now())
 			rest = strings.TrimLeft(rest[15:], " ")

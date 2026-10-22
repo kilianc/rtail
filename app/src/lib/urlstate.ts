@@ -55,8 +55,10 @@ export function read(): ViewState {
   // every link in the old README still land somewhere sensible.
   const legacy = /^streams\/(.+)$/.exec(hash)
   if (legacy) {
-    return { ...DEFAULT_STATE, stream: decodeURIComponent(legacy[1]) }
+    return { ...DEFAULT_STATE, stream: decode(legacy[1]) }
   }
+
+  const lang = 'sql' === params.get('lang') ? 'sql' : 'rql'
 
   return {
     stream: params.get('stream') || null,
@@ -65,12 +67,30 @@ export function read(): ViewState {
       from: params.get('from') || DEFAULT_RANGE.from,
       to: params.get('to') ?? ''
     },
-    live: 'false' !== params.get('live'),
+    // SQL forces history, the same as switching to it does: the tail compiles
+    // rQL and nothing else, so `lang=sql` is a search whatever the link says
+    // about streaming — and saying nothing about it reads as live.
+    live: 'sql' !== lang && 'false' !== params.get('live'),
     // Comma-separated, because a field name cannot contain one and the URL
     // stays readable — `cols=service,latency_ms` says what it is at a glance.
     columns: (params.get('cols') ?? '').split(',').map((name) => name.trim()).filter(Boolean),
-    lang: 'sql' === params.get('lang') ? 'sql' : 'rql',
+    lang,
     timeline: '0' !== params.get('chart')
+  }
+}
+
+/*!
+ * A legacy stream name, decoded if it can be.
+ *
+ * `read` runs inside a useState initializer, so a stray `%` in a hand-typed
+ * `#/streams/…` threw during the first render and left a blank page. A name
+ * that does not decode is used as written instead.
+ */
+function decode(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
   }
 }
 

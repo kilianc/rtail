@@ -18,7 +18,11 @@
 package wal
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"math"
+	"strconv"
 	"time"
 
 	"github.com/kilianc/rtail/v2/internal/model"
@@ -48,6 +52,40 @@ type walValue struct {
 	Int   int64   `json:"i,omitempty"`
 	Float float64 `json:"d,omitempty"`
 	Str   string  `json:"s,omitempty"`
+
+	/*!
+	 * NonFinite carries a float JSON has no spelling for — NaN, +Inf, -Inf —
+	 * as text, with Float left at zero.
+	 *
+	 * encoding/json refuses to marshal those at all, and a refusal here is an
+	 * Append that fails, which is a record dropped at the door. OTLP carries
+	 * IEEE doubles, so they do arrive. The field is optional, so segments
+	 * written before it existed decode exactly as they always did.
+	 */
+	NonFinite string `json:"n,omitempty"`
+}
+
+/*!
+ * marshal encodes a record as a frame payload.
+ *
+ * Through an Encoder rather than json.Marshal for one reason: Marshal escapes
+ * <, > and & for safe embedding in HTML, and applies that to a RawMessage by
+ * rewriting its bytes — so a payload of `{"q":"a<b"}` came back from replay as
+ * `{"q":"a\u003cb"}`, a different record from the one that was appended.
+ * Decoders read either spelling, so segments written both ways replay alike.
+ */
+func marshal(rec *model.Record) ([]byte, error) {
+	var buffer bytes.Buffer
+
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+
+	if err := encoder.Encode(encode(rec)); nil != err {
+		return nil, err
+	}
+
+	// Encode terminates every value with a newline the frame does not need.
+	return bytes.TrimSuffix(buffer.Bytes(), []byte("\n")), nil
 }
 
 func encode(rec *model.Record) *walRecord {
@@ -71,19 +109,25 @@ func encode(rec *model.Record) *walRecord {
 
 	out.Fields = make(map[string]walValue, len(rec.Fields))
 	for key, value := range rec.Fields {
-		out.Fields[key] = walValue{
+		encoded := walValue{
 			Kind:  uint8(value.Kind),
 			Bool:  value.Bool,
 			Int:   value.Int,
 			Float: value.Float,
 			Str:   value.Str,
 		}
+
+		if math.IsNaN(value.Float) || math.IsInf(value.Float, 0) {
+			encoded.Float, encoded.NonFinite = 0, strconv.FormatFloat(value.Float, 'g', -1, 64)
+		}
+
+		out.Fields[key] = encoded
 	}
 
 	return out
 }
 
-func (w *walRecord) decode() *model.Record {
+func (w *walRecord) decode() (*model.Record, error) {
 	rec := &model.Record{
 		Ts:       time.UnixMicro(w.Ts).UTC(),
 		IngestTs: time.UnixMicro(w.IngestTs).UTC(),
@@ -99,19 +143,29 @@ func (w *walRecord) decode() *model.Record {
 	}
 
 	if 0 == len(w.Fields) {
-		return rec
+		return rec, nil
 	}
 
 	rec.Fields = make(map[string]model.Value, len(w.Fields))
 	for key, value := range w.Fields {
-		rec.Fields[key] = model.Value{
+		decoded := model.Value{
 			Kind:  model.Kind(value.Kind),
 			Bool:  value.Bool,
 			Int:   value.Int,
 			Float: value.Float,
 			Str:   value.Str,
 		}
+
+		if "" != value.NonFinite {
+			float, err := strconv.ParseFloat(value.NonFinite, 64)
+			if nil != err {
+				return nil, fmt.Errorf("field %q: %w", key, err)
+			}
+			decoded.Float = float
+		}
+
+		rec.Fields[key] = decoded
 	}
 
-	return rec
+	return rec, nil
 }

@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kilianc/rtail/v2/internal/catalog"
 	"github.com/kilianc/rtail/v2/internal/query"
+	"github.com/kilianc/rtail/v2/internal/rql"
 )
 
 func TestSearchReturnsNewestFirst(t *testing.T) {
@@ -641,5 +644,280 @@ func TestSQLFilterAppliesToHistogramAndFields(t *testing.T) {
 	}
 	if 1 != len(values) || "api" != values[0].Value || 2 != values[0].Count {
 		t.Errorf("field values = %+v, want api x2", values)
+	}
+}
+
+/*!
+ * A file without a key's column counts as missing it whichever order the
+ * files arrive in.
+ *
+ * The planner hands them over oldest first, and counting only the files seen
+ * after the key's first appearance left an older file that kept the key in
+ * raw out of the count — so the key resolved to the bare column, which reads
+ * NULL there, and that file's records stopped matching.
+ */
+func TestResolverCountsFilesBeforeTheKeyAppeared(t *testing.T) {
+	files := []catalog.File{{ID: 1, HasRaw: true}, {ID: 2, HasRaw: true}}
+	columns := map[int64][]catalog.Column{
+		2: {{Name: "a_foo", SourceKey: "foo", Kind: "string"}},
+	}
+
+	for _, order := range [][]catalog.File{files, {files[1], files[0]}} {
+		expr, _, ok := query.NewResolver(order, columns).Resolve("foo")
+		if !ok || !strings.HasPrefix(expr, "coalesce(a_foo, ") {
+			t.Errorf("files %d,%d: foo resolved to %q, want a coalesce with raw", order[0].ID, order[1].ID, expr)
+		}
+	}
+}
+
+// A limit over the cap gets the cap, not the default page — which it used to
+// be, so asking for more than allowed got fewer than asking for nothing.
+func TestLimitAboveTheCapGetsTheCap(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+
+	payloads := make([]string, query.DefaultLimit+60)
+	for i := range payloads {
+		payloads[i] = fmt.Sprintf(`{"msg":"line %d"}`, i)
+	}
+	h.ingest(t, "s", payloads)
+
+	maxRows := query.DefaultLimit + 50
+
+	capped, err := query.Open(h.store.Catalog(), h.store.Backend(), query.Limits{MaxRows: maxRows})
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer capped.Close()
+
+	req := request("")
+	req.Limit = 1000
+
+	result, err := capped.Search(ctx, req)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if maxRows != len(result.Records) || nil == result.Next {
+		t.Errorf("records = %d, next = %v; want the cap of %d and a cursor", len(result.Records), result.Next, maxRows)
+	}
+
+	req.Limit = 0
+	if result, err := capped.Search(ctx, req); nil != err || query.DefaultLimit != len(result.Records) {
+		t.Errorf("no limit gave %d records (%v), want the default %d", len(result.Records), err, query.DefaultLimit)
+	}
+}
+
+/*!
+ * A later page reads the window the first one resolved.
+ *
+ * The time picker sends `-6h`, which the server resolves anew on every
+ * request. Re-resolved per page, the window's start moved while the cursor
+ * walked back, and the records in between were skipped.
+ */
+func TestTheCursorPinsTheWindow(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+	h.ingest(t, "s", []string{`{"msg":"a"}`, `{"msg":"b"}`, `{"msg":"c"}`, `{"msg":"d"}`})
+
+	req := request("")
+	req.Limit = 2
+
+	first, err := h.engine.Search(ctx, req)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if nil == first.Next {
+		t.Fatal("no cursor after the first page")
+	}
+
+	// Round-trip it as the API does, then ask with a window that has since
+	// moved past every record.
+	cursor, err := query.ParseCursor(first.Next.String())
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	req.Cursor = cursor
+	req.From = time.Now().Add(2 * time.Hour)
+	req.To = time.Now().Add(3 * time.Hour)
+
+	second, err := h.engine.Search(ctx, req)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 2 != len(second.Records) {
+		t.Errorf("second page = %d records, want the 2 the first page's window still holds", len(second.Records))
+	}
+	if !second.Scanned.From.Equal(first.Scanned.From.Truncate(time.Microsecond)) {
+		t.Errorf("second page read from %s, want the first page's %s", second.Scanned.From, first.Scanned.From)
+	}
+}
+
+// Cursors written before they carried a window still parse.
+func TestCursorWindowRoundTrip(t *testing.T) {
+	original := &query.Cursor{
+		Ts:   time.UnixMicro(1786633045123456).UTC(),
+		Seq:  4471,
+		From: time.UnixMicro(1786600000000000).UTC(),
+		To:   time.UnixMicro(1786640000000000).UTC(),
+	}
+
+	parsed, err := query.ParseCursor(original.String())
+	if nil != err {
+		t.Fatal(err)
+	}
+	if !parsed.From.Equal(original.From) || !parsed.To.Equal(original.To) {
+		t.Errorf("window round trip gave %+v, want %+v", parsed, original)
+	}
+
+	legacy, err := query.ParseCursor("1786633045123456:4471")
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 4471 != legacy.Seq || !legacy.From.IsZero() {
+		t.Errorf("legacy cursor = %+v", legacy)
+	}
+
+	for _, bad := range []string{"1:2:3", "1:2:x:4", "1:2:3:4:5"} {
+		if _, err := query.ParseCursor(bad); nil == err {
+			t.Errorf("ParseCursor(%q) was accepted", bad)
+		}
+	}
+}
+
+/*!
+ * An unbalanced parenthesis in a SQL filter cannot reach the clauses we add.
+ *
+ * Spliced in beside them, `TRUE) OR (TRUE` closed the filter's own
+ * parentheses and OR-ed the stream, the window and the cursor away. The
+ * filter now runs over a subquery that already applied them.
+ */
+func TestSQLFilterCannotEscapeWithAParenthesis(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+	h.ingest(t, "wanted", []string{`{"msg":"a"}`, `{"msg":"b"}`, `{"msg":"c"}`})
+	h.ingest(t, "other", []string{`{"msg":"d"}`, `{"msg":"e"}`})
+
+	req := request(`TRUE) OR (TRUE`)
+	req.Lang = query.LangSQL
+	req.Stream = "wanted"
+	req.Limit = 2
+
+	seen := map[uint64]bool{}
+
+	for pages := 0; ; pages++ {
+		if pages > 5 {
+			t.Fatal("pagination did not terminate: the cursor is not applying")
+		}
+
+		result, err := h.engine.Search(ctx, req)
+		if nil != err {
+			t.Fatal(err)
+		}
+
+		for _, rec := range result.Records {
+			if "wanted" != rec.Stream {
+				t.Fatalf("a record from %q leaked past the stream filter", rec.Stream)
+			}
+			if seen[rec.Seq] {
+				t.Fatalf("seq %d came back on a later page", rec.Seq)
+			}
+			seen[rec.Seq] = true
+		}
+
+		if nil == result.Next {
+			break
+		}
+		req.Cursor = result.Next
+	}
+
+	if 3 != len(seen) {
+		t.Errorf("saw %d records, want the 3 on the selected stream", len(seen))
+	}
+}
+
+/*!
+ * The caller's SQL being wrong is the caller's problem, reported as such, and
+ * without the statement we wrapped around it.
+ *
+ * A fresh store has no promoted columns at all, so `a_service` does not
+ * exist: that is a binder error in the user's SQL, not a server fault.
+ */
+func TestUserSQLErrorsAreTheirFault(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+
+	_, _, _, err := h.engine.SQL(ctx, `SELECT a_service FROM logs`, request(""))
+
+	var failure *query.Failure
+	if !errors.As(err, &failure) {
+		t.Fatalf("err = %v (%T), want a *query.Failure", err, err)
+	}
+	if !failure.UserFault() {
+		t.Errorf("a binder error in the caller's SQL is not their fault: %v", err)
+	}
+	if public := failure.Public(); !strings.Contains(public, "a_service") ||
+		strings.Contains(public, "WITH logs") || strings.Contains(public, "LINE ") {
+		t.Errorf("public message = %q, want DuckDB's message without our statement", public)
+	}
+
+	req := request(`nope = 1`)
+	req.Lang = query.LangSQL
+	if _, err := h.engine.Search(ctx, req); !errors.As(err, &failure) || !failure.UserFault() {
+		t.Errorf("a lang=sql filter naming a missing column: %v, want a user fault", err)
+	}
+
+	// A mutation is refused before it reaches DuckDB, with a position.
+	_, _, _, err = h.engine.SQL(ctx, `SELECT 1; DROP TABLE logs`, request(""))
+	var parseErr *rql.Error
+	if !errors.As(err, &parseErr) || parseErr.Position < 0 {
+		t.Errorf("err = %v (%T), want an *rql.Error", err, err)
+	}
+}
+
+// The data directory never appears in what a client is shown.
+func TestFailuresDoNotNameTheDataDirectory(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+	h.ingest(t, "s", []string{`{"msg":"a"}`})
+
+	// The catalog still lists the file; DuckDB will fail to open it.
+	removeParquet(t, h.dir)
+
+	_, err := h.engine.Search(ctx, request(""))
+
+	var failure *query.Failure
+	if !errors.As(err, &failure) {
+		t.Fatalf("err = %v (%T), want a *query.Failure", err, err)
+	}
+	if failure.UserFault() {
+		t.Error("an unreadable file is not the caller's fault")
+	}
+	if strings.Contains(failure.Public(), h.dir) {
+		t.Errorf("public message names the data directory: %q", failure.Public())
+	}
+	if !strings.Contains(failure.Error(), "read_parquet") {
+		t.Error("the operator's copy should still carry the statement")
+	}
+}
+
+func removeParquet(t *testing.T, dir string) {
+	t.Helper()
+
+	removed := 0
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if nil == err && strings.HasSuffix(path, ".parquet") {
+			removed++
+			return os.Remove(path)
+		}
+		return err
+	})
+	if nil != err || 0 == removed {
+		t.Fatalf("removing parquet files under %s: %v (%d removed)", dir, err, removed)
 	}
 }

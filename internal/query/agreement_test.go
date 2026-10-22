@@ -44,6 +44,16 @@ var corpus = []string{
 	// Values that stress the escaping.
 	`{"level":"info","msg":"100% done","service":"api","note":"a_b"}`,
 	`{"level":"info","msg":"has \"quotes\"","service":"api"}`,
+	// Levels that share a rank, or have none anyone has heard of.
+	`{"level":"emergency","msg":"disk on fire","service":"worker"}`,
+	`{"level":"audit","msg":"login","service":"api"}`,
+	`{"level":"custom","msg":"bespoke","service":"api"}`,
+	// A key that is 12 here and "12.0" there, and a string that reads as NaN.
+	`{"level":"info","msg":"twelve","service":"api","ref":12}`,
+	`{"level":"info","msg":"twelve point oh","service":"api","ref":"12.0"}`,
+	`{"level":"info","msg":"not a number","service":"api","name":"nan"}`,
+	// Scalars nested in an object, which SQL reads back as text.
+	`{"level":"info","msg":"nested","service":"api","req":{"path":"/v1/x","status":200,"ok":true}}`,
 }
 
 // queries covering each operator, boolean form, and the awkward cases.
@@ -89,6 +99,65 @@ var queries = []string{
 	`nonexistent=1`,
 	`nonexistent=*`,
 	`-nonexistent=1`,
+
+	// A record with no level has no rank, so it answers no ordering, and its
+	// negation keeps it.
+	`level>=DEBUG`,
+	`-level>=DEBUG`,
+	`level<WARN`,
+	`-level<WARN`,
+	// Aliases are what ingest stored, and equality compares names.
+	`level=warning`,
+	`level=Error`,
+	`level>=warning`,
+	`level=AUDIT`,
+	`-level=AUDIT`,
+	`level=FATAL`,
+	`level=EMERGENCY`,
+	`level>=FATAL`,
+	`level=nonsense`,
+
+	// The rest of the envelope.
+	`ts>2020-01-01`,
+	`ts<2020-01-01`,
+	`time>=2020-01-01T00:00:00Z`,
+	`ingest_ts>2020-01-01T00:00:00+02:00`,
+	`-ts>2020-01-01`,
+	`ts=*`,
+	`ts:20`,
+	`is_json=true`,
+	`is_json=false`,
+
+	// Quoting means the string, which a typed column does not hold.
+	`user_id="12"`,
+	`ok="true"`,
+	`latency_ms="3.5"`,
+	`service="api"`,
+	// Booleans order false before true.
+	`ok<true`,
+	`ok>false`,
+	`ok<=false`,
+	// A bare number is a number, however the value was written.
+	`ref=12`,
+	`ref>11`,
+	`ref="12.0"`,
+	// Not `ref="12"`: ref went polymorphic, so storage holds the numeric 12 as
+	// the text "12" and SQL matches it, while the live record is still a
+	// number and does not. That is the gap predicate.go states.
+	// nan is a word.
+	`name=nan`,
+	`name>5`,
+	// Nested scalars are text to SQL, so they are text to the predicate.
+	`req.status=200`,
+	`req.status="200"`,
+	`req.status>100`,
+	`req.ok=true`,
+	`req.path="/v1/x"`,
+
+	// Negating a phrase and a group.
+	`-"plain line"`,
+	`-(service=api OR service=worker)`,
+	`plain not line`,
 }
 
 func TestSQLAndPredicateAgree(t *testing.T) {
@@ -134,6 +203,58 @@ func TestSQLAndPredicateAgree(t *testing.T) {
 					query, wantSeq, gotSeq, explain(t, records, wantSeq, gotSeq))
 			}
 		})
+	}
+}
+
+/*!
+ * Agreeing is not the same as being right: both compilers could be wrong the
+ * same way. These pin what the queries the reviewers found disagreeing are
+ * actually supposed to return, by message.
+ */
+func TestQueriesMeanWhatTheyShould(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+	h.ingest(t, "agree", corpus)
+
+	cases := map[string][]string{
+		// No level is not a level at or above DEBUG.
+		`level>=DEBUG -level>=INFO`: {"cache warm"},
+		`-level>=DEBUG`:             {"no level here", "a plain line mentioning timeout", "another plain line"},
+		`level=warning`:             {"slow query"},
+		`level=AUDIT`:               {"login"},
+		`level=FATAL`:               {"out of memory"},
+		`level>=FATAL`:              {"out of memory", "disk on fire"},
+		`user_id="12"`:              nil,
+		`ok="true"`:                 nil,
+		`ok<true`:                   {"upstream timeout"},
+		`ref=12`:                    {"twelve", "twelve point oh"},
+		`ref="12.0"`:                {"twelve point oh"},
+		`name=nan`:                  {"not a number"},
+		`req.status="200"`:          {"nested"},
+		`-"plain line" -msg:~.`:     nil,
+		`-(service=api OR service=worker OR service=cron) -"line mentioning"`: {"another plain line"},
+	}
+
+	for query, want := range cases {
+		result, err := h.engine.Search(ctx, request(query))
+		if nil != err {
+			t.Errorf("%q: %v", query, err)
+			continue
+		}
+
+		got := map[string]bool{}
+		for _, rec := range result.Records {
+			got[rec.Msg] = true
+		}
+
+		match := len(got) == len(want)
+		for _, msg := range want {
+			match = match && got[msg]
+		}
+		if !match {
+			t.Errorf("%q matched %v, want %v", query, got, want)
+		}
 	}
 }
 

@@ -953,3 +953,252 @@ func TestEmptyCatalogIsANoop(t *testing.T) {
 		t.Errorf("result = %+v, want everything zero", result)
 	}
 }
+
+/*!
+ * Compaction reads files back and writes them out again, and a file on its
+ * own cannot say which key a mangled column came from. Reading it that way
+ * renamed "http.status" to "http_status" in every compacted file — a new key
+ * in the inventory, and zero rows for any query on the real one over a
+ * compacted range — merged the values of colliding keys, and turned strings
+ * that looked like JSON into objects.
+ */
+func TestCompactionKeepsSourceKeysAndKinds(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
+	base := hourBase()
+
+	for batch := range 6 {
+		h.flush(t, "api", base.Add(time.Duration(batch)*time.Minute), []string{
+			`{"msg":"x","http.status":200,"a.b":"dot","a-b":"dash","text":"{}"}`,
+			`{"msg":"y","http.status":500,"a.b":"dot","a-b":"dash","text":"{}"}`,
+		})
+	}
+
+	if _, err := compactor(h, compact.Options{}).RunOnce(ctx); nil != err {
+		t.Fatal(err)
+	}
+
+	files, err := h.cat.Prune(ctx, catalog.Query{Levels: []int{catalog.LevelL1}})
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 1 != len(files) {
+		t.Fatalf("L1 files = %d, want 1", len(files))
+	}
+
+	columns, err := h.cat.Columns(ctx, files[0].ID)
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	kinds := map[string]string{}
+	for _, column := range columns {
+		kinds[column.SourceKey] = column.Kind
+	}
+
+	want := map[string]string{"msg": "string", "http.status": "int", "a.b": "string", "a-b": "string", "text": "string"}
+	for key, kind := range want {
+		if kinds[key] != kind {
+			t.Errorf("compacted file maps %q to kind %q, want %q; columns %+v", key, kinds[key], kind, columns)
+		}
+	}
+	if len(want) != len(kinds) {
+		t.Errorf("compacted file has keys %v, want exactly %v", kinds, want)
+	}
+
+	keys, err := h.cat.SchemaKeys(ctx, "api")
+	if nil != err {
+		t.Fatal(err)
+	}
+	for _, key := range keys {
+		if _, ok := want[key.SourceKey]; !ok {
+			t.Errorf("compaction invented schema key %q", key.SourceKey)
+		}
+	}
+}
+
+/*!
+ * Retention used to run only inside merges, and nothing merges an L2 file —
+ * so data that reached L2 before its raw horizon kept raw forever.
+ */
+func TestDropRawReachesL2Files(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
+	base := daysAgo(3).Add(6 * time.Hour)
+
+	for batch := range 6 {
+		h.flush(t, "api", base.Add(time.Duration(batch)*time.Minute), lines("a", 4))
+	}
+
+	// Reach L2 while still inside a week-long raw horizon.
+	week := compactor(h, compact.Options{KeepRaw: true, Retention: compact.Retention{DropRawAfter: 7 * 24 * time.Hour}})
+	if _, err := week.RunOnce(ctx); nil != err {
+		t.Fatal(err)
+	}
+
+	before := h.live(t)
+	if 1 != len(before) || catalog.LevelL2 != before[0].Level || !before[0].HasRaw {
+		t.Fatalf("setup: live = %+v, want one L2 file with raw", before)
+	}
+
+	// Then the horizon catches up with it.
+	day := compactor(h, compact.Options{KeepRaw: true, Retention: compact.Retention{DropRawAfter: 24 * time.Hour}})
+	result, err := day.RunOnce(ctx)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 1 != result.Merged {
+		t.Errorf("merged = %d, want the one L2 rewrite", result.Merged)
+	}
+
+	after := h.live(t)
+	if 1 != len(after) || after[0].HasRaw || catalog.LevelL2 != after[0].Level {
+		t.Fatalf("live = %+v, want one L2 file without raw", after)
+	}
+	if after[0].Path == before[0].Path {
+		t.Errorf("the rewrite reused its input's path %s", after[0].Path)
+	}
+
+	// Every record is still there: a rewrite that replaced its own input in
+	// place would have tombstoned the only copy.
+	records := h.allRecords(t)
+	if 24 != len(records) {
+		t.Fatalf("records = %d, want 24", len(records))
+	}
+	for _, rec := range records {
+		if "" != rec.Raw {
+			t.Fatalf("raw survived the rewrite: %q", rec.Raw)
+		}
+	}
+
+	// And once is enough: the next pass has nothing to do.
+	again, err := day.RunOnce(ctx)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 0 != again.Merged {
+		t.Errorf("merged = %d on the next pass, want 0 — the rewrite did not clear its own trigger", again.Merged)
+	}
+}
+
+// The same for downsampling, which needs the file to remember the floor it
+// was filtered to — otherwise every old L2 file is rewritten on every pass.
+func TestDownsamplingReachesL2Files(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
+	base := daysAgo(3).Add(6 * time.Hour)
+
+	for batch := range 6 {
+		h.flush(t, "api", base.Add(time.Duration(batch)*time.Minute), lines("a", 8))
+	}
+
+	// Reach L2 with no downsampling configured yet.
+	if _, err := compactor(h, compact.Options{KeepRaw: true}).RunOnce(ctx); nil != err {
+		t.Fatal(err)
+	}
+	if live := h.live(t); 1 != len(live) || catalog.LevelL2 != live[0].Level {
+		t.Fatalf("setup: live = %+v, want one L2 file", live)
+	}
+
+	downsampling := compactor(h, compact.Options{KeepRaw: true, Retention: compact.Retention{
+		MinLevelAfter:   "WARN",
+		DownsampleAfter: 24 * time.Hour,
+	}})
+
+	if _, err := downsampling.RunOnce(ctx); nil != err {
+		t.Fatal(err)
+	}
+
+	records := h.allRecords(t)
+	if 12 != len(records) {
+		t.Errorf("kept %d records, want the 12 errors out of 48", len(records))
+	}
+	for _, rec := range records {
+		if "ERROR" != rec.Level {
+			t.Fatalf("a record below WARN survived: %q", rec.Level)
+		}
+	}
+
+	live := h.live(t)
+	if 1 != len(live) || "WARN" != live[0].LevelFloor {
+		t.Fatalf("live = %+v, want one L2 file promising WARN", live)
+	}
+
+	again, err := downsampling.RunOnce(ctx)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 0 != again.Merged {
+		t.Errorf("merged = %d on the next pass, want 0", again.Merged)
+	}
+}
+
+/*!
+ * One group that cannot be merged must not stop the others. The order is
+ * deterministic, so a group that failed first used to fail first on every
+ * pass, and nothing after it was ever compacted again.
+ */
+func TestOneBadGroupDoesNotWedgeTheRest(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
+
+	// "broken" sorts first by time, so it is met first.
+	for batch := range 2 {
+		h.flush(t, "broken", hoursAgo(5).Add(time.Duration(batch)*time.Minute), lines("x", 2))
+	}
+	for batch := range 2 {
+		h.flush(t, "fine", hoursAgo(4).Add(time.Duration(batch)*time.Minute), lines("y", 2))
+	}
+
+	broken, err := h.cat.Prune(ctx, catalog.Query{Stream: "broken"})
+	if nil != err {
+		t.Fatal(err)
+	}
+	if err := h.backend.Remove(ctx, broken[0].Path); nil != err {
+		t.Fatal(err)
+	}
+
+	_, err = compactor(h, compact.Options{KeepRaw: true, L1MinFiles: 2}).RunOnce(ctx)
+	if nil == err {
+		t.Error("a pass with an unreadable file reported no error")
+	}
+
+	fine, err := h.cat.Prune(ctx, catalog.Query{Stream: "fine"})
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 1 != len(fine) || catalog.LevelL1 != fine[0].Level {
+		t.Errorf("fine = %+v, want it compacted to one L1 file despite the broken group", fine)
+	}
+}
+
+// Expiry takes rows off the stream's rollup, the same as compaction retiring
+// its inputs does. It used to tombstone without adjusting it, so the stream
+// list kept counting every expired row.
+func TestRetentionShrinksTheStreamRollup(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
+
+	h.flush(t, "api", time.Now().UTC().Add(-72*time.Hour), lines("old", 3))
+	h.flush(t, "api", time.Now().UTC().Add(-time.Minute), lines("new", 2))
+
+	if _, err := compactor(h, compact.Options{
+		KeepRaw:   true,
+		Retention: compact.Retention{DeleteAfter: 24 * time.Hour},
+	}).RunOnce(ctx); nil != err {
+		t.Fatal(err)
+	}
+
+	streams, err := h.cat.Streams(ctx)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 1 != len(streams) || 2 != streams[0].RowCount {
+		t.Errorf("streams = %+v, want api with the 2 rows still stored", streams)
+	}
+}

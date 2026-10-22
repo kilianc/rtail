@@ -83,6 +83,12 @@ type Backend interface {
 	// Stat describes a single object.
 	Stat(ctx context.Context, name string) (ObjectInfo, error)
 
+	// Sweep removes uncommitted objects under a prefix that were abandoned
+	// before the cutoff — what a write killed before Commit or Abort leaves
+	// behind — and returns how many it removed. On S3 this is aborting stale
+	// multipart uploads.
+	Sweep(ctx context.Context, prefix string, before time.Time) (int, error)
+
 	// Close releases any resources held by the backend.
 	Close() error
 }

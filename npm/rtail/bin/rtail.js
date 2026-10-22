@@ -30,6 +30,7 @@
  */
 
 const { spawnSync } = require('node:child_process')
+const { constants } = require('node:os')
 
 // Go and Node spell the same architectures differently.
 const PLATFORMS = {
@@ -88,4 +89,9 @@ if (result.error) {
 
 // A child killed by a signal has a null status; 128 + signal is the shell's
 // convention for reporting that, and exiting 0 would claim it succeeded.
-process.exit(null === result.status ? 1 : result.status)
+if (null === result.status) {
+  const number = constants.signals[result.signal]
+  process.exit(number ? 128 + number : 1)
+}
+
+process.exit(result.status)

@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -536,5 +537,529 @@ func TestSubscribersSeeLinesFromTheDurableStore(t *testing.T) {
 		case <-deadline:
 			t.Fatal("no line event")
 		}
+	}
+}
+
+/*!
+ * Appends racing flushes. A record whose WAL frame landed in the segment being
+ * sealed, but whose batch insert came after the swap, went into the *next*
+ * batch — and its segment was persisted without it and removed. A crash before
+ * the following flush lost it.
+ */
+func TestAppendsRacingFlushesLoseNothing(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	store := openDurable(t, dir, quietOptions(10))
+
+	const writers, per = 8, 3000
+
+	stop := make(chan struct{})
+	flushed := make(chan struct{})
+	go func() {
+		defer close(flushed)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				if err := store.Flush(ctx); nil != err {
+					t.Error(err)
+				}
+			}
+		}
+	}()
+
+	var wg sync.WaitGroup
+	for w := range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range per {
+				if err := store.Append(ctx, rec("api", fmt.Sprintf(`{"w":%d,"i":%d}`, w, i))); nil != err {
+					t.Error(err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(stop)
+	<-flushed
+
+	// kill -9 after an fsync: everything the WAL holds is durable.
+	if err := store.SyncForTest(); nil != err {
+		t.Fatal(err)
+	}
+	store.AbandonForTest()
+
+	again := openDurable(t, dir, quietOptions(10))
+	again.Close()
+
+	recovered := readAll(t, dir, "api")
+
+	seen := rawSet(recovered)
+	if got := len(seen); writers*per != got {
+		t.Fatalf("recovered %d distinct records, want %d (lost %d)", got, writers*per, writers*per-got)
+	}
+	if len(recovered) != len(seen) {
+		t.Errorf("recovered %d records for %d distinct ones", len(recovered), len(seen))
+	}
+}
+
+/*!
+ * Flushing names a file after the first record of its batch; replay names it
+ * after the first record in the segment. Recovery is idempotent only if those
+ * are the same record — which needs the batch to hold the segment's records
+ * in the segment's order, however many writers are appending.
+ */
+func TestConcurrentAppendsKeepRecoveryIdempotent(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	store := openDurable(t, dir, quietOptions(10))
+
+	const writers, per = 8, 500
+
+	var wg sync.WaitGroup
+	for w := range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range per {
+				stream := fmt.Sprintf("s%d", i%3)
+				if err := store.Append(ctx, rec(stream, fmt.Sprintf(`{"w":%d,"i":%d}`, w, i))); nil != err {
+					t.Error(err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	// Registered, and then the process dies before the segment is retired.
+	if err := store.FlushKeepingWALForTest(ctx); nil != err {
+		t.Fatal(err)
+	}
+	store.AbandonForTest()
+
+	again := openDurable(t, dir, quietOptions(10))
+	again.Close()
+
+	total := 0
+	for stream := range 3 {
+		records := readAll(t, dir, fmt.Sprintf("s%d", stream))
+		total += len(records)
+
+		for raw, count := range rawSet(records) {
+			if 1 != count {
+				t.Errorf("record %s appeared %d times — replay named its file differently from the flush", raw, count)
+			}
+		}
+
+		// And an L0 file declares seq order, so it must be in it.
+		for i := 1; i < len(records); i++ {
+			if records[i].Seq <= records[i-1].Seq {
+				t.Fatalf("stream s%d: seq %d follows %d", stream, records[i].Seq, records[i-1].Seq)
+			}
+		}
+	}
+
+	if writers*per != total {
+		t.Errorf("recovered %d records, want %d", total, writers*per)
+	}
+}
+
+// Subscribers hear lines in seq order, which the live tail's de-duplication
+// against the backlog depends on.
+func TestDurablePublishOrderIsSeqOrder(t *testing.T) {
+	ctx := context.Background()
+
+	store := openDurable(t, t.TempDir(), quietOptions(10))
+	defer store.Close()
+
+	const writers, per = 8, 1000
+
+	sub := store.Subscribe("", writers*per+writers)
+	defer sub.Close()
+
+	var wg sync.WaitGroup
+	for w := range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range per {
+				store.Append(ctx, rec(fmt.Sprintf("s%d", w), fmt.Sprintf(`{"i":%d}`, i)))
+			}
+		}()
+	}
+	wg.Wait()
+
+	var last uint64
+	for seen := 0; seen < writers*per; {
+		event := <-sub.C
+		if logstore.EventLine != event.Kind {
+			continue
+		}
+		if event.Record.Seq <= last {
+			t.Fatalf("seq %d was published after %d", event.Record.Seq, last)
+		}
+		last = event.Record.Seq
+		seen++
+	}
+}
+
+/*!
+ * Every append between crossing the size threshold and the swap sees the
+ * batch as full. Each used to start its own flush: tens of thousands of
+ * goroutines queued on the flush lock, each writing whatever little had
+ * arrived since the last — a storm of tiny files.
+ */
+func TestSizeTriggerStartsOneFlushAtATime(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	opts := quietOptions(10)
+	opts.FlushRows = 1000
+	store := openDurable(t, dir, opts)
+
+	const total = 50_000
+	for i := range total {
+		if err := store.Append(ctx, rec("api", fmt.Sprintf(`{"i":%d}`, i))); nil != err {
+			t.Fatal(err)
+		}
+	}
+	store.Close()
+
+	cat, err := catalog.Open(filepath.Join(dir, "catalog.sqlite"))
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer cat.Close()
+
+	files, err := cat.Prune(ctx, catalog.Query{Stream: "api"})
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	// A size-triggered flush always takes a full batch; only the one Close
+	// makes can be smaller.
+	small, rows := 0, int64(0)
+	for _, file := range files {
+		rows += file.RowCount
+		if file.RowCount < int64(opts.FlushRows) {
+			small++
+		}
+	}
+
+	if small > 1 {
+		t.Errorf("%d of %d files are below the %d-row threshold, want at most the final one",
+			small, len(files), opts.FlushRows)
+	}
+	if total != rows {
+		t.Errorf("files hold %d rows, want %d", rows, total)
+	}
+}
+
+// failWrites makes a directory unwritable until the returned func runs.
+func failWrites(t *testing.T, dir string) func() {
+	t.Helper()
+
+	if err := os.Chmod(dir, 0o500); nil != err {
+		t.Fatal(err)
+	}
+
+	restored := false
+	restore := func() {
+		if !restored {
+			os.Chmod(dir, 0o755)
+			restored = true
+		}
+	}
+	t.Cleanup(restore)
+
+	return restore
+}
+
+/*!
+ * A flush whose Parquet write fails must not drop its batch. The records are
+ * then only in the sealed segment: they used to stay unqueryable until a
+ * restart replayed it, and now the next flush retries it.
+ */
+func TestFailedPersistIsRetriedWithoutARestart(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	store := openDurable(t, dir, quietOptions(10))
+	defer store.Close()
+
+	store.Append(ctx, rec("api", `{"i":0}`))
+	if err := store.Flush(ctx); nil != err {
+		t.Fatal(err)
+	}
+
+	files, err := store.Catalog().Prune(ctx, catalog.Query{Stream: "api"})
+	if nil != err || 1 != len(files) {
+		t.Fatalf("setup: files = %v, err %v", files, err)
+	}
+
+	// The day directory every file for today lands in.
+	restore := failWrites(t, filepath.Join(dir, filepath.Dir(files[0].Path)))
+
+	for i := 1; i <= 3; i++ {
+		store.Append(ctx, rec("api", fmt.Sprintf(`{"i":%d}`, i)))
+	}
+	if err := store.Flush(ctx); nil == err {
+		t.Skip("the directory stayed writable; running as root?")
+	}
+
+	restore()
+
+	store.Append(ctx, rec("api", `{"i":4}`))
+	if err := store.Flush(ctx); nil != err {
+		t.Fatalf("flush after the failure cleared: %v", err)
+	}
+
+	counts := rawSet(readAll(t, dir, "api"))
+	if 5 != len(counts) {
+		t.Errorf("queryable records = %d, want all 5 without a restart", len(counts))
+	}
+	for raw, count := range counts {
+		if 1 != count {
+			t.Errorf("record %s appeared %d times", raw, count)
+		}
+	}
+
+	// And every segment that was flushed has been retired.
+	segments, err := os.ReadDir(filepath.Join(dir, "wal"))
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 1 != len(segments) {
+		t.Errorf("wal holds %d segments, want only the active one", len(segments))
+	}
+}
+
+/*!
+ * A flush whose WAL rotation fails must not drop its batch either. It used to
+ * swap the batch out first, so a failed rotation discarded it — and the next
+ * successful flush then sealed and removed the segment those records were in.
+ */
+func TestFailedRotationKeepsTheBatch(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	store := openDurable(t, dir, quietOptions(10))
+
+	for i := range 3 {
+		store.Append(ctx, rec("api", fmt.Sprintf(`{"i":%d}`, i)))
+	}
+
+	restore := failWrites(t, filepath.Join(dir, "wal"))
+	if err := store.Flush(ctx); nil == err {
+		t.Skip("the directory stayed writable; running as root?")
+	}
+	restore()
+
+	store.Append(ctx, rec("api", `{"i":3}`))
+	if err := store.Flush(ctx); nil != err {
+		t.Fatalf("flush after the failure cleared: %v", err)
+	}
+
+	// Nothing is left to replay: the abandoned store must already have it all.
+	store.AbandonForTest()
+
+	if got := len(rawSet(readAll(t, dir, "api"))); 4 != got {
+		t.Errorf("records on disk = %d, want 4", got)
+	}
+}
+
+/*!
+ * The backlog is the most recent records by seq — what the ring held before
+ * the restart. Picking the file that sorts last by min_ts restored the wrong
+ * one whenever a flush full of late-arriving data sorted first.
+ */
+func TestBacklogIsRestoredBySeq(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	store := openDurable(t, dir, quietOptions(4))
+
+	for i := range 5 {
+		store.Append(ctx, rec("api", fmt.Sprintf(`{"i":%d}`, i)))
+	}
+	store.Flush(ctx)
+
+	// Late data: newer seq, older timestamps.
+	for i := 5; i < 10; i++ {
+		late := rec("api", fmt.Sprintf(`{"i":%d}`, i))
+		late.Ts = time.Now().UTC().Add(-72 * time.Hour)
+		store.Append(ctx, late)
+	}
+	store.Flush(ctx)
+	store.Close()
+
+	reopened := openDurable(t, dir, quietOptions(4))
+	defer reopened.Close()
+
+	backlog, err := reopened.Backlog(ctx, "api", 0)
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	var seqs []uint64
+	for _, r := range backlog {
+		seqs = append(seqs, r.Seq)
+	}
+	if "[7 8 9 10]" != fmt.Sprint(seqs) {
+		t.Errorf("restored seqs %v, want the four newest, [7 8 9 10]", seqs)
+	}
+}
+
+// A restored backlog speaks in source keys, as the live one did.
+func TestBacklogRestoreKeepsSourceKeys(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	store := openDurable(t, dir, quietOptions(10))
+	store.Append(ctx, rec("api", `{"http.status":503,"text":"{}"}`))
+	store.Flush(ctx)
+	store.Close()
+
+	reopened := openDurable(t, dir, quietOptions(10))
+	defer reopened.Close()
+
+	backlog, err := reopened.Backlog(ctx, "api", 0)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 1 != len(backlog) {
+		t.Fatalf("backlog = %d records, want 1", len(backlog))
+	}
+
+	fields := backlog[0].Fields
+	if status := fields["http.status"]; model.KindInt != status.Kind || 503 != status.Int {
+		t.Errorf("http.status = %+v; fields %v", status, fields)
+	}
+	if text := fields["text"]; model.KindString != text.Kind || "{}" != text.Str {
+		t.Errorf("text = %+v, want the string {}", text)
+	}
+}
+
+/*!
+ * GC collects objects the catalog never registered and temp files from writes
+ * that never finished — and nothing else: not registered files, not anything
+ * younger than the orphan grace, and not anything older than the catalog,
+ * which is somebody's data from a catalog that was lost.
+ */
+func TestCollectSweepsOrphansButNotData(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	store := openDurable(t, dir, quietOptions(10))
+	defer store.Close()
+
+	store.Append(ctx, rec("api", `{"i":0}`))
+	if err := store.Flush(ctx); nil != err {
+		t.Fatal(err)
+	}
+
+	write := func(name string, modified time.Time) string {
+		path := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); nil != err {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("PAR1"), 0o644); nil != err {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, modified, modified); nil != err {
+			t.Fatal(err)
+		}
+		return path
+	}
+
+	now := time.Now()
+
+	orphan := write("streams/api/2026/10/21/L0-orphan.parquet", now)
+	temp := write("streams/api/2026/10/21/.L0-x.parquet.tmp-123", now)
+	fresh := write("streams/api/2026/10/21/L0-fresh.parquet", now.Add(47*time.Hour))
+	ancient := write("streams/api/2020/01/01/L0-ancient.parquet", now.Add(-365*24*time.Hour))
+
+	// Two days on: past the one-day orphan grace for everything written now.
+	if err := store.CollectForTest(ctx, now.Add(48*time.Hour)); nil != err {
+		t.Fatal(err)
+	}
+
+	for path, want := range map[string]bool{orphan: false, temp: false, fresh: true, ancient: true} {
+		_, err := os.Stat(path)
+		if got := nil == err; got != want {
+			t.Errorf("%s exists = %v, want %v", path, got, want)
+		}
+	}
+
+	if got := len(readAll(t, dir, "api")); 1 != got {
+		t.Errorf("registered records = %d, want 1 — a live file was swept", got)
+	}
+}
+
+// One tombstoned file that cannot be removed must not stop the rest being
+// collected, every pass, forever.
+func TestCollectContinuesPastAFailure(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	store := openDurable(t, dir, quietOptions(10))
+	defer store.Close()
+
+	cat := store.Catalog()
+
+	register := func(name string, seq uint64) int64 {
+		id, _, err := cat.Register(ctx, catalog.File{
+			Stream: "api", Path: name, Level: catalog.LevelL0,
+			MinTs: time.Now(), MaxTs: time.Now(), MinSeq: seq, MaxSeq: seq,
+			RowCount: 1, ByteSize: 1,
+		}, nil)
+		if nil != err {
+			t.Fatal(err)
+		}
+		return id
+	}
+
+	// A directory where the object should be: removing it fails.
+	stuck := filepath.Join(dir, "streams", "api", "stuck.parquet")
+	if err := os.MkdirAll(filepath.Join(stuck, "inside"), 0o755); nil != err {
+		t.Fatal(err)
+	}
+	removable := filepath.Join(dir, "streams", "api", "removable.parquet")
+	if err := os.WriteFile(removable, []byte("PAR1"), 0o644); nil != err {
+		t.Fatal(err)
+	}
+
+	first := register("streams/api/stuck.parquet", 1)
+	second := register("streams/api/removable.parquet", 2)
+
+	// Tombstoned in that order, so the stuck one is met first.
+	if err := cat.Tombstone(ctx, first); nil != err {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+	if err := cat.Tombstone(ctx, second); nil != err {
+		t.Fatal(err)
+	}
+
+	if err := store.CollectForTest(ctx, time.Now().Add(2*time.Hour)); nil == err {
+		t.Error("a pass that could not remove a file reported no error")
+	}
+
+	if _, err := os.Stat(removable); !os.IsNotExist(err) {
+		t.Errorf("the removable file is still there: %v", err)
+	}
+
+	left, err := cat.Collectable(ctx, time.Now().Add(time.Hour))
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 1 != len(left) || "streams/api/stuck.parquet" != left[0].Path {
+		t.Errorf("still collectable = %v, want only the stuck file", left)
 	}
 }

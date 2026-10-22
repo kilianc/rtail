@@ -9,7 +9,10 @@
 
 package logstore
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // SyncForTest fsyncs the write-ahead log.
 func (d *Durable) SyncForTest() error { return d.log.Sync() }
@@ -43,4 +46,10 @@ func (d *Durable) AbandonForTest() {
 // the segment was retired.
 func (d *Durable) FlushKeepingWALForTest(ctx context.Context) error {
 	return d.flush(ctx, false)
+}
+
+// CollectForTest runs one garbage-collection pass as if the clock read now,
+// so grace periods can be crossed without waiting them out.
+func (d *Durable) CollectForTest(ctx context.Context, now time.Time) error {
+	return d.collect(ctx, now)
 }

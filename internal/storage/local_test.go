@@ -2,11 +2,15 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func newTestBackend(t *testing.T) *Local {
@@ -226,5 +230,156 @@ func TestNewLocalCreatesTheRoot(t *testing.T) {
 
 	if !strings.HasSuffix(backend.Root(), filepath.Join("nested", "data")) {
 		t.Errorf("root = %q", backend.Root())
+	}
+}
+
+// failSync makes every directory fsync fail with err for the rest of the test.
+func failSync(t *testing.T, err error) {
+	t.Helper()
+
+	previous := fsync
+	fsync = func(file *os.File) error {
+		if info, statErr := file.Stat(); nil == statErr && info.IsDir() {
+			return err
+		}
+		return previous(file)
+	}
+	t.Cleanup(func() { fsync = previous })
+}
+
+/*!
+ * A directory fsync that fails means the rename it was meant to persist may
+ * not survive a power loss, and the caller is about to register the object
+ * in the catalog on the strength of Commit succeeding. That failure used to
+ * be swallowed on every branch.
+ */
+func TestCommitReportsAFailedDirectorySync(t *testing.T) {
+	ctx := context.Background()
+	backend := newTestBackend(t)
+
+	writer, err := backend.Create(ctx, "streams/api/a.parquet")
+	if nil != err {
+		t.Fatal(err)
+	}
+	writer.Write([]byte("PAR1"))
+
+	failSync(t, syscall.EIO)
+
+	if err := writer.Commit(); !errors.Is(err, syscall.EIO) {
+		t.Errorf("Commit = %v, want the EIO from syncing the directory", err)
+	}
+}
+
+// A filesystem that cannot fsync a directory at all is not a failed write.
+func TestCommitToleratesUnsupportedDirectorySync(t *testing.T) {
+	ctx := context.Background()
+	backend := newTestBackend(t)
+
+	writer, err := backend.Create(ctx, "streams/api/a.parquet")
+	if nil != err {
+		t.Fatal(err)
+	}
+	writer.Write([]byte("PAR1"))
+
+	failSync(t, syscall.EINVAL)
+
+	if err := writer.Commit(); nil != err {
+		t.Errorf("Commit = %v, want nil when directory fsync is unsupported", err)
+	}
+}
+
+/*!
+ * Each directory Create makes is an entry in its parent, and an object whose
+ * day directory vanished in a power loss is as lost as one never written —
+ * so every parent of a new directory is synced, not only the object's own.
+ */
+func TestNewDirectoriesAreSyncedIntoTheirParents(t *testing.T) {
+	ctx := context.Background()
+	backend := newTestBackend(t)
+
+	var synced []string
+	previous := fsync
+	fsync = func(file *os.File) error {
+		if info, err := file.Stat(); nil == err && info.IsDir() {
+			synced = append(synced, file.Name())
+		}
+		return previous(file)
+	}
+	t.Cleanup(func() { fsync = previous })
+
+	writer, err := backend.Create(ctx, "streams/api/2026/10/21/a.parquet")
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer writer.Abort()
+
+	root := backend.Root()
+	for _, dir := range []string{"", "streams", "streams/api", "streams/api/2026", "streams/api/2026/10"} {
+		want := filepath.Join(root, filepath.FromSlash(dir))
+
+		found := false
+		for _, name := range synced {
+			if want == name {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s gained a directory but was never synced; synced %v", want, synced)
+		}
+	}
+}
+
+// A process killed mid-write leaves its temp file behind, and nothing else
+// would ever remove it.
+func TestSweepRemovesOnlyAbandonedTempFiles(t *testing.T) {
+	ctx := context.Background()
+	backend := newTestBackend(t)
+
+	abandoned, err := backend.Create(ctx, "streams/api/old.parquet")
+	if nil != err {
+		t.Fatal(err)
+	}
+	abandoned.Write([]byte("half"))
+
+	stale := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(abandoned.(*localWriter).file.Name(), stale, stale); nil != err {
+		t.Fatal(err)
+	}
+
+	inProgress, err := backend.Create(ctx, "streams/api/new.parquet")
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer inProgress.Abort()
+	inProgress.Write([]byte("still going"))
+
+	committed, err := backend.Create(ctx, "streams/api/done.parquet")
+	if nil != err {
+		t.Fatal(err)
+	}
+	committed.Write([]byte("PAR1"))
+	if err := committed.Commit(); nil != err {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(filepath.Join(backend.Root(), "streams/api/done.parquet"), stale, stale); nil != err {
+		t.Fatal(err)
+	}
+
+	removed, err := backend.Sweep(ctx, "streams/", time.Now().Add(-24*time.Hour))
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 1 != removed {
+		t.Errorf("removed %d temp files, want 1", removed)
+	}
+
+	if _, err := os.Stat(abandoned.(*localWriter).file.Name()); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the abandoned temp file survived: %v", err)
+	}
+	if _, err := os.Stat(inProgress.(*localWriter).file.Name()); nil != err {
+		t.Errorf("a write in progress lost its temp file: %v", err)
+	}
+	if _, err := backend.Stat(ctx, "streams/api/done.parquet"); nil != err {
+		t.Errorf("a committed object was swept: %v", err)
 	}
 }

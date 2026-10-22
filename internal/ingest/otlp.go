@@ -16,8 +16,10 @@
 package ingest
 
 import (
+	stdhex "encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -30,6 +32,7 @@ import (
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 
 	"github.com/kilianc/rtail/v2/internal/model"
+	"github.com/kilianc/rtail/v2/internal/normalize"
 )
 
 /*!
@@ -55,12 +58,10 @@ func severityName(number int32, text string) string {
 		return "FATAL"
 	}
 
-	// No severity number, but a text one is still worth keeping.
-	if "" != text {
-		return strings.ToUpper(strings.TrimSpace(text))
-	}
-
-	return ""
+	// No severity number, but a text one is still worth keeping — spelled
+	// the way every other receiver spells it, or `level>=WARN` would miss an
+	// exporter that says "WARNING".
+	return normalize.Level(text)
 }
 
 /*!
@@ -71,14 +72,14 @@ func (h *HTTP) OTLP(w http.ResponseWriter, r *http.Request) {
 
 	body, err := h.open(w, r)
 	if nil != err {
-		h.fail(w, http.StatusBadRequest, err)
+		h.fail(w, statusOf(err), err)
 		return
 	}
 	defer body.Close()
 
 	raw, err := readAll(body, h.opts.MaxBody)
 	if nil != err {
-		h.fail(w, http.StatusBadRequest, err)
+		h.fail(w, statusOf(err), err)
 		return
 	}
 
@@ -102,7 +103,7 @@ func (h *HTTP) OTLP(w http.ResponseWriter, r *http.Request) {
 		// DiscardUnknown, because the OTLP schema gains fields faster than any
 		// one implementation adopts them and an unknown field is not a reason
 		// to drop a batch.
-		if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(raw, &request); nil != err {
+		if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(hexIDs(raw), &request); nil != err {
 			h.fail(w, http.StatusBadRequest, fmt.Errorf("decoding OTLP JSON: %w", err))
 			return
 		}
@@ -185,14 +186,16 @@ func (h *HTTP) record(
 	}
 
 	// Observed time is when the collector saw it; the record's own time is
-	// when it happened. Prefer the latter, fall back, then to now.
-	switch {
-	case 0 != entry.GetTimeUnixNano():
-		rec.Ts = time.Unix(0, int64(entry.GetTimeUnixNano())).UTC()
-	case 0 != entry.GetObservedTimeUnixNano():
-		rec.Ts = time.Unix(0, int64(entry.GetObservedTimeUnixNano())).UTC()
-	default:
-		rec.Ts = now
+	// when it happened. Prefer the latter, fall back, then to now — passing
+	// over either one that is implausible, as FromLine does, so an exporter
+	// that writes microseconds into timeUnixNano does not file its records in
+	// 1970. Unset is zero, which is implausible too.
+	rec.Ts = now
+	for _, nanos := range []uint64{entry.GetTimeUnixNano(), entry.GetObservedTimeUnixNano()} {
+		if ts := time.Unix(0, int64(nanos)).UTC(); normalize.Plausible(ts) {
+			rec.Ts = ts
+			break
+		}
 	}
 
 	// The body is usually a string; when it is not, it is kept as JSON so
@@ -252,6 +255,11 @@ func (h *HTTP) record(
 		rec.Raw = rec.Msg
 	}
 
+	// Both OTLP decoders already refuse a string that is not UTF-8, so this
+	// finds nothing today; it is here so the invariant storage depends on
+	// does not rest on a decoder's detail.
+	normalize.Sanitize(rec)
+
 	return rec
 }
 
@@ -289,6 +297,14 @@ func anyValue(value *commonpb.AnyValue) model.Value {
 	case *commonpb.AnyValue_IntValue:
 		return model.Int(inner.IntValue)
 	case *commonpb.AnyValue_DoubleValue:
+		// NaN and the infinities are legal doubles with no JSON spelling, and
+		// the write-ahead log is JSON: stored as a float, one fails the append,
+		// the collector retries, and every record before it in the batch is
+		// stored again — forever. As text the value survives and the batch
+		// goes through.
+		if math.IsNaN(inner.DoubleValue) || math.IsInf(inner.DoubleValue, 0) {
+			return model.Str(strconv.FormatFloat(inner.DoubleValue, 'g', -1, 64))
+		}
 		return model.Float(inner.DoubleValue)
 	case *commonpb.AnyValue_BytesValue:
 		return model.Str(hex(inner.BytesValue))
@@ -319,6 +335,83 @@ func jsonOf(value any) model.Value {
 	return model.JSON(string(encoded))
 }
 
+/*!
+ * hexIDs rewrites an OTLP/JSON body's traceId and spanId from hex to base64.
+ *
+ * protojson follows the standard proto3 JSON mapping, where bytes are base64.
+ * OTLP/JSON departs from it for exactly these two fields, which the spec
+ * writes as hex — the way every tracing UI prints them. Hex digits are base64
+ * digits too, so a hex id read as base64 does not even fail: it decodes into
+ * different bytes, and every stored trace id is garbage that matches nothing.
+ * Rewriting the two fields before protojson sees them keeps protojson for
+ * everything else.
+ *
+ * A value that is not hex is left for protojson to read as base64, which is
+ * what exporters written before the spec settled on hex send. The body comes
+ * back untouched when there is nothing to rewrite, and when it is not JSON at
+ * all — protojson's error is the better one to report.
+ */
+func hexIDs(raw []byte) []byte {
+	var root map[string]json.RawMessage
+	if nil != json.Unmarshal(raw, &root) {
+		return raw
+	}
+
+	var resources []map[string]json.RawMessage
+	if nil != json.Unmarshal(root["resourceLogs"], &resources) {
+		return raw
+	}
+
+	changed := false
+
+	for _, resource := range resources {
+		var scopes []map[string]json.RawMessage
+		if nil != json.Unmarshal(resource["scopeLogs"], &scopes) {
+			continue
+		}
+
+		for _, scope := range scopes {
+			var records []map[string]json.RawMessage
+			if nil != json.Unmarshal(scope["logRecords"], &records) {
+				continue
+			}
+
+			for _, record := range records {
+				for _, key := range []string{"traceId", "spanId"} {
+					var text string
+					if nil != json.Unmarshal(record[key], &text) {
+						continue
+					}
+
+					// json.Marshal writes a []byte as base64, which is the
+					// spelling protojson expects.
+					if id, err := stdhex.DecodeString(text); nil == err && 0 != len(id) {
+						record[key], _ = json.Marshal(id)
+						changed = true
+					}
+				}
+			}
+
+			scope["logRecords"], _ = json.Marshal(records)
+		}
+
+		resource["scopeLogs"], _ = json.Marshal(scopes)
+	}
+
+	if !changed {
+		return raw
+	}
+
+	root["resourceLogs"], _ = json.Marshal(resources)
+
+	rewritten, err := json.Marshal(root)
+	if nil != err {
+		return raw
+	}
+
+	return rewritten
+}
+
 const hexDigits = "0123456789abcdef"
 
 func hex(raw []byte) string {
@@ -340,7 +433,7 @@ func readAll(reader interface{ Read([]byte) (int, error) }, limit int64) ([]byte
 		buffer = append(buffer, chunk[:n]...)
 
 		if int64(len(buffer)) > limit {
-			return nil, fmt.Errorf("body exceeds %s", byteCount(limit))
+			return nil, &tooLargeError{what: "body", limit: limit}
 		}
 
 		if nil != err {

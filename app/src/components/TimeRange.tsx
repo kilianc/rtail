@@ -15,9 +15,11 @@ import { Popover } from './Popover.js'
 interface Props {
   range: Range
   onChange: (range: Range) => void
+  /** Resumes the tail, which is more than picking a relative range. */
+  onLive: () => void
 }
 
-export function TimeRange({ range, onChange }: Props) {
+export function TimeRange({ range, onChange, onLive }: Props) {
   const anchor = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
 
@@ -58,7 +60,14 @@ export function TimeRange({ range, onChange }: Props) {
           <Absolute range={range} onApply={pick} />
 
           {!isRelative(range) && (
-            <Button variant="outline" block onClick={() => pick(PRESETS[2].range)}>
+            <Button
+              variant="outline"
+              block
+              onClick={() => {
+                onLive()
+                setOpen(false)
+              }}
+            >
               Back to live
             </Button>
           )}

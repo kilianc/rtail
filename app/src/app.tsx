@@ -31,6 +31,23 @@ import { onChange, read, write, type ViewState } from './lib/urlstate.js'
 /** How many live lines to keep before dropping the oldest. */
 const LIVE_BUFFER = 2000
 
+/*!
+ * streaming is the view, live.
+ *
+ * Resuming the tail from a pinned window has to unpin it, or the tail would
+ * stream into a range that has already ended. And it has to be rQL: SQL forces
+ * history (see setLang), and the tail compiles nothing else, so a SQL filter
+ * sent to it would be read as rQL.
+ */
+function streaming(current: ViewState): ViewState {
+  return {
+    ...current,
+    live: true,
+    lang: 'rql',
+    range: isRelative(current.range) ? current.range : { from: '-1h', to: '' }
+  }
+}
+
 /** One page of history. */
 
 export function App() {
@@ -308,7 +325,20 @@ export function App() {
 
   // In history mode the query runs whenever the committed state changes.
   useEffect(() => {
-    if (view.live) return
+    /*!
+     * Going live cancels a search still in flight.
+     *
+     * Left running it lands after the backlog has, and replaces the live list
+     * with a page of history that the tail then appends to. Its own finally
+     * leaves the spinner alone once aborted, so that is cleared here.
+     */
+    if (view.live) {
+      pending.current?.abort()
+      pending.current = null
+      setLoading(false)
+      return
+    }
+
     setCursor(undefined)
     runSearch(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -335,9 +365,12 @@ export function App() {
    *
    * Pressing Enter on a relative range keeps streaming with the new filter;
    * on a pinned range there is nothing to stream, so it searches.
+   *
+   * The text can be passed in, for a caller that changed the draft in the
+   * same handler: this closure still holds the draft from before it.
    */
-  const commit = useCallback(() => {
-    setView((current) => ({ ...current, query: draft }))
+  const commit = useCallback((query: string = draft) => {
+    setView((current) => ({ ...current, query }))
   }, [draft])
 
   /*!
@@ -415,18 +448,13 @@ export function App() {
   }, [])
 
   const toggleLive = useCallback(() => {
-    setView((current) => {
-      const live = !current.live
-
-      return {
-        ...current,
-        live,
-        // Resuming the tail from a pinned window has to unpin it, or the tail
-        // would stream into a range that has already ended.
-        range: live && !isRelative(current.range) ? { from: '-1h', to: '' } : current.range
-      }
-    })
+    setView((current) => (current.live ? { ...current, live: false } : streaming(current)))
   }, [])
+
+  // "Back to live" in the time range, which is going live rather than picking
+  // a range: setRange keeps a history view in history, so a preset alone left
+  // the view relative and still not streaming.
+  const goLive = useCallback(() => setView(streaming), [])
 
   return (
     <>
@@ -472,7 +500,7 @@ export function App() {
           onChange={edit}
           onSubmit={commit}
         >
-          <TimeRange range={view.range} onChange={setRange} />
+          <TimeRange range={view.range} onChange={setRange} onLive={goLive} />
         </CommandBar>
       </div>
 

@@ -6,17 +6,22 @@
  * key to its own field, and
  * keep the original around so nothing we guessed wrong about is ever lost.
  *
- * Every receiver funnels through here, so the storage engine and the query
- * planner only ever see one shape regardless of how a line arrived.
+ * The line-shaped receivers (HTTP, UDP) funnel through FromLine and
+ * FromPayload. OTLP and syslog carry their own structure and build records
+ * themselves, so the invariants every stored record must hold are exported
+ * for them too — Level, Plausible and Sanitize — and the storage engine and
+ * the query planner only ever see one shape regardless of how a line arrived.
  */
 
 package normalize
 
 import (
+	"bytes"
 	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/kilianc/rtail/v2/internal/model"
 )
@@ -84,7 +89,10 @@ func FromPayload(stream, host string, port int, clientTs time.Time, content json
 		Type:     typeOf(content),
 	}
 
-	if rec.Ts.IsZero() {
+	// The client's clock gets the same scrutiny as a timestamp in the payload:
+	// a v1 client may have lifted it out of the line itself, and one that
+	// sends seconds where milliseconds belong would file the record in 1970.
+	if !Plausible(rec.Ts) {
 		rec.Ts = ingest
 	}
 
@@ -95,6 +103,7 @@ func FromPayload(stream, host string, port int, clientTs time.Time, content json
 		if err := json.Unmarshal(content, &text); nil == err {
 			rec.Raw = text
 			rec.Msg = text
+			Sanitize(rec)
 			return rec
 		}
 	}
@@ -102,6 +111,7 @@ func FromPayload(stream, host string, port int, clientTs time.Time, content json
 	rec.Raw = string(content)
 	rec.JSON = content
 	enrich(rec)
+	Sanitize(rec)
 
 	return rec
 }
@@ -109,8 +119,8 @@ func FromPayload(stream, host string, port int, clientTs time.Time, content json
 /*!
  * FromLine builds a record from an original, unparsed line.
  *
- * Used by every v2 receiver (HTTP, syslog, OTLP), where we still have the
- * bytes as they were written and Raw can be exact.
+ * Used by the HTTP receiver, where we still have the bytes as they were
+ * written and Raw can be exact.
  */
 func FromLine(stream, host string, port int, raw []byte) *model.Record {
 	ingest := time.Now().UTC()
@@ -129,6 +139,7 @@ func FromLine(stream, host string, port int, raw []byte) *model.Record {
 
 	trimmed := strings.TrimSpace(text)
 	if !strings.HasPrefix(trimmed, "{") || !json.Valid([]byte(trimmed)) {
+		Sanitize(rec)
 		return rec
 	}
 
@@ -143,8 +154,57 @@ func FromLine(stream, host string, port int, raw []byte) *model.Record {
 		rec.Msg = text
 	}
 
+	Sanitize(rec)
+
 	return rec
 }
+
+/*!
+ * Sanitize replaces invalid UTF-8 in every string a record carries.
+ *
+ * Parquet strings are UTF-8 by definition and DuckDB checks: one Latin-1 byte
+ * in one stored line makes the whole file unreadable — "Invalid string
+ * encoding found in Parquet file" — and with it every search that touches
+ * the file. Such bytes arrive routinely, from a Latin-1 syslog device or a
+ * program printing a binary buffer, and json.Valid does not catch them
+ * inside a string. Replaced with U+FFFD here, the damage is one character of
+ * a line that was already mangled; stored as they came, it is the file.
+ *
+ * The JSON payload stays valid JSON: a byte that is not ASCII can only sit
+ * inside a string in text json.Valid accepted, and a replacement character
+ * is just as legal there.
+ */
+func Sanitize(rec *model.Record) {
+	rec.Stream = validUTF8(rec.Stream)
+	rec.Host = validUTF8(rec.Host)
+	rec.Level = validUTF8(rec.Level)
+	rec.Msg = validUTF8(rec.Msg)
+	rec.Raw = validUTF8(rec.Raw)
+
+	if !utf8.Valid(rec.JSON) {
+		rec.JSON = bytes.ToValidUTF8(rec.JSON, []byte(replacement))
+	}
+
+	for key, value := range rec.Fields {
+		clean := value
+		if model.KindString == value.Kind || model.KindJSON == value.Kind {
+			clean.Str = validUTF8(value.Str)
+		}
+
+		// Keys become column names, which are strings in the file too.
+		if name := validUTF8(key); name != key {
+			delete(rec.Fields, key)
+			rec.Fields[name] = clean
+		} else if clean.Str != value.Str {
+			rec.Fields[key] = clean
+		}
+	}
+}
+
+const replacement = "\uFFFD"
+
+// validUTF8 returns s unchanged, without allocating, when it is already valid.
+func validUTF8(s string) string { return strings.ToValidUTF8(s, replacement) }
 
 /*!
  * enrich promotes root keys and lifts level, message and event time out of an
@@ -294,6 +354,11 @@ func typeOf(raw json.RawMessage) string {
 	}
 }
 
+// Level is the canonical name for a level as written — "warning" is WARN, as
+// it is at ingest. Anything that compares a level a person typed against
+// stored ones has to go through this, or `level=warning` finds nothing.
+func Level(name string) string { return normalizeLevel(model.Str(name)) }
+
 // normalizeLevel maps a level field onto a canonical name. Unrecognised
 // strings are upper-cased and kept: an unknown level is still a level, and
 // dropping it would hide it from the severity filter entirely.
@@ -325,7 +390,7 @@ func parseTimestamp(value Value) (time.Time, bool) {
 	case model.KindString:
 		for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.999999999", "2006-01-02 15:04:05.999999999"} {
 			if ts, err := time.Parse(layout, value.Str); nil == err {
-				return ts.UTC(), plausible(ts)
+				return ts.UTC(), Plausible(ts)
 			}
 		}
 		return time.Time{}, false
@@ -337,7 +402,7 @@ func parseTimestamp(value Value) (time.Time, bool) {
 		// Fractional epoch seconds, as Python and Ruby emit.
 		seconds, frac := int64(value.Float), value.Float-float64(int64(value.Float))
 		ts := time.Unix(seconds, int64(frac*1e9)).UTC()
-		return ts, plausible(ts)
+		return ts, Plausible(ts)
 	}
 
 	return time.Time{}, false
@@ -359,9 +424,13 @@ func fromEpoch(n int64) (time.Time, bool) {
 	}
 
 	ts = ts.UTC()
-	return ts, plausible(ts)
+	return ts, Plausible(ts)
 }
 
-func plausible(ts time.Time) bool {
+// Plausible reports whether ts could be a log record's event time, by the
+// window described at tsFloor. A receiver that reads a timestamp from the
+// wire itself checks it here and falls back to the time it received the
+// record, as FromLine does, rather than storing whatever it was handed.
+func Plausible(ts time.Time) bool {
 	return ts.After(tsFloor) && ts.Before(time.Now().Add(tsRoof))
 }

@@ -64,6 +64,12 @@ type File struct {
 	HasRaw   bool
 	State    string
 	Created  time.Time
+
+	// LevelFloor is a severity every record in the file is known to meet,
+	// because downsampling was applied to all of it when it was written.
+	// Empty means nothing is promised. It is what stops a retention pass
+	// rewriting the same old file on every run.
+	LevelFloor string
 }
 
 // Column describes one promoted column within a file.
@@ -114,11 +120,19 @@ type Catalog struct {
  * prune, the fix is a second read-only pool, not a rewrite.
  */
 func Open(path string) (*Catalog, error) {
-	// _txlock=immediate takes the write lock at BEGIN rather than on first
-	// write, which turns a potential mid-transaction SQLITE_BUSY into a clean
-	// wait at the start.
+	/*!
+	 * _txlock=immediate takes the write lock at BEGIN rather than on first
+	 * write, which turns a potential mid-transaction SQLITE_BUSY into a clean
+	 * wait at the start.
+	 *
+	 * synchronous(FULL), not NORMAL. In WAL mode NORMAL skips the fsync at
+	 * commit, so a commit survives a crash of the process but not of the
+	 * machine — and the store deletes a WAL segment the moment Register
+	 * returns. A registration rolled back by a power loss after that unlink
+	 * is data gone from both places. FULL is one more fsync per flush.
+	 */
 	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)" +
-		"&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)&_txlock=immediate"
+		"&_pragma=synchronous(FULL)&_pragma=foreign_keys(1)&_txlock=immediate"
 
 	db, err := sql.Open("sqlite", dsn)
 	if nil != err {
@@ -132,7 +146,43 @@ func Open(path string) (*Catalog, error) {
 		return nil, fmt.Errorf("creating catalog schema: %w", err)
 	}
 
+	if err := migrate(db); nil != err {
+		db.Close()
+		return nil, fmt.Errorf("migrating catalog schema: %w", err)
+	}
+
+	// Recorded once, the first time a catalog is opened; see Created.
+	if _, err := db.Exec(`INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING`,
+		metaCreated, strconv.FormatInt(time.Now().UTC().UnixMicro(), 10)); nil != err {
+		db.Close()
+		return nil, fmt.Errorf("recording the catalog's creation: %w", err)
+	}
+
 	return &Catalog{db: db}, nil
+}
+
+/*!
+ * migrate brings a catalog written by an earlier release up to this schema.
+ *
+ * CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so
+ * a column added since has to be added here too. Only additive, nullable
+ * changes are made, which an older binary reading the same file ignores.
+ */
+func migrate(db *sql.DB) error {
+	var present int
+	if err := db.QueryRow(
+		`SELECT count(*) FROM pragma_table_info('files') WHERE name = 'level_floor'`,
+	).Scan(&present); nil != err {
+		return err
+	}
+
+	if 0 == present {
+		if _, err := db.Exec(`ALTER TABLE files ADD COLUMN level_floor TEXT`); nil != err {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Close releases the database.
@@ -212,16 +262,21 @@ func insertFileTx(
 		file.Created = time.Now().UTC()
 	}
 
+	var floor any
+	if "" != file.LevelFloor {
+		floor = file.LevelFloor
+	}
+
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO files
 			(stream, path, level, min_ts, max_ts, min_seq, max_seq,
-			 row_count, byte_size, has_raw, state, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 row_count, byte_size, has_raw, state, created_at, level_floor)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		file.Stream, file.Path, file.Level,
 		file.MinTs.UnixMicro(), file.MaxTs.UnixMicro(),
 		int64(file.MinSeq), int64(file.MaxSeq),
 		file.RowCount, file.ByteSize, boolToInt(file.HasRaw),
-		file.State, file.Created.UnixMicro(),
+		file.State, file.Created.UnixMicro(), floor,
 	)
 	if nil != err {
 		return 0, false, fmt.Errorf("inserting file: %w", err)
@@ -350,20 +405,41 @@ func (c *Catalog) Replace(ctx context.Context, outputs []Replacement, inputs []i
 		ids = append(ids, id)
 	}
 
+	if err := retireTx(ctx, tx, inputs); nil != err {
+		return nil, err
+	}
+
+	if err := tx.Commit(); nil != err {
+		return nil, fmt.Errorf("committing replacement: %w", err)
+	}
+
+	return ids, nil
+}
+
+/*!
+ * retireTx tombstones live files and takes their rows and bytes off their
+ * streams' rollups.
+ *
+ * Only a file that is still live is retired. One that is already tombstoned
+ * had its contribution subtracted the first time, and doing it again would
+ * drive the counters below what is actually stored — they are counters, so
+ * there is no recomputing them afterwards.
+ */
+func retireTx(ctx context.Context, tx *sql.Tx, ids []int64) error {
 	now := time.Now().UTC().UnixMicro()
 
-	for _, id := range inputs {
+	for _, id := range ids {
 		result, err := tx.ExecContext(ctx, `
 			UPDATE files SET state = ?, tombstoned_at = ?
 			WHERE id = ? AND state = ?`,
 			StateTombstoned, now, id, StateLive)
 		if nil != err {
-			return nil, fmt.Errorf("tombstoning %d: %w", id, err)
+			return fmt.Errorf("tombstoning %d: %w", id, err)
 		}
 
 		affected, err := result.RowsAffected()
 		if nil != err {
-			return nil, err
+			return err
 		}
 
 		// Already retired: its contribution was subtracted the first time.
@@ -372,15 +448,11 @@ func (c *Catalog) Replace(ctx context.Context, outputs []Replacement, inputs []i
 		}
 
 		if err := adjustRollupTx(ctx, tx, id, -1); nil != err {
-			return nil, err
+			return err
 		}
 	}
 
-	if err := tx.Commit(); nil != err {
-		return nil, fmt.Errorf("committing replacement: %w", err)
-	}
-
-	return ids, nil
+	return nil
 }
 
 /*!
@@ -459,7 +531,7 @@ func (c *Catalog) Prune(ctx context.Context, q Query) ([]File, error) {
 
 	query := `
 		SELECT f.id, f.stream, f.path, f.level, f.min_ts, f.max_ts, f.min_seq, f.max_seq,
-		       f.row_count, f.byte_size, f.has_raw, f.state, f.created_at
+		       f.row_count, f.byte_size, f.has_raw, f.state, f.created_at, f.level_floor
 		FROM files f
 		WHERE ` + strings.Join(conditions, " AND ") + `
 		ORDER BY f.min_ts, f.min_seq`
@@ -595,6 +667,11 @@ func (c *Catalog) SchemaKeys(ctx context.Context, stream string) ([]SchemaKey, e
  *
  * The grace period between this and Forget is the design's MVCC: a query that
  * snapshotted the file list five seconds ago still has its files on disk.
+ *
+ * It is Replace with no outputs, and has to be: a retired file's rows leave
+ * its stream's rollup whichever way it was retired. Retention expiry used to
+ * come through a version that only flipped the state, so `streams.row_count`
+ * counted every expired row forever.
  */
 func (c *Catalog) Tombstone(ctx context.Context, ids ...int64) error {
 	if 0 == len(ids) {
@@ -607,14 +684,8 @@ func (c *Catalog) Tombstone(ctx context.Context, ids ...int64) error {
 	}
 	defer tx.Rollback()
 
-	now := time.Now().UTC().UnixMicro()
-
-	for _, id := range ids {
-		if _, err := tx.ExecContext(ctx,
-			`UPDATE files SET state = ?, tombstoned_at = ? WHERE id = ?`,
-			StateTombstoned, now, id); nil != err {
-			return err
-		}
+	if err := retireTx(ctx, tx, ids); nil != err {
+		return err
 	}
 
 	return tx.Commit()
@@ -624,7 +695,7 @@ func (c *Catalog) Tombstone(ctx context.Context, ids ...int64) error {
 func (c *Catalog) Collectable(ctx context.Context, before time.Time) ([]File, error) {
 	rows, err := c.db.QueryContext(ctx, `
 		SELECT id, stream, path, level, min_ts, max_ts, min_seq, max_seq,
-		       row_count, byte_size, has_raw, state, created_at
+		       row_count, byte_size, has_raw, state, created_at, level_floor
 		FROM files
 		WHERE state = ? AND tombstoned_at IS NOT NULL AND tombstoned_at <= ?
 		ORDER BY tombstoned_at`,
@@ -644,9 +715,65 @@ func (c *Catalog) Forget(ctx context.Context, id int64) error {
 }
 
 /*!
+ * Paths lists every object path the catalog knows, in any state.
+ *
+ * This is the other half of garbage collection: an object on disk that is
+ * not in this set is one no row will ever point at — a write that committed
+ * and then failed to register — and so is safe to delete once it is old
+ * enough that no registration can still be on its way.
+ */
+func (c *Catalog) Paths(ctx context.Context) (map[string]bool, error) {
+	rows, err := c.db.QueryContext(ctx, `SELECT path FROM files`)
+	if nil != err {
+		return nil, err
+	}
+	defer rows.Close()
+
+	paths := map[string]bool{}
+
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); nil != err {
+			return nil, err
+		}
+		paths[path] = true
+	}
+
+	return paths, rows.Err()
+}
+
+/*!
  * Meta values that have to survive a restart.
  */
-const metaMaxSeq = "max_seq"
+const (
+	metaMaxSeq  = "max_seq"
+	metaCreated = "created_at"
+)
+
+/*!
+ * Created is when this catalog was first opened — or, for one that predates
+ * the record, first opened by a release that keeps it.
+ *
+ * Garbage collection needs a lower bound as much as an upper one. An object
+ * no row points at is an orphan of this catalog only if this catalog was in
+ * charge when it was written. A directory whose catalog.sqlite was lost or
+ * replaced is full of objects no row points at, and every one of them is
+ * somebody's data rather than garbage.
+ */
+func (c *Catalog) Created(ctx context.Context) (time.Time, error) {
+	var value string
+
+	if err := c.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = ?`, metaCreated).Scan(&value); nil != err {
+		return time.Time{}, err
+	}
+
+	micros, err := strconv.ParseInt(value, 10, 64)
+	if nil != err {
+		return time.Time{}, err
+	}
+
+	return time.UnixMicro(micros).UTC(), nil
+}
 
 // MaxSeq returns the highest sequence number ever registered.
 //
@@ -712,13 +839,16 @@ func scanFiles(rows *sql.Rows) ([]File, error) {
 			minTs, maxTs, created int64
 			minSeq, maxSeq        int64
 			hasRaw                int
+			floor                 sql.NullString
 		)
 
 		if err := rows.Scan(&file.ID, &file.Stream, &file.Path, &file.Level,
 			&minTs, &maxTs, &minSeq, &maxSeq,
-			&file.RowCount, &file.ByteSize, &hasRaw, &file.State, &created); nil != err {
+			&file.RowCount, &file.ByteSize, &hasRaw, &file.State, &created, &floor); nil != err {
 			return nil, err
 		}
+
+		file.LevelFloor = floor.String
 
 		file.MinTs = time.UnixMicro(minTs).UTC()
 		file.MaxTs = time.UnixMicro(maxTs).UTC()

@@ -17,12 +17,13 @@ package query
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
-	_ "github.com/marcboeker/go-duckdb/v2"
+	duckdb "github.com/marcboeker/go-duckdb/v2"
 
 	"github.com/kilianc/rtail/v2/internal/catalog"
 	"github.com/kilianc/rtail/v2/internal/storage"
@@ -180,7 +181,9 @@ func (e *Engine) acquire(ctx context.Context) (func(), error) {
  * Plan is a resolved query: which files to read, and how to read them.
  */
 type Plan struct {
-	Files    []catalog.File
+	Files []catalog.File
+	// Columns are each file's promoted columns, by file ID.
+	Columns  map[int64][]catalog.Column
 	Resolver *Resolver
 	// From and To are the effective window, after any default was injected.
 	From time.Time
@@ -197,8 +200,13 @@ func (p *Plan) Empty() bool { return 0 == len(p.Files) }
 
 /*!
  * Plan prunes the catalog down to the files a query could match.
+ *
+ * On time and stream only. Pruning on key presence looks tempting and is
+ * wrong here: a file with no column for a key still holds the key in raw,
+ * which the resolver reads, and `-k=v` matches precisely the records that
+ * lack it.
  */
-func (e *Engine) Plan(ctx context.Context, stream string, from, to time.Time, fields []string) (*Plan, error) {
+func (e *Engine) Plan(ctx context.Context, stream string, from, to time.Time) (*Plan, error) {
 	if to.IsZero() {
 		to = time.Now().UTC()
 	}
@@ -225,6 +233,7 @@ func (e *Engine) Plan(ctx context.Context, stream string, from, to time.Time, fi
 		plan.Bytes += file.ByteSize
 	}
 
+	plan.Columns = columns
 	plan.Resolver = NewResolver(files, columns)
 
 	return plan, nil
@@ -273,9 +282,88 @@ const emptySource = `(
 )`
 
 /*!
- * query runs a statement under the engine's limits.
+ * Failure is a statement DuckDB refused, or failed partway through.
+ *
+ * It keeps the cause apart from the statement because the two have different
+ * readers. The operator wants both, and Error gives both, for the log. The
+ * client wants neither as such: the statement is one we generated, and its
+ * FROM clause names every file the query read by absolute path. Public is the
+ * part a client may see.
  */
-func (e *Engine) query(ctx context.Context, statement string, args ...any) (*sql.Rows, func(), error) {
+type Failure struct {
+	Cause     error
+	Statement string
+	// User is set when the statement carried SQL the caller wrote — a
+	// lang=sql filter, or /v1/sql — which is what makes a binder error their
+	// mistake rather than ours.
+	User bool
+
+	root string
+}
+
+func (f *Failure) Error() string { return fmt.Sprintf("%v\n\nquery:\n%s", f.Cause, f.Statement) }
+
+func (f *Failure) Unwrap() error { return f.Cause }
+
+/*!
+ * Public is DuckDB's own message, without what we put around it.
+ *
+ * DuckDB appends an excerpt of the statement, `LINE 3: ...`, under the
+ * message. The statement is ours, and the excerpt is as likely to be our FROM
+ * clause as the caller's expression, so it goes. The data directory is
+ * replaced too, for the messages that name a file.
+ */
+func (f *Failure) Public() string {
+	message := f.Cause.Error()
+
+	if at := strings.Index(message, "\nLINE "); at >= 0 {
+		message = message[:at]
+	}
+	if "" != f.root {
+		message = strings.ReplaceAll(message, f.root, "<data>")
+	}
+
+	return strings.TrimSpace(message)
+}
+
+/*!
+ * UserFault reports whether the caller's own SQL is to blame.
+ *
+ * Decided on DuckDB's error type, not its wording: a misspelt column, a
+ * syntax error, a bad cast or a path the sandbox refuses is the caller's to
+ * fix and a 400, while running out of memory, an unreadable file or a timeout
+ * is ours and a 500. Only for statements that carry the caller's SQL — in a
+ * statement compiled from rQL every one of those would be a bug of ours.
+ */
+func (f *Failure) UserFault() bool {
+	var engine *duckdb.Error
+	if !f.User || !errors.As(f.Cause, &engine) {
+		return false
+	}
+
+	switch engine.Type {
+	case duckdb.ErrorTypeParser, duckdb.ErrorTypeSyntax, duckdb.ErrorTypeBinder,
+		duckdb.ErrorTypeCatalog, duckdb.ErrorTypeConversion, duckdb.ErrorTypeInvalidInput,
+		duckdb.ErrorTypeOutOfRange, duckdb.ErrorTypeDivideByZero, duckdb.ErrorTypeMismatchType,
+		duckdb.ErrorTypeInvalidType, duckdb.ErrorTypeNotImplemented, duckdb.ErrorTypePermission:
+		return true
+	}
+
+	return false
+}
+
+// failure wraps an error from running statement.
+func (e *Engine) failure(cause error, statement string, user bool) error {
+	return &Failure{Cause: cause, Statement: statement, User: user, root: e.root}
+}
+
+/*!
+ * query runs a statement under the engine's limits.
+ *
+ * user says whether the statement carries SQL the caller wrote, for the
+ * Failure it returns.
+ */
+func (e *Engine) query(ctx context.Context, user bool, statement string, args ...any) (*sql.Rows, func(), error) {
 	release, err := e.acquire(ctx)
 	if nil != err {
 		return nil, nil, err
@@ -287,7 +375,7 @@ func (e *Engine) query(ctx context.Context, statement string, args ...any) (*sql
 	if nil != err {
 		cancel()
 		release()
-		return nil, nil, fmt.Errorf("%w\n\nquery:\n%s", err, statement)
+		return nil, nil, e.failure(err, statement, user)
 	}
 
 	return rows, func() {

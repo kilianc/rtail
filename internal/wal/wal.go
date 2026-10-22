@@ -32,10 +32,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/kilianc/rtail/v2/internal/model"
@@ -83,6 +85,11 @@ type Log struct {
 	dirty   bool
 	closed  bool
 	pending int
+
+	// listed records whether the active segment's directory entry is durable.
+	// Until it is, fsyncing the segment's data proves nothing: a power loss
+	// can take the file's name away and leave its blocks unreachable.
+	listed bool
 }
 
 /*!
@@ -96,6 +103,12 @@ type Log struct {
 func Open(dir string, opts Options) (*Log, error) {
 	if err := os.MkdirAll(dir, 0o755); nil != err {
 		return nil, fmt.Errorf("creating wal dir: %w", err)
+	}
+
+	// The directory itself is an entry in its parent, and every segment lives
+	// or dies with it.
+	if err := syncDir(filepath.Dir(dir)); nil != err {
+		return nil, err
 	}
 
 	interval := opts.SyncInterval
@@ -127,22 +140,31 @@ func Open(dir string, opts Options) (*Log, error) {
 }
 
 func (l *Log) openSegment(number uint64) error {
+	file, writer, err := l.createSegment(number)
+	if nil != err {
+		return err
+	}
+
+	l.file, l.writer, l.active, l.dirty, l.pending, l.listed = file, writer, number, true, 0, false
+	return nil
+}
+
+func (l *Log) createSegment(number uint64) (*os.File, *bufio.Writer, error) {
 	path := filepath.Join(l.dir, segmentName(number))
 
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if nil != err {
-		return fmt.Errorf("opening wal segment: %w", err)
+		return nil, nil, fmt.Errorf("opening wal segment: %w", err)
 	}
 
 	writer := bufio.NewWriterSize(file, 256<<10)
 
 	if _, err := writer.WriteString(magic); nil != err {
 		file.Close()
-		return err
+		return nil, nil, err
 	}
 
-	l.file, l.writer, l.active, l.dirty, l.pending = file, writer, number, true, 0
-	return nil
+	return file, writer, nil
 }
 
 // Active is the current segment's file name.
@@ -161,7 +183,7 @@ func (l *Log) Active() string {
  * the torn-write case replay has to notice.
  */
 func (l *Log) Append(rec *model.Record) error {
-	payload, err := json.Marshal(encode(rec))
+	payload, err := marshal(rec)
 	if nil != err {
 		return fmt.Errorf("encoding record: %w", err)
 	}
@@ -214,6 +236,20 @@ func (l *Log) syncLocked() error {
 		return err
 	}
 
+	/*!
+	 * The first sync of a segment also syncs the directory, which is what makes
+	 * the segment's name durable. Doing it here rather than when the segment is
+	 * created keeps the extra fsync off Rotate, which runs while ingest waits,
+	 * and costs nothing in durability: no record in the segment is promised
+	 * before this sync anyway.
+	 */
+	if !l.listed {
+		if err := syncDir(l.dir); nil != err {
+			return err
+		}
+		l.listed = true
+	}
+
 	l.dirty = false
 	l.pending = 0
 
@@ -234,6 +270,12 @@ func (l *Log) Pending() int {
  * The sealed name is returned so the caller can replay it into Parquet and
  * then Remove it. Nothing else may delete a segment: until it is gone, it is
  * the only durable copy of the records it holds.
+ *
+ * A failed Rotate changes nothing. The caller pairs each sealed segment with
+ * exactly the records it holds, so a rotation that half happened — the old
+ * file closed, no new one open — left a closed file as the active segment,
+ * and every later sync and rotation failing against it. The new segment is
+ * therefore opened before the old one is let go.
  */
 func (l *Log) Rotate() (string, error) {
 	l.mu.Lock()
@@ -246,15 +288,20 @@ func (l *Log) Rotate() (string, error) {
 	if err := l.syncLocked(); nil != err {
 		return "", err
 	}
-	if err := l.file.Close(); nil != err {
+
+	file, writer, err := l.createSegment(l.active + 1)
+	if nil != err {
 		return "", err
 	}
 
-	sealed := segmentName(l.active)
+	sealed, previous := segmentName(l.active), l.file
 
-	if err := l.openSegment(l.active + 1); nil != err {
-		return "", err
-	}
+	l.file, l.writer, l.active, l.dirty, l.pending, l.listed = file, writer, l.active+1, true, 0, false
+
+	// The sealed segment's data and name are already durable — syncLocked
+	// returned — so a failing close cannot lose anything, and reporting it
+	// would make the caller treat a complete segment as one that failed.
+	previous.Close()
 
 	return sealed, nil
 }
@@ -381,10 +428,23 @@ func (l *Log) Replay(segment string, fn func(*model.Record) error) error {
 			return err
 		}
 
-		if crc32.Checksum(payload, castagnoli) != checksum {
-			// If nothing follows, this was the frame being written when the
-			// process died. If something does, the file is genuinely damaged.
-			if _, err := reader.Peek(1); errors.Is(err, io.EOF) {
+		/*!
+		 * A zero length is never a frame: the smallest record Append writes
+		 * still encodes to a few bytes. It is what a filesystem leaves after a
+		 * power loss when it had extended the file but not yet written the data
+		 * — the tail reads back as zeros, which is a length of 0 and a checksum
+		 * of 0, and crc32c of nothing happens to be 0 as well.
+		 */
+		if 0 == length || crc32.Checksum(payload, castagnoli) != checksum {
+			// If nothing but zeros follows, this was the frame being written
+			// when the process died, and no intact frame lies beyond it: a
+			// real one never starts with a zero length. If anything else
+			// follows, the file is genuinely damaged.
+			torn, err := zeroToEnd(reader)
+			if nil != err {
+				return err
+			}
+			if torn {
 				return nil
 			}
 			return fmt.Errorf("%w: checksum mismatch in %s", ErrCorrupt, segment)
@@ -395,7 +455,12 @@ func (l *Log) Replay(segment string, fn func(*model.Record) error) error {
 			return fmt.Errorf("%w: %s: %v", ErrCorrupt, segment, err)
 		}
 
-		if err := fn(encoded.decode()); nil != err {
+		rec, err := encoded.decode()
+		if nil != err {
+			return fmt.Errorf("%w: %s: %v", ErrCorrupt, segment, err)
+		}
+
+		if err := fn(rec); nil != err {
 			return err
 		}
 	}
@@ -426,6 +491,55 @@ func (l *Log) Dir() string { return l.dir }
 
 // SyncInterval is how often the caller should be calling Sync.
 func (l *Log) SyncInterval() time.Duration { return l.interval }
+
+// zeroToEnd reports whether everything left in r is zero bytes, including
+// nothing at all.
+func zeroToEnd(r io.Reader) (bool, error) {
+	buffer := make([]byte, 32<<10)
+
+	for {
+		n, err := r.Read(buffer)
+
+		for _, b := range buffer[:n] {
+			if 0 != b {
+				return false, nil
+			}
+		}
+
+		if errors.Is(err, io.EOF) {
+			return true, nil
+		}
+		if nil != err {
+			return false, err
+		}
+	}
+}
+
+/*!
+ * syncDir makes a directory's entries durable.
+ *
+ * Only a filesystem saying it cannot fsync a directory at all — EINVAL, or
+ * ENOTSUP — is ignored. One saying it tried and failed is an error, because
+ * the caller is about to rely on a segment's name surviving a power loss.
+ */
+func syncDir(dir string) error {
+	if "windows" == runtime.GOOS {
+		return nil
+	}
+
+	handle, err := os.Open(dir)
+	if nil != err {
+		return err
+	}
+	defer handle.Close()
+
+	if err := handle.Sync(); nil != err &&
+		!errors.Is(err, syscall.EINVAL) && !errors.Is(err, errors.ErrUnsupported) {
+		return fmt.Errorf("syncing %s: %w", dir, err)
+	}
+
+	return nil
+}
 
 func segmentName(number uint64) string {
 	return fmt.Sprintf("%s%012d%s", segmentPrefix, number, segmentSuffix)

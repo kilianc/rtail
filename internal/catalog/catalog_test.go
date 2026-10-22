@@ -2,6 +2,7 @@ package catalog_test
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -463,4 +464,147 @@ func TestPruneStaysFastWithManyFiles(t *testing.T) {
 	if elapsed > 100*time.Millisecond {
 		t.Errorf("prune over 2000 files took %s, which suggests a table scan", elapsed)
 	}
+}
+
+/*!
+ * A tombstoned file's rows are no longer stored, so they leave the rollup —
+ * however the file was retired. Retention expiry tombstones directly, and it
+ * used to leave `streams.row_count` counting every expired row forever.
+ */
+func TestTombstoneTakesFilesOffTheRollup(t *testing.T) {
+	ctx := context.Background()
+	cat := open(t)
+
+	old := register(t, cat, "api", "old.parquet", 0, 10, 1)
+	register(t, cat, "api", "new.parquet", 10, 20, 11)
+
+	if err := cat.Tombstone(ctx, old); nil != err {
+		t.Fatal(err)
+	}
+
+	// Retiring the same file twice must not subtract it twice.
+	if err := cat.Tombstone(ctx, old); nil != err {
+		t.Fatal(err)
+	}
+
+	streams, err := cat.Streams(ctx)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 1 != len(streams) {
+		t.Fatalf("streams = %d, want 1", len(streams))
+	}
+	if 10 != streams[0].RowCount || 1024 != streams[0].ByteSize {
+		t.Errorf("rollup = %d rows / %d bytes, want 10 / 1024 — the tombstoned file is still counted",
+			streams[0].RowCount, streams[0].ByteSize)
+	}
+}
+
+// Garbage collection decides what is an orphan from this set, so it has to
+// include files in every state — a tombstoned file is not an orphan.
+func TestPathsCoversEveryState(t *testing.T) {
+	ctx := context.Background()
+	cat := open(t)
+
+	old := register(t, cat, "api", "old.parquet", 0, 10, 1)
+	register(t, cat, "api", "new.parquet", 10, 20, 11)
+
+	if err := cat.Tombstone(ctx, old); nil != err {
+		t.Fatal(err)
+	}
+
+	known, err := cat.Paths(ctx)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 2 != len(known) || !known["old.parquet"] || !known["new.parquet"] {
+		t.Errorf("paths = %v, want both files", known)
+	}
+}
+
+func TestLevelFloorRoundTrips(t *testing.T) {
+	ctx := context.Background()
+	cat := open(t)
+
+	if _, err := cat.Replace(ctx, []catalog.Replacement{{File: catalog.File{
+		Stream: "api", Path: "floored.parquet", Level: catalog.LevelL2,
+		MinTs: at(0), MaxTs: at(10), MinSeq: 1, MaxSeq: 10,
+		RowCount: 10, ByteSize: 1024, LevelFloor: "WARN",
+	}}}, nil); nil != err {
+		t.Fatal(err)
+	}
+	register(t, cat, "api", "plain.parquet", 10, 20, 11)
+
+	files, err := cat.Prune(ctx, catalog.Query{})
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 2 != len(files) {
+		t.Fatalf("files = %v", paths(files))
+	}
+	if "WARN" != files[0].LevelFloor || "" != files[1].LevelFloor {
+		t.Errorf("level floors = %q, %q; want WARN and none", files[0].LevelFloor, files[1].LevelFloor)
+	}
+}
+
+/*!
+ * A catalog written before level_floor existed must still open, keep its
+ * files, and gain the column — CREATE TABLE IF NOT EXISTS alone would leave
+ * every query that names it failing.
+ */
+func TestCatalogFromAnEarlierReleaseOpens(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "catalog.sqlite")
+
+	db, err := sql.Open("sqlite", path)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE files (
+		  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+		  stream        TEXT    NOT NULL,
+		  path          TEXT    NOT NULL UNIQUE,
+		  level         INTEGER NOT NULL,
+		  min_ts        INTEGER NOT NULL,
+		  max_ts        INTEGER NOT NULL,
+		  min_seq       INTEGER NOT NULL,
+		  max_seq       INTEGER NOT NULL,
+		  row_count     INTEGER NOT NULL,
+		  byte_size     INTEGER NOT NULL,
+		  has_raw       INTEGER NOT NULL,
+		  state         TEXT    NOT NULL DEFAULT 'live',
+		  created_at    INTEGER NOT NULL,
+		  tombstoned_at INTEGER
+		);
+		INSERT INTO files (stream, path, level, min_ts, max_ts, min_seq, max_seq,
+		                   row_count, byte_size, has_raw, created_at)
+		VALUES ('api', 'before.parquet', 0, 0, 10, 1, 10, 10, 1024, 1, 0);`); nil != err {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	cat, err := catalog.Open(path)
+	if nil != err {
+		t.Fatalf("opening an earlier catalog: %v", err)
+	}
+	defer cat.Close()
+
+	files, err := cat.Prune(ctx, catalog.Query{})
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 1 != len(files) || "before.parquet" != files[0].Path || "" != files[0].LevelFloor {
+		t.Errorf("files = %+v, want the earlier file with no level floor", files)
+	}
+
+	register(t, cat, "api", "after.parquet", 10, 20, 11)
+
+	// And a second open, now that the column exists, is not a second ALTER.
+	cat.Close()
+	again, err := catalog.Open(path)
+	if nil != err {
+		t.Fatalf("reopening a migrated catalog: %v", err)
+	}
+	again.Close()
 }

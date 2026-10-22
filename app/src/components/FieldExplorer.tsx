@@ -11,7 +11,7 @@
  * values for forty fields nobody opened would cost more than the search did.
  */
 
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { api, type Field, type FieldValue, type Params } from '../lib/api.js'
 import { formatCount } from '../lib/format.js'
 import { Button } from './Button.js'
@@ -56,9 +56,22 @@ const SEVERITY = [
 const weight = (field: Field) => field.matches ?? field.occurrences ?? 0
 
 export function FieldExplorer({ fields, params, active, columns, onFilter, onToggleColumn }: Props) {
-  const [open, setOpen] = useState<string[]>(() =>
-    fields.filter((field) => FAVOURED.includes(field.name)).slice(0, 3).map((field) => field.name)
-  )
+  const [open, setOpen] = useState<string[]>([])
+
+  /*!
+   * The favoured fields open once, when the catalog first arrives.
+   *
+   * This was a useState initializer, which runs on mount — and on mount the
+   * catalog has not loaded, so it opened nothing, every time. Once only: after
+   * that, what is open is the reader's choice, and a later query bringing the
+   * same fields back must not reopen the ones they closed.
+   */
+  const seeded = useRef(false)
+  useEffect(() => {
+    if (seeded.current || 0 === fields.length) return
+    seeded.current = true
+    setOpen(fields.filter((field) => FAVOURED.includes(field.name)).slice(0, 3).map((field) => field.name))
+  }, [fields])
 
   /*!
    * Deduplicated by name, envelope first.
@@ -163,8 +176,12 @@ function Severities({
   useEffect(() => {
     const controller = new AbortController()
 
+    // Enough for every severity there is, and room for a level nobody has
+    // canonicalised plus the empty one. It asked for five and then sorted
+    // worst first — but the five were the five most frequent, so on a
+    // healthy stream the rare FATAL was cut before the sort could lift it.
     api
-      .fields({ ...params, field: 'level', top: 5 }, controller.signal)
+      .fields({ ...params, field: 'level', top: SEVERITY.length + 2 }, controller.signal)
       .then((response) =>
         setValues(
           [...response.values].sort((a, b) => {
@@ -234,7 +251,7 @@ function FieldGroup({ field, params, open, active, column, onToggle, onToggleCol
       })
 
     return () => controller.abort()
-  }, [open, field.name, params.q, params.stream, params.from, params.to])
+  }, [open, field.name, params.q, params.lang, params.stream, params.from, params.to])
 
   return (
     <section class={`explorer-field ${open ? 'open' : ''} ${active ? 'active' : ''} ${column ? 'pinned' : ''}`}>

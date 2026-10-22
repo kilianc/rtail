@@ -17,7 +17,11 @@ package rql
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
+	"time"
+
+	"github.com/kilianc/rtail/v2/internal/normalize"
 )
 
 /*!
@@ -60,6 +64,12 @@ var SeverityRank = map[string]int{
 	"TRACE": 10, "DEBUG": 20, "INFO": 30, "NOTICE": 35,
 	"WARN": 40, "ERROR": 50, "CRITICAL": 55, "ALERT": 58,
 	"EMERGENCY": 60, "FATAL": 60,
+}
+
+// Levels names every ranked level, least severe first.
+var Levels = []string{
+	"TRACE", "DEBUG", "INFO", "NOTICE", "WARN",
+	"ERROR", "CRITICAL", "ALERT", "EMERGENCY", "FATAL",
 }
 
 // DefaultSeverityRank is where an unrecognised level sits.
@@ -199,6 +209,12 @@ func (c *compiler) comparison(n *Comparison) (string, error) {
 		return "(" + castText(expr, kind) + " ILIKE " + c.bind("%"+escapeLike(n.Value.Str)+"%") + " ESCAPE '\\')", nil
 
 	case OpMatches:
+		// Checked here, as the predicate does, rather than left to DuckDB: a
+		// bad pattern is the query's fault and deserves a 400 that says so,
+		// not a 500 carrying the whole generated statement. Both are RE2.
+		if _, err := regexp.Compile(n.Value.Str); nil != err {
+			return "", &Error{Message: "invalid regular expression: " + err.Error()}
+		}
 		return "regexp_matches(" + castText(expr, kind) + ", " + c.bind(n.Value.Str) + ")", nil
 	}
 
@@ -217,8 +233,20 @@ func (c *compiler) ordered(n *Comparison, expr string, kind FieldKind) (string, 
 
 	switch kind {
 	case FieldSeverity:
-		// Compare ranks, not names.
-		return "(" + severityCase(expr) + " " + operator + " " + c.bind(Rank(n.Value.Str)) + ")", nil
+		/*!
+		 * The level as written becomes the level as stored first: `warning`
+		 * is WARN, because that is what ingest turned it into.
+		 *
+		 * Then equality compares names and only ordering compares ranks.
+		 * Ranks are not names — FATAL and EMERGENCY share one, and so does
+		 * every level nobody has heard of — so `level=AUDIT` by rank matched
+		 * every other unknown level, and `level=FATAL` matched EMERGENCY.
+		 */
+		level := normalize.Level(n.Value.Str)
+		if OpEquals == n.Op {
+			return "(" + expr + " = " + c.bind(level) + ")", nil
+		}
+		return "(" + severityCase(expr) + " " + operator + " " + c.bind(Rank(level)) + ")", nil
 
 	case FieldNumber:
 		if KindNumber != n.Value.Kind {
@@ -238,43 +266,89 @@ func (c *compiler) ordered(n *Comparison, expr string, kind FieldKind) (string, 
 		return "(" + expr + " " + operator + " " + c.bind(n.Value.Bool) + ")", nil
 
 	case FieldTimestamp:
-		return "(" + expr + " " + operator + " " + c.bind(n.Value.Str) + "::TIMESTAMP)", nil
+		// Parsed here rather than cast by DuckDB, so the live predicate reads
+		// the same instant from the same text, and a value that is not a time
+		// is a 400 with a reason rather than a cast error mid-scan.
+		at, err := Timestamp(n.Value)
+		if nil != err {
+			return "", err
+		}
+		return "(" + expr + " " + operator + " " + c.bind(at) + ")", nil
 	}
 
 	/*!
-	 * A string column compared with an inequality is compared as text, unless
-	 * the value is a number and the column can be read as one — which is the
-	 * common case for a key that went polymorphic, or one only reachable
-	 * through raw. try_cast returns NULL rather than failing, so a row whose
-	 * value is not numeric simply does not match.
+	 * A string column compared with a bare number is read as a number — which
+	 * is the common case for a key that went polymorphic, or one only
+	 * reachable through raw. try_cast returns NULL rather than failing, so a
+	 * row whose value is not numeric simply does not match.
+	 *
+	 * Equality included. `user_id=12` is the number twelve, as the docs say,
+	 * so it matches 12 and "12.0" alike; comparing the text matched only the
+	 * first, while the live predicate, which compares numbers, matched both.
+	 * Quoting is how you ask for the exact text.
 	 */
-	if KindNumber == n.Value.Kind && OpEquals != n.Op {
+	if KindNumber == n.Value.Kind {
 		return "(try_cast(" + expr + " AS DOUBLE) " + operator + " " + c.bind(n.Value.Num) + ")", nil
 	}
 
 	return "(" + expr + " " + operator + " " + c.bind(n.Value.Str) + ")", nil
 }
 
-// severityCase turns a level name into its rank, inline.
+/*!
+ * severityCase turns a level name into its rank, inline.
+ *
+ * A record with no level has no rank: NULL, so it answers no ordered
+ * comparison and `-level>=DEBUG` keeps it, exactly as the predicate does.
+ * This used to be `CASE upper(level) ... WHEN NULL THEN 0`, and a simple CASE
+ * compares with `=`, which is never true of NULL — so a missing level fell
+ * through to the unknown rank and `level>=DEBUG` returned every line that had
+ * none.
+ */
 func severityCase(expr string) string {
 	var sb strings.Builder
 
-	sb.WriteString("CASE upper(")
-	sb.WriteString(expr)
-	sb.WriteString(")")
+	fmt.Fprintf(&sb, "CASE WHEN nullif(%s, '') IS NULL THEN NULL ELSE CASE upper(%s)", expr, expr)
 
 	// Iterating a map would reorder the SQL between runs, which makes query
 	// plans uncacheable and diffs unreadable.
-	for _, level := range []string{
-		"TRACE", "DEBUG", "INFO", "NOTICE", "WARN",
-		"ERROR", "CRITICAL", "ALERT", "EMERGENCY", "FATAL",
-	} {
+	for _, level := range Levels {
 		fmt.Fprintf(&sb, " WHEN '%s' THEN %d", level, SeverityRank[level])
 	}
 
-	fmt.Fprintf(&sb, " WHEN NULL THEN 0 ELSE %d END", DefaultSeverityRank)
+	fmt.Fprintf(&sb, " ELSE %d END END", DefaultSeverityRank)
 
 	return sb.String()
+}
+
+// The forms a timestamp may be written in, tried in order. A time without a
+// zone is UTC, which is what every stored timestamp is.
+var timestampLayouts = []string{
+	time.RFC3339Nano,
+	"2006-01-02T15:04:05.999999999",
+	"2006-01-02 15:04:05.999999999",
+	"2006-01-02T15:04",
+	"2006-01-02",
+}
+
+/*!
+ * Timestamp reads a literal compared against ts, time or ingest_ts.
+ *
+ * One parser for both compilers. The SQL side used to hand the text to
+ * DuckDB's cast, which the predicate had no way to reproduce — so the live
+ * tail did not answer `ts>2020-01-01` at all — and which ignores a UTC
+ * offset rather than applying it. Microseconds, because that is what storage
+ * keeps.
+ */
+func Timestamp(literal Literal) (time.Time, error) {
+	for _, layout := range timestampLayouts {
+		if at, err := time.Parse(layout, literal.Str); nil == err {
+			return at.UTC().Truncate(time.Microsecond), nil
+		}
+	}
+
+	return time.Time{}, &Error{
+		Message: fmt.Sprintf("%q is not a timestamp: write it as 2024-01-02, 2024-01-02T15:04:05 or RFC 3339", literal.Str),
+	}
 }
 
 // castText makes any field usable with a text operator.

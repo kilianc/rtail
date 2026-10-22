@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -366,5 +367,215 @@ func TestPlainTextRecordsSurvive(t *testing.T) {
 	}
 	if "string" != replayed[0].Type {
 		t.Errorf("type = %q", replayed[0].Type)
+	}
+}
+
+/*!
+ * JSON has no spelling for NaN or Infinity, and encoding/json refuses them
+ * outright. OTLP carries IEEE doubles, so a value like that is one an exporter
+ * can send — and an Append that fails on it drops the record entirely.
+ */
+func TestNonFiniteFloatsSurvive(t *testing.T) {
+	log := open(t, t.TempDir())
+
+	rec := record(1, `{"a":1}`)
+	rec.Fields["nan"] = model.Float(math.NaN())
+	rec.Fields["up"] = model.Float(math.Inf(1))
+	rec.Fields["down"] = model.Float(math.Inf(-1))
+	rec.Fields["finite"] = model.Float(2.5)
+
+	if err := log.Append(rec); nil != err {
+		t.Fatalf("Append with non-finite floats: %v", err)
+	}
+	if _, err := log.Rotate(); nil != err {
+		t.Fatal(err)
+	}
+
+	replayed := drain(t, log)
+	if 1 != len(replayed) {
+		t.Fatalf("replayed %d, want 1", len(replayed))
+	}
+
+	fields := replayed[0].Fields
+	if v := fields["nan"]; model.KindFloat != v.Kind || !math.IsNaN(v.Float) {
+		t.Errorf("nan = %+v", v)
+	}
+	if v := fields["up"]; model.KindFloat != v.Kind || !math.IsInf(v.Float, 1) {
+		t.Errorf("up = %+v", v)
+	}
+	if v := fields["down"]; model.KindFloat != v.Kind || !math.IsInf(v.Float, -1) {
+		t.Errorf("down = %+v", v)
+	}
+	if v := fields["finite"]; model.KindFloat != v.Kind || 2.5 != v.Float {
+		t.Errorf("finite = %+v", v)
+	}
+}
+
+// json.Marshal rewrites a RawMessage's <, > and & as \u escapes, so replay
+// handed back a payload whose bytes differed from the one appended.
+func TestReplayKeepsThePayloadBytes(t *testing.T) {
+	log := open(t, t.TempDir())
+
+	original := record(1, `{"q":"a<b && c>d"}`)
+	want := string(original.JSON)
+
+	if err := log.Append(original); nil != err {
+		t.Fatal(err)
+	}
+	if _, err := log.Rotate(); nil != err {
+		t.Fatal(err)
+	}
+
+	replayed := drain(t, log)
+	if 1 != len(replayed) {
+		t.Fatalf("replayed %d, want 1", len(replayed))
+	}
+	if got := string(replayed[0].JSON); want != got {
+		t.Errorf("json after replay = %s, want %s", got, want)
+	}
+	if original.Raw != replayed[0].Raw {
+		t.Errorf("raw after replay = %q, want %q", replayed[0].Raw, original.Raw)
+	}
+}
+
+// appendBytes extends a segment as a power loss can: past what was written.
+func appendBytes(t *testing.T, path string, tail []byte) {
+	t.Helper()
+
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o644)
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer file.Close()
+
+	if _, err := file.Write(tail); nil != err {
+		t.Fatal(err)
+	}
+}
+
+/*!
+ * A filesystem can persist a file's new size before the data that filled it,
+ * so after a power loss the tail reads back as zeros. That is a torn write
+ * like any other — replay must keep everything before it and boot — rather
+ * than corruption that stops the server starting.
+ */
+func TestZeroFilledTailIsATornWrite(t *testing.T) {
+	dir := t.TempDir()
+	log := open(t, dir)
+
+	for i := range 3 {
+		if err := log.Append(record(uint64(i+1), fmt.Sprintf(`{"i":%d}`, i))); nil != err {
+			t.Fatal(err)
+		}
+	}
+	sealed, err := log.Rotate()
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(dir, sealed)
+	full, err := os.ReadFile(path)
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	cases := map[string][]byte{
+		// The zeros start exactly where the next frame would have.
+		"at a frame boundary": append(append([]byte(nil), full...), make([]byte, 4096)...),
+		// The zeros start inside the last frame's payload, and run past it.
+		"inside a frame": append(append([]byte(nil), full[:len(full)-4]...), make([]byte, 4096)...),
+	}
+
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(path, body, 0o644); nil != err {
+				t.Fatal(err)
+			}
+
+			var count int
+			if err := log.Replay(sealed, func(*model.Record) error {
+				count++
+				return nil
+			}); nil != err {
+				t.Fatalf("replay: %v", err)
+			}
+
+			if count < 2 || count > 3 {
+				t.Errorf("recovered %d records, want the intact ones before the zeros", count)
+			}
+		})
+	}
+}
+
+// A zero-length frame with real data after it is not a torn tail: something
+// overwrote the middle of the file, and skipping it would lose what follows.
+func TestZeroLengthFrameMidFileIsCorrupt(t *testing.T) {
+	dir := t.TempDir()
+	log := open(t, dir)
+
+	if err := log.Append(record(1, `{"a":1}`)); nil != err {
+		t.Fatal(err)
+	}
+	sealed, err := log.Rotate()
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(dir, sealed)
+	appendBytes(t, path, make([]byte, 8))
+	appendBytes(t, path, []byte("not zeros"))
+
+	err = log.Replay(sealed, func(*model.Record) error { return nil })
+	if !errors.Is(err, wal.ErrCorrupt) {
+		t.Errorf("err = %v, want ErrCorrupt", err)
+	}
+}
+
+/*!
+ * A rotation that fails must leave the log as it was. The store pairs each
+ * sealed segment with exactly the batch it holds; a rotation that closed the
+ * old file without opening a new one left every later Append failing, and a
+ * later rotation sealing a segment the store believed was still active.
+ */
+func TestFailedRotateChangesNothing(t *testing.T) {
+	dir := t.TempDir()
+	log := open(t, dir)
+
+	if err := log.Append(record(1, `{"a":1}`)); nil != err {
+		t.Fatal(err)
+	}
+
+	active := log.Active()
+
+	// The next segment cannot be created in a directory nobody may write to.
+	if err := os.Chmod(dir, 0o500); nil != err {
+		t.Fatal(err)
+	}
+	_, err := log.Rotate()
+	if err := os.Chmod(dir, 0o755); nil != err {
+		t.Fatal(err)
+	}
+	if nil == err {
+		t.Skip("the directory stayed writable; running as root?")
+	}
+
+	if log.Active() != active {
+		t.Errorf("active segment moved to %s after a failed rotation", log.Active())
+	}
+	if err := log.Append(record(2, `{"a":2}`)); nil != err {
+		t.Fatalf("append after a failed rotation: %v", err)
+	}
+
+	sealed, err := log.Rotate()
+	if nil != err {
+		t.Fatal(err)
+	}
+	if active != sealed {
+		t.Errorf("sealed %s, want the segment that was active all along, %s", sealed, active)
+	}
+
+	replayed := drain(t, log)
+	if 2 != len(replayed) {
+		t.Errorf("replayed %d records, want both", len(replayed))
 	}
 }

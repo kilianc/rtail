@@ -13,10 +13,13 @@ package client
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -365,6 +368,128 @@ func TestReportsLinesTooLargeToSend(t *testing.T) {
 
 	if 0 != res.code {
 		t.Errorf("exit %d — an undeliverable line is not a failure of the pipe", res.code)
+	}
+}
+
+/*!
+ * A line past the read limit passes through as well.
+ *
+ * Past maxLine a line is no longer assembled in memory: it streams to stdout
+ * as it is read. What must not happen is what a Scanner does there — stop
+ * reading, so the producer upstream of `cmd | rtail` dies of SIGPIPE.
+ */
+func TestALineOverTheReadLimitPassesThrough(t *testing.T) {
+	l := listen(t)
+	long := strings.Repeat("y", 3*maxLine+17)
+
+	res := run(t, l, nil, long+"\nafter\n", false)
+
+	if 0 != res.code {
+		t.Fatalf("exit %d, stderr %q", res.code, res.stderr)
+	}
+
+	if long+"\nafter\n" != res.stdout {
+		t.Errorf("stdout is %d bytes, want the long line and the next one intact", len(res.stdout))
+	}
+
+	if !strings.Contains(res.stderr, "1 line(s) over") {
+		t.Errorf("stderr = %q, want it to count the long line as not sent", res.stderr)
+	}
+
+	got := contents(t, l.messages(t, 1))
+	if 1 != len(got) || "after" != got[0] {
+		t.Fatalf("datagrams = %#v, want the line after the long one", got)
+	}
+}
+
+/*!
+ * A host that does not resolve is not a reason to stop.
+ *
+ * In `server | rtail --host logs` the server started rtail, and an rtail that
+ * exits closes the server's stdout under it. So the failure is a warning, and
+ * the pipe keeps working as a pipe.
+ */
+func TestKeepsPassingStdinThroughWhenTheHostCannotBeDialled(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	code := Run([]string{"--host", "logs.invalid"}, "9.9.9-test", Env{
+		Stdin:  strings.NewReader("one\ntwo\n"),
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Dial: func(string, int) (Conn, error) {
+			return nil, errors.New("lookup logs.invalid: no such host")
+		},
+		Now: time.Now,
+	})
+
+	if 0 != code {
+		t.Errorf("exit %d, want 0", code)
+	}
+	if "one\ntwo\n" != stdout.String() {
+		t.Errorf("stdout = %q, want stdin passed through", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "no such host") || !strings.Contains(stderr.String(), "2 line(s) were not sent") {
+		t.Errorf("stderr = %q, want the failure and the count of unsent lines", stderr.String())
+	}
+}
+
+// Once the host resolves, lines go out again, without a restart.
+func TestStartsSendingOnceTheHostCanBeDialled(t *testing.T) {
+	l := listen(t)
+
+	defer func(every time.Duration) { redialEvery = every }(redialEvery)
+	redialEvery = 10 * time.Millisecond
+
+	var attempts atomic.Int32
+	dial := func(host string, port int) (Conn, error) {
+		if 1 == attempts.Add(1) {
+			return nil, errors.New("lookup logs: no such host")
+		}
+		return DialUDP("127.0.0.1", l.port())
+	}
+
+	stdin, producer := io.Pipe()
+	var stdout, stderr bytes.Buffer
+	done := make(chan int)
+
+	go func() {
+		done <- Run(nil, "9.9.9-test", Env{
+			Stdin: stdin, Stdout: &stdout, Stderr: &stderr, Dial: dial, Now: time.Now,
+		})
+	}()
+
+	// One line while the host is down, then lines until one arrives.
+	io.WriteString(producer, "early\n")
+
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+		io.WriteString(producer, "late\n")
+
+		l.mu.Lock()
+		arrived := 0 != len(l.raw)
+		l.mu.Unlock()
+
+		if arrived {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	producer.Close()
+
+	if code := <-done; 0 != code {
+		t.Fatalf("exit %d, stderr %q", code, stderr.String())
+	}
+
+	got := contents(t, l.messages(t, 1))
+	if 0 == len(got) {
+		t.Fatal("nothing was sent once the host could be dialled")
+	}
+	for _, content := range got {
+		if "late" != content {
+			t.Errorf("sent %#v, want only lines read after the dial succeeded", content)
+		}
+	}
+	if !strings.HasPrefix(stdout.String(), "early\nlate\n") {
+		t.Errorf("stdout = %q, want every line passed through", stdout.String())
 	}
 }
 
