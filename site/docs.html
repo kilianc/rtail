@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>rQL reference — rTail</title>
-  <meta name="description" content="The rTail query language: terms, combining, severity ordering, types, fields, the time range, and the SQL escape hatch.">
+  <title>rQL reference — rtail</title>
+  <meta name="description" content="The rtail query language: terms, combining, severity ordering, types, fields, the time range, and the SQL escape hatch.">
 
   <link rel="canonical" href="https://rtail.ciuffolo.com/docs">
 
   <meta property="og:type" content="article">
   <meta property="og:url" content="https://rtail.ciuffolo.com/docs">
-  <meta property="og:title" content="rQL reference — rTail">
+  <meta property="og:title" content="rQL reference — rtail">
   <meta property="og:description" content="One language, two places it runs: a predicate over the live stream, and a scan over Parquet.">
   <meta name="twitter:card" content="summary">
 
@@ -32,8 +32,8 @@
 <header class="nav">
   <div class="wrap nav-inner">
     <a class="brand" href="/">
-      rTail
-      <span class="tag">2.0.0-rc.1</span>
+      rtail
+      <span class="tag">2.0.0-rc.2</span>
     </a>
 
     <nav class="nav-links" aria-label="Primary">
@@ -191,7 +191,9 @@
     <p>
       When rQL runs out, post SQL. <code>logs</code> is a view over the pruned files, and
       the query runs read-only in a DuckDB sandbox that can see nothing but your data
-      directory.
+      directory. On a server started with <code>--auth-token</code>, this route wants the
+      token like every other one: <code>Authorization: Bearer …</code>, or
+      <code>X-Rtail-Token</code> for clients that reserve the first.
     </p>
     <div class="panel">
       <div class="panel-bar"><span class="panel-label">POST /v1/sql</span></div>
@@ -237,7 +239,7 @@
 <footer class="footer">
   <div class="wrap footer-inner">
     <div class="footer-brand">
-      <p>rTail</p>
+      <p>rtail</p>
       <p>
         Released under the Apache-2.0 license.<br>
         Copyright © 2014–2026 Kilian Ciuffolo.

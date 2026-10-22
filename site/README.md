@@ -63,6 +63,7 @@ and the output is identical.
 `rtail.ciuffolo.com` is assigned to the production environment. The apex
 `ciuffolo.com` is registered on Vercel, so the subdomain needed no DNS record.
 
-**While v2 lives on its own branch**, production still serves whatever `main`
-has. Point the Vercel project at this branch, or wait for the merge, before
-expecting the new page at that URL.
+v2 landed on `main` in #146, so the page and the product it describes are on
+the same branch again. The facts it states — the release candidate it names,
+the install routes, the auth story — are the README's; when those change, this
+page is part of the change.
