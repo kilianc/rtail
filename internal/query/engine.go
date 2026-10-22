@@ -181,7 +181,9 @@ func (e *Engine) acquire(ctx context.Context) (func(), error) {
  * Plan is a resolved query: which files to read, and how to read them.
  */
 type Plan struct {
-	Files    []catalog.File
+	Files []catalog.File
+	// Columns are each file's promoted columns, by file ID.
+	Columns  map[int64][]catalog.Column
 	Resolver *Resolver
 	// From and To are the effective window, after any default was injected.
 	From time.Time
@@ -231,6 +233,7 @@ func (e *Engine) Plan(ctx context.Context, stream string, from, to time.Time) (*
 		plan.Bytes += file.ByteSize
 	}
 
+	plan.Columns = columns
 	plan.Resolver = NewResolver(files, columns)
 
 	return plan, nil

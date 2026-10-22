@@ -17,8 +17,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kilianc/rtail/v2/internal/catalog"
 	"github.com/kilianc/rtail/v2/internal/model"
 	"github.com/kilianc/rtail/v2/internal/normalize"
+	"github.com/kilianc/rtail/v2/internal/parquetio"
 	"github.com/kilianc/rtail/v2/internal/rql"
 )
 
@@ -311,9 +313,12 @@ func (e *Engine) Search(ctx context.Context, req Request) (*Result, error) {
 	if nil != err {
 		return nil, err
 	}
-	defer done()
 
+	// Released as soon as the page is read, not when Search returns:
+	// restoreFields below takes slots of its own, and holding this one while
+	// it waits for them is a deadlock whenever every slot is a Search.
 	records, err := scanRecords(rows)
+	done()
 	if nil != err {
 		return nil, e.failure(err, statement, user)
 	}
@@ -335,9 +340,178 @@ func (e *Engine) Search(ctx context.Context, req Request) (*Result, error) {
 		records = records[:limit]
 	}
 
+	if err := e.restoreFields(ctx, plan, records); nil != err {
+		return nil, err
+	}
+
 	result.Records = records
 
 	return result, nil
+}
+
+/*!
+ * restoreFields reads back the fields of records whose raw cannot supply them.
+ *
+ * scanRecords re-promotes from raw, which covers every JSON line whose raw is
+ * still there. Two kinds of record have no such raw: a syslog line, whose raw
+ * is the line as sent and whose fields the receiver parsed out of it, and a
+ * JSON line past --retention-raw, whose raw is gone. Both still have their
+ * fields on disk as promoted columns — keeping those is the point of dropping
+ * raw — but search reads only the envelope, so they came back with none. The
+ * tail showed facility, app and structured data; the same line on a history
+ * page had nothing for the field explorer or click-to-filter to work with.
+ *
+ * So the columns are read for those records alone: a file at a time, only
+ * the files whose seq range holds one of them, only the columns each file
+ * has, and only the rows by seq, which is unique per store. A page of JSON
+ * lines with raw intact costs nothing extra. The catalog says what each
+ * column was called before it was mangled and what kind it holds, so
+ * `exampleSDID@32473.iut` comes back under its own name, and an int as an int.
+ */
+func (e *Engine) restoreFields(ctx context.Context, plan *Plan, records []*model.Record) error {
+	missing := map[uint64]*model.Record{}
+	for _, rec := range records {
+		if nil == rec.Fields {
+			missing[rec.Seq] = rec
+		}
+	}
+
+	for _, file := range plan.Files {
+		if 0 == len(missing) {
+			return nil
+		}
+
+		columns := plan.Columns[file.ID]
+		if 0 == len(columns) {
+			continue
+		}
+
+		var seqs []any
+		for seq, rec := range missing {
+			if seq >= file.MinSeq && seq <= file.MaxSeq && rec.Stream == file.Stream {
+				seqs = append(seqs, int64(seq))
+			}
+		}
+		if 0 == len(seqs) {
+			continue
+		}
+
+		if err := e.readFields(ctx, file, columns, seqs, missing); nil != err {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// readFields fills in the fields of the records at seqs from one file's
+// promoted columns, and takes each record it found off missing.
+func (e *Engine) readFields(
+	ctx context.Context,
+	file catalog.File,
+	columns []catalog.Column,
+	seqs []any,
+	missing map[uint64]*model.Record,
+) error {
+	kinds := make([]model.Kind, len(columns))
+	selects := make([]string, len(columns))
+
+	/*!
+	 * Each column is cast to the Go type its kind scans into. A JSON column
+	 * is Parquet text annotated JSON, which the driver would otherwise hand
+	 * back already decoded; the record keeps JSON as its text. A polymorphic
+	 * key is stored as text, so it comes back as one — the same widening the
+	 * writer did.
+	 */
+	for i, column := range columns {
+		kind := parquetio.ParseKind(column.Kind)
+		if column.Polymorphic {
+			kind = model.KindString
+		}
+
+		cast := "VARCHAR"
+		switch kind {
+		case model.KindBool:
+			cast = "BOOLEAN"
+		case model.KindInt:
+			cast = "BIGINT"
+		case model.KindFloat:
+			cast = "DOUBLE"
+		}
+
+		kinds[i] = kind
+		selects[i] = fmt.Sprintf(`CAST("%s" AS %s)`, column.Name, cast)
+	}
+
+	marks := strings.TrimSuffix(strings.Repeat("?, ", len(seqs)), ", ")
+
+	statement := fmt.Sprintf(`SELECT seq, %s FROM read_parquet(%s) WHERE seq IN (%s)`,
+		strings.Join(selects, ", "), quote(e.root+"/"+file.Path), marks)
+
+	rows, done, err := e.query(ctx, false, statement, seqs...)
+	if nil != err {
+		return err
+	}
+	defer done()
+
+	values := make([]any, len(columns)+1)
+	targets := make([]any, len(values))
+	for i := range values {
+		targets[i] = &values[i]
+	}
+
+	for rows.Next() {
+		if err := rows.Scan(targets...); nil != err {
+			return e.failure(err, statement, false)
+		}
+
+		seq, ok := values[0].(int64)
+		if !ok {
+			continue
+		}
+
+		rec := missing[uint64(seq)]
+		if nil == rec {
+			continue
+		}
+
+		// Absent and null are the same thing in a column: a key this
+		// record never had is not one of its fields.
+		rec.Fields = map[string]model.Value{}
+		for i, column := range columns {
+			if value, ok := valueOf(kinds[i], values[i+1]); ok {
+				rec.Fields[column.SourceKey] = value
+			}
+		}
+
+		delete(missing, uint64(seq))
+	}
+
+	if err := rows.Err(); nil != err {
+		return e.failure(err, statement, false)
+	}
+
+	return nil
+}
+
+// valueOf builds a field value from what the driver scanned, reporting false
+// for a null.
+func valueOf(kind model.Kind, scanned any) (model.Value, bool) {
+	switch value := scanned.(type) {
+	case bool:
+		return model.Bool(value), true
+	case int64:
+		return model.Int(value), true
+	case float64:
+		return model.Float(value), true
+	case string:
+		if model.KindJSON == kind {
+			return model.JSON(value), true
+		}
+		return model.Str(value), true
+	default:
+		return model.Null(), false
+	}
 }
 
 /*!
