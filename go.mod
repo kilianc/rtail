@@ -1,4 +1,4 @@
-// rTail v2 — see docs/proposal-logging-system.md.
+// rtail v2 — see docs/proposal-logging-system.md.
 //
 // The major-version suffix is deliberate: v2 lives on its own branch, and Go
 // requires the module path to carry /v2 once a v2.x.x tag exists. Declaring it

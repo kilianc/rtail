@@ -5,7 +5,7 @@
  *
  * OpenTelemetry over HTTP, in protobuf or JSON. This is the highest-leverage
  * feature in the whole ingest surface: every OTel collector already speaks it,
- * so pointing one at rTail is a config line and no code change anywhere.
+ * so pointing one at rtail is a config line and no code change anywhere.
  *
  * The mapping onto the envelope is the interesting part. OTLP nests
  * resource → scope → record, and the resource is where the useful identity

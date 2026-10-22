@@ -3,7 +3,7 @@
  *
  * This interface exists in P0, with only a local-disk implementation and no
  * caller yet, on purpose. docs/proposal-logging-system.md §9.1 makes the point:
- * the cloud version of rTail is this same engine with S3 underneath, and that
+ * the cloud version of rtail is this same engine with S3 underneath, and that
  * is a six-week job if the seam exists from the start and a six-month one if
  * the compactor is written against os.Open.
  *

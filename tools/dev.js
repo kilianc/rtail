@@ -88,7 +88,7 @@ server.on('error', (err) => {
 })
 
 /*!
- * If the server dies, stop — do not go on to print "rTail is up".
+ * If the server dies, stop — do not go on to print "rtail is up".
  *
  * It exited immediately when --insecure was missing and this script announced
  * a URL anyway, so the first symptom of a broken server was a browser that
@@ -119,7 +119,7 @@ setTimeout(() => {
   }
 
   console.log('')
-  console.log(`  rTail is up:  http://localhost:${PORT}/`)
+  console.log(`  rtail is up:  http://localhost:${PORT}/`)
   console.log('  Ctrl-C to stop.')
   console.log('')
 }, 1000)

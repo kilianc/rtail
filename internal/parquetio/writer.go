@@ -7,7 +7,7 @@
  * with heavier compression, event-time ordering and bloom filters.
  *
  * The result is a plain Parquet file. `duckdb -c "select * from 'x.parquet'"`
- * works on it with rTail uninstalled, which is the whole anti-lock-in
+ * works on it with rtail uninstalled, which is the whole anti-lock-in
  * argument and worth protecting.
  */
 

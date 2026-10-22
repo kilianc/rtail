@@ -8,7 +8,7 @@
  * accepted from a header for programs and from a cookie for browsers.
  *
  * What it is deliberately not: OIDC, SAML, users, roles, per-stream access.
- * Those belong to a multi-tenant product, and rTail is not one. Anyone who
+ * Those belong to a multi-tenant product, and rtail is not one. Anyone who
  * needs them has a reverse proxy that already does them better.
  *
  * The important design decision is the default. Running with no token is the
@@ -235,7 +235,7 @@ const signInPage = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>rTail — sign in</title>
+<title>rtail — sign in</title>
 <style>
   :root { color-scheme: dark }
   body {

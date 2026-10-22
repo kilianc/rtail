@@ -1,7 +1,7 @@
 /*!
  * Package client is the rtail pipe: stdin in, UDP out, stdout through.
  *
- * This was cli/rtail-client.js, and it is the last thing in rTail that needed
+ * This was cli/rtail-client.js, and it is the last thing in rtail that needed
  * a Node runtime. The server has been a Go binary since v2; leaving the pipe
  * in JavaScript meant anyone who wanted to *send* logs installed a second
  * language toolchain to run two hundred lines that read a file descriptor and

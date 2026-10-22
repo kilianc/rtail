@@ -92,7 +92,7 @@ export function FieldExplorer({ fields, params, active, columns, onFilter, onTog
   /*!
    * Two sections, promoted above envelope.
    *
-   * They are two different kinds of fact. The envelope is the shape rTail
+   * They are two different kinds of fact. The envelope is the shape rtail
    * imposes and is the same on every install; the promoted keys are whatever
    * this system happens to log, which is the part worth reading. Labelling
    * them says which is which without a legend.

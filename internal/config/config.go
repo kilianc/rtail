@@ -63,7 +63,7 @@ type Config struct {
 	 * AuthToken guards the HTTP surface. Empty disables authentication, which
 	 * is right on a laptop and refused off loopback — see Validate.
 	 *
-	 * One shared secret rather than accounts: rTail is a single-node tool, and
+	 * One shared secret rather than accounts: rtail is a single-node tool, and
 	 * anyone who needs users and roles already has a reverse proxy that does
 	 * them properly.
 	 */

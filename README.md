@@ -10,7 +10,7 @@
 ## Terminal output to the browser in seconds, using UNIX pipes.
 
 > **v2 — private preview.** This branch is the rewrite described in
-> [`docs/proposal-logging-system.md`](docs/proposal-logging-system.md): rTail is
+> [`docs/proposal-logging-system.md`](docs/proposal-logging-system.md): rtail is
 > growing into a durable, searchable log store backed by Parquet and SQL. The
 > server is now a single Go binary with the webapp embedded, and the npm
 > package carries only the client pipe.
@@ -110,7 +110,7 @@ anywhere, the server does not.
 
 ## The explorer
 
-![The rTail explorer](docs/media/explorer.png)
+![The rtail explorer](docs/media/explorer.png)
 
 *A spike of upstream timeouts, twenty minutes back: `level>=WARN` on the `api`
 stream, with `service`, `latency_ms` and `region` promoted to columns.*
@@ -231,7 +231,7 @@ There are many log aggregation tools out there, but few of them are realtime. **
     $ rtail-server --data ./logs
 
 Point `--data` at a directory and every line is written to Parquet. Without it,
-rTail is what it always was: an in-memory ring, nothing on disk, nothing to
+rtail is what it always was: an in-memory ring, nothing on disk, nothing to
 clean up.
 
 **There is no schema to define.** The envelope — timestamp, stream, level,
@@ -248,7 +248,7 @@ reconcile by name at read time.
       wal/
       streams/api.example.com/2026/08/11/L0-…parquet
 
-which means any tool reads them, with rTail uninstalled and nothing exported:
+which means any tool reads them, with rtail uninstalled and nothing exported:
 
     $ duckdb -c "
         SELECT a_service, count(*)
@@ -502,7 +502,7 @@ Pass `--insecure` if something in front of it handles access. Nothing stops
 you; it just will not happen by accident.
 
 What this deliberately is not: accounts, roles, OIDC, SAML, or per-stream
-permissions. rTail is a single-node tool, and anyone who needs those already
+permissions. rtail is a single-node tool, and anyone who needs those already
 has a reverse proxy that does them properly.
 
 **Two holes worth knowing about.** UDP ingest is unauthenticated, because UDP
@@ -643,7 +643,7 @@ Dropped, and why:
   which contradicts the design. `--backlog` covers the useful part.
 
 ## Sponsors
-❤ rTail? Consider sponsoring this project to keep it alive and free for the community.
+❤ rtail? Consider sponsoring this project to keep it alive and free for the community.
 
 * ? (wildcard TLS cert)
 * ? (.io domain)
@@ -652,7 +652,7 @@ Dropped, and why:
 
 ## License
 
-rTail is licensed under the **Apache License 2.0** — see [`LICENSE`](LICENSE)
+rtail is licensed under the **Apache License 2.0** — see [`LICENSE`](LICENSE)
 and [`COPYRIGHT.md`](COPYRIGHT.md).
 
 Run it, modify it, ship it inside your own product, commercially, at any
@@ -660,7 +660,7 @@ scale. Keep the notice, say what you changed, and the patent grant in §3
 covers you. There is nothing to buy and no feature held back for a paid tier,
 because there is no paid tier.
 
-rTail **v1.x remains under the MIT licence** it was released with. That does
+rtail **v1.x remains under the MIT licence** it was released with. That does
 not change retroactively; if you are on v1, the terms you accepted still
 apply. v2 spent part of its life under AGPL-3.0; that is reversed, and
 [`COPYRIGHT.md`](COPYRIGHT.md) has the reasoning.

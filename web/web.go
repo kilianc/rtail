@@ -22,7 +22,7 @@ var embedded embed.FS
 // notBuilt is served when the webapp assets are absent.
 const notBuilt = `<!doctype html>
 <meta charset="utf-8">
-<title>rTail — webapp not built</title>
+<title>rtail — webapp not built</title>
 <style>
   body { font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
          max-width: 46rem; margin: 12vh auto; padding: 0 2rem;
@@ -30,7 +30,7 @@ const notBuilt = `<!doctype html>
   code { background: #22252c; padding: .15em .4em; border-radius: 3px; }
   a { color: #04cd7e; }
 </style>
-<h1>rTail</h1>
+<h1>rtail</h1>
 <p>The server is running, but the webapp assets are not in this binary.</p>
 <p>Build them and rebuild the server:</p>
 <pre><code>make dist

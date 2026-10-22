@@ -1,8 +1,8 @@
-# rTail → a real logging system
+# rtail → a real logging system
 
 **Status:** proposal, nothing built
 **Author:** drafted with Claude, 2026-08-11
-**Scope:** turn rTail from an ephemeral UDP viewer into a durable, searchable,
+**Scope:** turn rtail from an ephemeral UDP viewer into a durable, searchable,
 schema-less log store backed by Parquet, with a Go backend, a React frontend,
 and a plausible SaaS on top.
 
@@ -10,7 +10,7 @@ and a plausible SaaS on top.
 
 ## 1. Where we are
 
-rTail v1 was ~330 lines of Node across two binaries. Both are now Go, and the
+rtail v1 was ~330 lines of Node across two binaries. Both are now Go, and the
 descriptions below are what they *were* — kept because the rest of this
 document argues from them:
 
@@ -30,7 +30,7 @@ document argues from them:
 
 The README says the quiet part out loud: *"There is no persistent layer, nor
 does the tool store any data."* Everything below is about deleting that
-sentence without losing the thing that makes rTail good — that
+sentence without losing the thing that makes rtail good — that
 `cmd | rtail` is the entire onboarding flow.
 
 **Non-negotiable constraint:** `cmd | rtail` keeps working, byte-for-byte, with
@@ -79,7 +79,7 @@ Three ideas carry the whole design:
 
 1. **Logs are just Parquet files on disk.** No proprietary format, no daemon
    required to read them. `duckdb -c "select * from 'data/**/*.parquet'"` works
-   with rTail uninstalled. This is the anti-lock-in story and it is also the
+   with rtail uninstalled. This is the anti-lock-in story and it is also the
    SaaS story.
 2. **A tiny transactional catalog next to the files** (SQLite) holds the file
    list, per-file column inventory, and min/max stats. It is what makes
@@ -494,7 +494,7 @@ wherever somebody already is. Four ways in, one binary behind all of them:
 | npm | `npm i -g rtail` |
 
 npm is on the list because it is where the audience already stands — the
-people piping a dev server into rTail are usually inside a checkout with a
+people piping a dev server into rtail are usually inside a checkout with a
 `package.json` — and dropping it to win a Go rewrite would have traded the
 install story for the implementation. It does not have to be that trade.
 
@@ -519,7 +519,7 @@ links the bins of the named package only, never a transitive dependency's, so
 a global install would put nothing on `PATH`. So
 [`npm/rtail/bin/rtail.js`](../npm/rtail/bin/rtail.js) resolves this machine's
 binary and `spawnSync`s it with stdio inherited, which keeps the file
-descriptors — rTail is a pipe, and a copy through a Node process would buffer
+descriptors — rtail is a pipe, and a copy through a Node process would buffer
 it. Roughly fifty lines, and the only JavaScript left in the product.
 
 Windows is on the npm matrix and not in the release tarballs: the client
@@ -572,7 +572,7 @@ because the reasoning explains why the code looks the way it does.
 
 ## 9. The SaaS
 
-> **Superseded.** rTail v2 is free software, not a commercial product. This
+> **Superseded.** rtail v2 is free software, not a commercial product. This
 > section is kept as written because the architecture it describes is real —
 > files, a catalog and stateless query genuinely do disaggregate, and the
 > `storage.Backend` seam that §9.1 argued for exists and costs nothing to
@@ -641,7 +641,7 @@ effort-bound.
   who want metrics and traces in one place. The OTLP receiver is the hedge:
   traces are structurally the same problem and the storage engine already
   handles them.
-- **rTail's existing audience** (developers tailing local processes) is not the
+- **rtail's existing audience** (developers tailing local processes) is not the
   same audience as the buyer of a log SaaS. The OSS tool is a funnel, but a
   leaky one. Worth being clear-eyed that the SaaS is a new go-to-market, not a
   conversion of the existing users.
@@ -672,7 +672,7 @@ now ──► P0  Go server at parity, UDP frozen, SSE instead of socket.io
         OSS 1.0  ──►  storage.Backend → S3, catalog → Postgres, auth, billing
 ```
 
-Each phase ends with something shippable. P1 is where rTail stops being a
+Each phase ends with something shippable. P1 is where rtail stops being a
 viewer, P3 is where it becomes a system, P4 is where it becomes a product.
 
 ---

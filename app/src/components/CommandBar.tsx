@@ -9,7 +9,7 @@
  *
  * Modelled on Cloud Logging's LQL pane, with one deliberate difference: there
  * it is behind a "Show query" toggle because the filter chips above can build a
- * query without it. rQL is the only way to ask rTail anything, so the editor is
+ * query without it. rQL is the only way to ask rtail anything, so the editor is
  * always open — hiding the sole input behind a switch would be hiding the
  * product.
  *
@@ -244,7 +244,7 @@ export function CommandBar({
             placeholder={
               'sql' === lang
                 ? "Start writing a SQL expression — level = 'ERROR' AND a_latency_ms > 500"
-                : 'Start writing a query using rQL (rTail query language)'
+                : 'Start writing a query using rQL (rtail query language)'
             }
             aria-label="Query"
             value={value}

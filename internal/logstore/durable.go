@@ -518,7 +518,7 @@ func (d *Durable) collect(ctx context.Context) error {
  * objectName builds the on-disk path, per §3.4.
  *
  * Hive-ish and human-navigable on purpose: handing someone a directory they
- * can open in DuckDB without rTail installed is the anti-lock-in argument, and
+ * can open in DuckDB without rtail installed is the anti-lock-in argument, and
  * it only holds if the layout makes sense to a person with `ls`.
  */
 func objectName(stream string, first *model.Record) string {

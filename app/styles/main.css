@@ -1,5 +1,5 @@
 /*
- * rTail webapp styles
+ * rtail webapp styles
  *
  * Modelled on Google Cloud's Logs Explorer: a query box with a Run button, a
  * severity histogram under it, a Log fields panel down the left, and a dense
@@ -1522,7 +1522,7 @@ background: none;
   .explorer-level-name { color: currentcolor; }
 
   /*
-   * The two kinds of key, labelled. The envelope is rTail's own shape and the
+   * The two kinds of key, labelled. The envelope is rtail's own shape and the
    * same on every install; the promoted keys are whatever this system logs.
    */
   .explorer-section {

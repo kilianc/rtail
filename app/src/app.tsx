@@ -133,7 +133,7 @@ export function App() {
   }, [prefs.theme, prefs.fontFamily, prefs.fontSize])
 
   useEffect(() => {
-    document.title = view.stream ? `rTail : ${view.stream}` : 'rTail'
+    document.title = view.stream ? `rtail : ${view.stream}` : 'rtail'
   }, [view.stream])
 
   /*!

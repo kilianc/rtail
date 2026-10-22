@@ -1,7 +1,7 @@
 /*!
  * The v1 UDP receiver.
  *
- * This protocol is frozen. `cmd | rtail` is rTail's entire onboarding story and
+ * This protocol is frozen. `cmd | rtail` is rtail's entire onboarding story and
  * the npm client is already installed on machines we will never hear about, so
  * the datagram shape — {id, timestamp, content} — does not change, ever. New
  * capabilities arrive on new receivers (HTTP, syslog, OTLP in P5), not by

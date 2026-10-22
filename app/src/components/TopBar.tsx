@@ -110,7 +110,7 @@ export function TopBar({ prefs, live, timeline, store, children, onChangePrefs, 
               elementRef={infoRef}
               variant="icon"
               icon="info"
-              aria-label="About rTail"
+              aria-label="About rtail"
               aria-expanded={'info' === open}
               onClick={() => toggle('info')}
             />
@@ -122,7 +122,7 @@ export function TopBar({ prefs, live, timeline, store, children, onChangePrefs, 
             */}
             <a
               class="btn btn-icon btn-md btn-icon-github"
-              aria-label="rTail on GitHub"
+              aria-label="rtail on GitHub"
               href="https://github.com/kilianc/rtail"
               target="_blank"
               rel="noreferrer"
