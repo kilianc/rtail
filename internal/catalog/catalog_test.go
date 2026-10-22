@@ -3,6 +3,7 @@ package catalog_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -500,25 +501,223 @@ func TestTombstoneTakesFilesOffTheRollup(t *testing.T) {
 	}
 }
 
-// Garbage collection decides what is an orphan from this set, so it has to
-// include files in every state — a tombstoned file is not an orphan.
-func TestPathsCoversEveryState(t *testing.T) {
+/*!
+ * A declared write is what garbage collection may delete, and only while it
+ * stays unregistered: registering drops the declaration in the same
+ * transaction, and a path that is already registered is reported rather than
+ * declared.
+ */
+func TestIntendDeclaresOnlyUnregisteredPaths(t *testing.T) {
 	ctx := context.Background()
 	cat := open(t)
 
-	old := register(t, cat, "api", "old.parquet", 0, 10, 1)
-	register(t, cat, "api", "new.parquet", 10, 20, 11)
+	register(t, cat, "api", "live.parquet", 0, 10, 1)
 
-	if err := cat.Tombstone(ctx, old); nil != err {
-		t.Fatal(err)
-	}
-
-	known, err := cat.Paths(ctx)
+	registered, err := cat.Intend(ctx, "live.parquet", "new.parquet")
 	if nil != err {
 		t.Fatal(err)
 	}
-	if 2 != len(known) || !known["old.parquet"] || !known["new.parquet"] {
-		t.Errorf("paths = %v, want both files", known)
+	if !registered["live.parquet"] || registered["new.parquet"] {
+		t.Errorf("registered = %v, want only live.parquet", registered)
+	}
+
+	later := time.Now().Add(time.Hour)
+
+	abandoned, err := cat.Abandoned(ctx, later)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 1 != len(abandoned) || "new.parquet" != abandoned[0] {
+		t.Fatalf("declared = %v, want just new.parquet", abandoned)
+	}
+
+	register(t, cat, "api", "new.parquet", 10, 20, 11)
+
+	if abandoned, err = cat.Abandoned(ctx, later); nil != err || 0 != len(abandoned) {
+		t.Errorf("after registering, declared = %v (err %v), want none", abandoned, err)
+	}
+}
+
+/*!
+ * Discard deletes the object of a declared write only while the declaration
+ * is old and its path unregistered — re-checked under the write lock, so a
+ * write that declares the same path again in the meantime keeps its object.
+ */
+func TestDiscardRemovesOnlyStaleUnregisteredWrites(t *testing.T) {
+	ctx := context.Background()
+	cat := open(t)
+	db := cat.DBForTest()
+
+	if _, err := cat.Intend(ctx, "orphan.parquet", "retried.parquet"); nil != err {
+		t.Fatal(err)
+	}
+
+	// One registered by a release that did not drop declarations.
+	register(t, cat, "api", "landed.parquet", 0, 10, 1)
+	if _, err := db.ExecContext(ctx, `INSERT INTO pending (path, created_at) VALUES ('landed.parquet', 0)`); nil != err {
+		t.Fatal(err)
+	}
+
+	// All of them a day old.
+	if _, err := db.ExecContext(ctx, `UPDATE pending SET created_at = 0`); nil != err {
+		t.Fatal(err)
+	}
+
+	cutoff := time.Now().Add(-time.Hour)
+
+	abandoned, err := cat.Abandoned(ctx, cutoff)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 3 != len(abandoned) {
+		t.Fatalf("abandoned = %v, want all three", abandoned)
+	}
+
+	// A write retrying one of them declares it again after the list was made.
+	if _, err := cat.Intend(ctx, "retried.parquet"); nil != err {
+		t.Fatal(err)
+	}
+
+	removed := map[string]bool{}
+	for _, path := range abandoned {
+		if _, err := cat.Discard(ctx, path, cutoff, func() error {
+			removed[path] = true
+			return nil
+		}); nil != err {
+			t.Fatalf("Discard(%s): %v", path, err)
+		}
+	}
+
+	if !removed["orphan.parquet"] || removed["landed.parquet"] || removed["retried.parquet"] {
+		t.Errorf("removed %v, want only orphan.parquet", removed)
+	}
+
+	left, err := cat.Abandoned(ctx, time.Now().Add(time.Hour))
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 1 != len(left) || "retried.parquet" != left[0] {
+		t.Errorf("declarations left = %v, want only the retried write's", left)
+	}
+}
+
+// A remove that fails keeps the declaration, so the next sweep tries again.
+func TestDiscardKeepsTheDeclarationWhenRemoveFails(t *testing.T) {
+	ctx := context.Background()
+	cat := open(t)
+
+	if _, err := cat.Intend(ctx, "orphan.parquet"); nil != err {
+		t.Fatal(err)
+	}
+
+	boom := errors.New("busy")
+	if _, err := cat.Discard(ctx, "orphan.parquet", time.Now().Add(time.Hour), func() error { return boom }); !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want the remove's", err)
+	}
+
+	left, err := cat.Abandoned(ctx, time.Now().Add(time.Hour))
+	if nil != err || 1 != len(left) {
+		t.Errorf("declarations = %v (err %v), want the one that failed", left, err)
+	}
+}
+
+/*!
+ * An output path that is already registered fails the replacement and
+ * retires nothing. Its object has just been overwritten with the merge's, and
+ * treating that as an earlier attempt's success retired the inputs as well —
+ * every record only the overwritten file held was gone.
+ */
+func TestReplaceRefusesAnOutputThatIsAlreadyRegistered(t *testing.T) {
+	ctx := context.Background()
+	cat := open(t)
+
+	existing := register(t, cat, "api", "L1-1.parquet", 0, 10, 1)
+	input := register(t, cat, "api", "L0-11.parquet", 10, 20, 11)
+
+	before, err := cat.Streams(ctx)
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	_, err = cat.Replace(ctx, []catalog.Replacement{{File: catalog.File{
+		Stream: "api", Path: "L1-1.parquet", Level: catalog.LevelL1,
+		MinTs: at(0), MaxTs: at(20), MinSeq: 1, MaxSeq: 20, RowCount: 20, ByteSize: 10,
+	}}}, []int64{input})
+	if !errors.Is(err, catalog.ErrRegistered) {
+		t.Fatalf("err = %v, want ErrRegistered", err)
+	}
+
+	live, err := cat.Prune(ctx, catalog.Query{})
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 2 != len(live) || existing != live[0].ID || input != live[1].ID {
+		t.Errorf("live = %v, want both files untouched", paths(live))
+	}
+
+	after, err := cat.Streams(ctx)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if before[0].RowCount != after[0].RowCount || before[0].ByteSize != after[0].ByteSize {
+		t.Errorf("rollup moved from %+v to %+v on a refused replacement", before[0], after[0])
+	}
+}
+
+/*!
+ * A catalog whose rollups an earlier release left counting expired files is
+ * recounted from its live files, once.
+ */
+func TestRollupsAreRecountedFromLiveFilesOnce(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "catalog.sqlite")
+
+	cat, err := catalog.Open(path)
+	if nil != err {
+		t.Fatal(err)
+	}
+	register(t, cat, "api", "kept.parquet", 0, 10, 1)
+	expired := register(t, cat, "api", "expired.parquet", 10, 20, 11)
+
+	// What the earlier Tombstone did: flip the state, leave the rollup. And a
+	// catalog from before the recount existed has no record of it.
+	if _, err := cat.DBForTest().ExecContext(ctx,
+		`UPDATE files SET state = 'tombstoned', tombstoned_at = 0 WHERE id = ?`, expired); nil != err {
+		t.Fatal(err)
+	}
+	if _, err := cat.DBForTest().ExecContext(ctx, `DELETE FROM meta WHERE key = 'rollups_recounted'`); nil != err {
+		t.Fatal(err)
+	}
+	cat.Close()
+
+	rows := func() int64 {
+		t.Helper()
+
+		cat, err := catalog.Open(path)
+		if nil != err {
+			t.Fatal(err)
+		}
+		defer cat.Close()
+
+		streams, err := cat.Streams(ctx)
+		if nil != err || 1 != len(streams) {
+			t.Fatalf("streams = %v, err %v", streams, err)
+		}
+
+		// Moved by hand once recounted, to see whether the next open
+		// recounts again.
+		if _, err := cat.DBForTest().ExecContext(ctx, `UPDATE streams SET row_count = 999`); nil != err {
+			t.Fatal(err)
+		}
+
+		return streams[0].RowCount
+	}
+
+	if got := rows(); 10 != got {
+		t.Errorf("row_count = %d after the recount, want the 10 rows still live", got)
+	}
+	if got := rows(); 999 != got {
+		t.Errorf("row_count = %d on the next open, want 999 — the recount ran twice", got)
 	}
 }
 

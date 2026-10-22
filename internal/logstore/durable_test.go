@@ -282,9 +282,9 @@ func TestCrashBetweenCommitAndRegisterLosesNothing(t *testing.T) {
  * A crash after the catalog registered the file but before the WAL segment was
  * removed.
  *
- * Replay rewrites the same object — object names are derived from the batch,
- * not from a clock — and the catalog recognises the path and does nothing. So
- * this recovers exactly once rather than merely without loss. Getting this
+ * Replay derives the same object names — from the batch, not from a clock —
+ * finds them registered, and writes nothing. So this recovers exactly once
+ * rather than merely without loss. Getting this
  * wrong double-counts the `streams` rollups on every crash, which is how the
  * first version of this failed.
  */
@@ -947,19 +947,24 @@ func TestBacklogRestoreKeepsSourceKeys(t *testing.T) {
 }
 
 /*!
- * GC collects objects the catalog never registered and temp files from writes
- * that never finished — and nothing else: not registered files, not anything
- * younger than the orphan grace, and not anything older than the catalog,
- * which is somebody's data from a catalog that was lost.
+ * The sweep deletes the object of a write that was declared and never
+ * registered, and temp files — and nothing else: not a declared write still
+ * young enough to be in progress, and not any object nobody declared, however
+ * orphaned it looks. That includes one whose catalog row is simply missing,
+ * which is what a catalog restored from a backup looks like for everything
+ * registered since; the sweep used to delete all of it a day later.
  */
-func TestCollectSweepsOrphansButNotData(t *testing.T) {
+func TestSweepDeletesOnlyDeclaredWritesThatNeverLanded(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 
 	store := openDurable(t, dir, quietOptions(10))
 	defer store.Close()
 
+	cat := store.Catalog()
+
 	store.Append(ctx, rec("api", `{"i":0}`))
+	store.Append(ctx, rec("lost", `{"i":1}`))
 	if err := store.Flush(ctx); nil != err {
 		t.Fatal(err)
 	}
@@ -980,21 +985,51 @@ func TestCollectSweepsOrphansButNotData(t *testing.T) {
 
 	now := time.Now()
 
-	orphan := write("streams/api/2026/10/21/L0-orphan.parquet", now)
-	temp := write("streams/api/2026/10/21/.L0-x.parquet.tmp-123", now)
-	fresh := write("streams/api/2026/10/21/L0-fresh.parquet", now.Add(47*time.Hour))
-	ancient := write("streams/api/2020/01/01/L0-ancient.parquet", now.Add(-365*24*time.Hour))
+	const declaredName = "streams/api/2026/10/21/L0-declared.parquet"
+	if _, err := cat.Intend(ctx, declaredName); nil != err {
+		t.Fatal(err)
+	}
+	declared := write(declaredName, now)
 
-	// Two days on: past the one-day orphan grace for everything written now.
+	undeclared := write("streams/api/2026/10/21/L0-undeclared.parquet", now)
+	ancient := write("streams/api/2020/01/01/L0-ancient.parquet", now.Add(-365*24*time.Hour))
+	temp := write("streams/api/2026/10/21/.L0-x.parquet.tmp-123", now)
+
+	// A registered file whose row went missing.
+	files, err := cat.Prune(ctx, catalog.Query{Stream: "lost"})
+	if nil != err || 1 != len(files) {
+		t.Fatalf("setup: files = %v, err %v", files, err)
+	}
+	if err := cat.Forget(ctx, files[0].ID); nil != err {
+		t.Fatal(err)
+	}
+	rowless := filepath.Join(dir, filepath.FromSlash(files[0].Path))
+
+	// An hour on, the declaration could still be a write in progress.
+	if err := store.CollectForTest(ctx, now.Add(time.Hour)); nil != err {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(declared); nil != err {
+		t.Errorf("a young declared write lost its object: %v", err)
+	}
+
+	// Two days on: past the one-day grace for everything written now.
 	if err := store.CollectForTest(ctx, now.Add(48*time.Hour)); nil != err {
 		t.Fatal(err)
 	}
 
-	for path, want := range map[string]bool{orphan: false, temp: false, fresh: true, ancient: true} {
+	for path, want := range map[string]bool{
+		declared: false, temp: false,
+		undeclared: true, ancient: true, rowless: true,
+	} {
 		_, err := os.Stat(path)
 		if got := nil == err; got != want {
 			t.Errorf("%s exists = %v, want %v", path, got, want)
 		}
+	}
+
+	if left, err := cat.Abandoned(ctx, now.Add(48*time.Hour)); nil != err || 0 != len(left) {
+		t.Errorf("declarations left = %v (err %v), want none", left, err)
 	}
 
 	if got := len(readAll(t, dir, "api")); 1 != got {

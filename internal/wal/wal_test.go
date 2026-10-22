@@ -579,3 +579,103 @@ func TestFailedRotateChangesNothing(t *testing.T) {
 		t.Errorf("replayed %d records, want both", len(replayed))
 	}
 }
+
+/*!
+ * Floor is the first seq a replay of what is on disk could produce: the
+ * oldest sealed segment's first record, skipping empty segments and never
+ * counting the active one, whose records no file holds yet.
+ */
+func TestFloorIsTheOldestSealedRecord(t *testing.T) {
+	dir := t.TempDir()
+	log := open(t, dir)
+
+	floor := func() (uint64, bool) {
+		t.Helper()
+
+		seq, ok, err := log.Floor()
+		if nil != err {
+			t.Fatal(err)
+		}
+		return seq, ok
+	}
+
+	log.Append(record(5, `{"a":5}`))
+	if _, ok := floor(); ok {
+		t.Error("the active segment counted towards the floor")
+	}
+
+	empty, _ := log.Rotate()
+	if seq, ok := floor(); !ok || 5 != seq {
+		t.Errorf("floor = %d, %v; want 5", seq, ok)
+	}
+
+	log.Append(record(6, `{"a":6}`))
+	second, _ := log.Rotate()
+
+	log.Remove(empty)
+	if seq, ok := floor(); !ok || 6 != seq {
+		t.Errorf("floor = %d, %v after removing the oldest; want 6", seq, ok)
+	}
+
+	// An empty sealed segment is passed over.
+	third, _ := log.Rotate()
+	log.Remove(second)
+	if _, ok := floor(); ok {
+		t.Errorf("an empty segment %s produced a floor", third)
+	}
+}
+
+/*!
+ * A quarantined segment leaves the log — it is never replayed again — but
+ * stays on disk, and a second one with the same number does not replace it.
+ */
+func TestQuarantineMovesASegmentAside(t *testing.T) {
+	dir := t.TempDir()
+	log := open(t, dir)
+
+	log.Append(record(1, `{"a":1}`))
+	sealed, err := log.Rotate()
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	if _, err := log.Quarantine(log.Active()); nil == err {
+		t.Error("the active segment was quarantined")
+	}
+
+	moved, err := log.Quarantine(sealed)
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(moved); nil != err {
+		t.Errorf("the quarantined segment is not at %s: %v", moved, err)
+	}
+	if filepath.Join(dir, "quarantine") != filepath.Dir(moved) {
+		t.Errorf("quarantined to %s, want under %s", moved, filepath.Join(dir, "quarantine"))
+	}
+
+	orphans, err := log.Orphans()
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 0 != len(orphans) {
+		t.Errorf("orphans = %v, want none once quarantined", orphans)
+	}
+
+	// The next segment of the same number, quarantined in turn, sits beside
+	// the first rather than over it.
+	if err := os.WriteFile(filepath.Join(dir, sealed), []byte(magicLen()), 0o644); nil != err {
+		t.Fatal(err)
+	}
+	again, err := log.Quarantine(sealed)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if again == moved {
+		t.Fatalf("a second quarantine of %s replaced the first", sealed)
+	}
+	if _, err := os.Stat(moved); nil != err {
+		t.Errorf("the first quarantined copy is gone: %v", err)
+	}
+}

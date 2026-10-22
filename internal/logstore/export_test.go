@@ -11,6 +11,7 @@ package logstore
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -48,8 +49,9 @@ func (d *Durable) FlushKeepingWALForTest(ctx context.Context) error {
 	return d.flush(ctx, false)
 }
 
-// CollectForTest runs one garbage-collection pass as if the clock read now,
-// so grace periods can be crossed without waiting them out.
+// CollectForTest runs one garbage-collection pass, tombstones and sweep both,
+// as if the clock read now, so grace periods can be crossed without waiting
+// them out.
 func (d *Durable) CollectForTest(ctx context.Context, now time.Time) error {
-	return d.collect(ctx, now)
+	return errors.Join(d.collect(ctx, now), d.sweep(ctx, now))
 }

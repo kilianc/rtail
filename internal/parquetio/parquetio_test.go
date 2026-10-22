@@ -246,6 +246,57 @@ func TestColumnNameMangling(t *testing.T) {
 	}
 }
 
+/*!
+ * Keys that differ only in case need column names that differ in more than
+ * case. DuckDB resolves identifiers case-insensitively, so a_User and a_user
+ * were one column to it: a filter on one key read the other's values, and a
+ * record read back had its values smeared across both keys.
+ */
+func TestKeysDifferingOnlyInCaseGetDistinctColumns(t *testing.T) {
+	ctx := context.Background()
+	backend := newBackend(t)
+
+	records := []*model.Record{
+		record(t, 1, `{"User":"bob","ID":1}`),
+		record(t, 2, `{"user":"alice","id":2}`),
+	}
+
+	schema, _, err := parquetio.Write(ctx, backend, "L0-case.parquet", records, parquetio.WriteOptions{KeepRaw: true})
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	names := map[string]string{}
+	keys := map[string]string{}
+	for _, column := range schema.Columns() {
+		folded := strings.ToLower(column.Name)
+		if other, ok := names[folded]; ok {
+			t.Errorf("keys %q and %q got columns %q and %q, one column to a case-insensitive reader",
+				other, column.SourceKey, keys[other], column.Name)
+		}
+		names[folded] = column.SourceKey
+		keys[column.SourceKey] = column.Name
+	}
+
+	// The catalog's mapping is what reads them back, and each key keeps its
+	// own values.
+	back, err := parquetio.ReadWith(ctx, backend, "L0-case.parquet", parquetio.ReadOptions{Columns: schema.Columns()})
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	for i, rec := range back {
+		if len(records[i].Fields) != len(rec.Fields) {
+			t.Errorf("record %d has fields %v, want %v", i, rec.Fields, records[i].Fields)
+		}
+		for key, want := range records[i].Fields {
+			if got := rec.Fields[key]; want.Kind != got.Kind || want.Text() != got.Text() {
+				t.Errorf("record %d key %q = %+v, want %+v", i, key, got, want)
+			}
+		}
+	}
+}
+
 // A producer emitting a unique key per line must not create a 50,000-column
 // file. The overflow stays reachable through raw.
 func TestColumnCountIsCapped(t *testing.T) {

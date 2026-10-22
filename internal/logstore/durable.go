@@ -15,8 +15,8 @@
  *   - between commit and register: the object is an orphan no query can see.
  *     The records are still in the WAL, so replay writes them again — to the
  *     same path, overwriting the orphan.
- *   - between register and remove: replay writes the same object again and the
- *     catalog recognises the path and does nothing.
+ *   - between register and remove: replay finds the path already registered
+ *     and writes nothing.
  *
  * The last two rely on object names being derived from the batch rather than
  * from a clock or a random id, which is what makes recovery idempotent instead
@@ -39,7 +39,6 @@ import (
 	"log/slog"
 	"path"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -61,10 +60,15 @@ const (
 	// superseded, so a query holding an older file list does not break.
 	DefaultGrace = 5 * time.Minute
 
-	// DefaultOrphanGrace is how old an object no catalog row points at has to
-	// be before garbage collection deletes it. See sweep for why a day.
+	// DefaultOrphanGrace is how long a write declared and never registered
+	// has before garbage collection deletes its object. See sweep.
 	DefaultOrphanGrace = 24 * time.Hour
 )
+
+// sweepInterval is how often garbage collection looks for writes that never
+// finished. They are rare, and a day old before they qualify; looking every
+// Grace, as it did, was a catalog query twelve times an hour for nothing.
+const sweepInterval = time.Hour
 
 // DurableOptions configure the store.
 type DurableOptions struct {
@@ -145,6 +149,12 @@ type Durable struct {
 	// is ever started however many appends cross the threshold before it runs.
 	kicked atomic.Bool
 
+	// quiet holds the size trigger off until this time, in Unix nanoseconds,
+	// after a rotation failed; backoff is how long the last wait was, and is
+	// guarded by flushing. See backOff.
+	quiet   atomic.Int64
+	backoff time.Duration
+
 	stop chan struct{}
 	done chan struct{}
 }
@@ -220,6 +230,14 @@ func OpenDurable(ctx context.Context, dir string, opts DurableOptions) (*Durable
  * Records recovered this way keep the sequence numbers they were assigned
  * before the crash, so nothing shifts underneath a client that had already
  * seen them.
+ *
+ * A segment that cannot be persisted does not stop the server booting. It
+ * goes on the retry list, as one the live path failed to persist would, and
+ * every flush tries it again; one stream whose files could not be written —
+ * an id too long to be a directory name was the case that did it — used to
+ * keep every other stream from being served at all, on every restart. Its
+ * records still count towards seq, so nothing appended from here on can sort
+ * before them.
  */
 func (d *Durable) recover(ctx context.Context) error {
 	orphans, err := d.log.Orphans()
@@ -235,12 +253,16 @@ func (d *Durable) recover(ctx context.Context) error {
 
 	for _, segment := range orphans {
 		count, maxSeq, err := d.replay(ctx, segment)
-		if nil != err {
-			return err
-		}
 
 		if maxSeq > d.seq.Load() {
 			d.seq.Store(maxSeq)
+		}
+
+		if nil != err {
+			d.opts.Log.Error("could not replay a write-ahead log segment; every flush will retry it",
+				"segment", segment, "err", err)
+			d.unflushed = append(d.unflushed, segment)
+			continue
 		}
 
 		if count > 0 {
@@ -259,6 +281,13 @@ func (d *Durable) recover(ctx context.Context) error {
  * flushed from it held them in. So the object names come out exactly as the
  * live flush's did, and anything that flush managed to register is recognised
  * rather than written a second time.
+ *
+ * A segment damaged part way through cannot be replayed whole, ever, and used
+ * to stop the server booting. The records before the damage are intact —
+ * every frame is checksummed — so they are persisted, and the segment is
+ * quarantined: moved out of the log, never replayed again, and kept for
+ * whoever wants to look at what could not be read. The count and the highest
+ * seq are returned whatever happens, so a caller can account for them.
  */
 func (d *Durable) replay(ctx context.Context, segment string) (int, uint64, error) {
 	batch := map[string][]*model.Record{}
@@ -268,7 +297,7 @@ func (d *Durable) replay(ctx context.Context, segment string) (int, uint64, erro
 		maxSeq uint64
 	)
 
-	if err := d.log.Replay(segment, func(rec *model.Record) error {
+	damaged := d.log.Replay(segment, func(rec *model.Record) error {
 		batch[rec.Stream] = append(batch[rec.Stream], rec)
 		count++
 
@@ -277,18 +306,32 @@ func (d *Durable) replay(ctx context.Context, segment string) (int, uint64, erro
 		}
 
 		return nil
-	}); nil != err {
-		return 0, 0, fmt.Errorf("replaying %s: %w", segment, err)
+	})
+	if nil != damaged && !errors.Is(damaged, wal.ErrCorrupt) {
+		return count, maxSeq, fmt.Errorf("replaying %s: %w", segment, damaged)
 	}
 
 	if count > 0 {
 		if err := d.persist(ctx, batch); nil != err {
-			return 0, 0, fmt.Errorf("persisting %s: %w", segment, err)
+			return count, maxSeq, fmt.Errorf("persisting %s: %w", segment, err)
 		}
 	}
 
+	if nil != damaged {
+		moved, err := d.log.Quarantine(segment)
+		if nil != err {
+			return count, maxSeq, errors.Join(damaged, fmt.Errorf("quarantining %s: %w", segment, err))
+		}
+
+		d.opts.Log.Error("quarantined a damaged write-ahead log segment: "+
+			"the records before the damage were recovered, any after it were not",
+			"segment", segment, "moved_to", moved, "recovered", count, "err", damaged)
+
+		return count, maxSeq, nil
+	}
+
 	if err := d.log.Remove(segment); nil != err {
-		return 0, 0, err
+		return count, maxSeq, err
 	}
 
 	return count, maxSeq, nil
@@ -424,6 +467,9 @@ func (d *Durable) run() {
 	gc := time.NewTicker(d.opts.Grace)
 	defer gc.Stop()
 
+	sweep := time.NewTicker(sweepInterval)
+	defer sweep.Stop()
+
 	for {
 		select {
 		case <-d.stop:
@@ -442,6 +488,11 @@ func (d *Durable) run() {
 		case <-gc.C:
 			if err := d.collect(context.Background(), time.Now()); nil != err {
 				d.opts.Log.Error("collecting garbage", "err", err)
+			}
+
+		case <-sweep.C:
+			if err := d.sweep(context.Background(), time.Now()); nil != err {
+				d.opts.Log.Error("sweeping unfinished writes", "err", err)
 			}
 		}
 	}
@@ -467,9 +518,12 @@ func (d *Durable) run() {
  *     line at or below its last seq, so a line published after a higher one
  *     was silently never shown.
  *
- * The lock is held across the WAL append, which costs a buffered write, not an
- * fsync: syncing stays on the WAL's own interval, one fsync for every record
- * that arrived in it.
+ * The lock is held across the WAL append, which costs a copy into the WAL's
+ * buffer and, once that is full, a write into the page cache — never an
+ * fsync. A sync, whether the WAL's own interval or an HTTP batch asking for
+ * one, runs its fsync without the lock appends need, so ingest carries on
+ * underneath it. The one fsync appends do wait for is a rotation's, once per
+ * flush; see seal.
  */
 func (d *Durable) Append(ctx context.Context, rec *model.Record) error {
 	d.ingest.Lock()
@@ -517,9 +571,10 @@ func (d *Durable) Append(ctx context.Context, rec *model.Record) error {
 	 * every append between crossing the threshold and the swap sees the batch
 	 * as full, and starting one each meant tens of thousands of goroutines,
 	 * queued on the flush lock, each then writing whatever little had arrived
-	 * since — a storm of tiny files.
+	 * since — a storm of tiny files. And none is started while a failed
+	 * rotation is being backed off from; see backOff.
 	 */
-	if full && d.kicked.CompareAndSwap(false, true) {
+	if full && time.Now().UnixNano() >= d.quiet.Load() && d.kicked.CompareAndSwap(false, true) {
 		go func() {
 			defer d.kicked.Store(false)
 
@@ -572,11 +627,16 @@ func (d *Durable) flush(ctx context.Context, retire bool) error {
 
 	sealed, batch, err := d.seal()
 	if nil != err {
+		d.backOff()
 		return errors.Join(retried, fmt.Errorf("rotating the write-ahead log: %w", err))
 	}
+
 	if nil == batch {
 		return retried
 	}
+
+	d.backoff = 0
+	d.quiet.Store(0)
 
 	if err := d.persist(ctx, batch); nil != err {
 		d.unflushed = append(d.unflushed, sealed)
@@ -587,22 +647,44 @@ func (d *Durable) flush(ctx context.Context, retire bool) error {
 		return retried
 	}
 
-	// Only now is the WAL segment redundant.
+	/*!
+	 * Only now is the WAL segment redundant. One that cannot be removed goes
+	 * on the retry list, where the next cycle finds every stream in it
+	 * registered, writes nothing, and tries the removal again. Left alone, it
+	 * waited for a restart — and while it is on disk, garbage collection has
+	 * to keep the rows a replay of it would look for; see collect.
+	 */
 	if err := d.log.Remove(sealed); nil != err {
 		d.opts.Log.Warn("could not remove a flushed wal segment", "segment", sealed, "err", err)
+		d.unflushed = append(d.unflushed, sealed)
 	}
 
 	return retried
 }
 
 /*!
+ * backOff holds the size trigger off after a rotation fails.
+ *
+ * A failed seal leaves the batch where it was, still over the threshold, so
+ * every append after it saw a full batch and started another flush the
+ * moment the last one gave up: each re-reading every segment on the retry
+ * list and attempting an fsync under the ingest lock, as fast as appends
+ * arrived. The wait starts at a second and doubles up to the flush interval,
+ * where the timer takes over anyway; the first rotation that succeeds lifts
+ * it. Called under flushing.
+ */
+func (d *Durable) backOff() {
+	d.backoff = min(max(2*d.backoff, time.Second), d.opts.FlushInterval)
+	d.quiet.Store(time.Now().Add(d.backoff).UnixNano())
+}
+
+/*!
  * seal rotates the WAL and takes the batch, as one step as far as Append can
  * tell.
  *
- * The rotation fsyncs the segment it seals, and ingest waits for that — once
- * per flush, the same pause the WAL's own interval sync imposes ten times a
- * second. It cannot move outside the lock: the rotation and the swap have to
- * happen with no append between them, or segment and batch disagree.
+ * The rotation fsyncs the segment it seals, and ingest waits for that, once
+ * per flush. It cannot move outside the lock: the rotation and the swap have
+ * to happen with no append between them, or segment and batch disagree.
  */
 func (d *Durable) seal() (string, map[string][]*model.Record, error) {
 	d.ingest.Lock()
@@ -636,6 +718,8 @@ func (d *Durable) seal() (string, map[string][]*model.Record, error) {
  * They are read back from the segment rather than kept in memory: a backend
  * that keeps failing would otherwise hold every batch since in RAM. Oldest
  * first, and a failure does not stop the rest — each segment is independent.
+ * Within a segment, the streams that did land the first time are found
+ * registered and not written again; only the ones that failed are retried.
  */
 func (d *Durable) retry(ctx context.Context) error {
 	if 0 == len(d.unflushed) {
@@ -659,80 +743,133 @@ func (d *Durable) retry(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// persist writes one Parquet file per stream and registers each in the catalog.
+/*!
+ * persist writes one Parquet file per stream and registers each in the catalog.
+ *
+ * Every path is declared to the catalog before anything is written, which is
+ * how garbage collection can later find an object that was committed and
+ * never registered — see sweep — and how a replay learns which of its
+ * segment's streams already landed. Those are not written again: rewriting
+ * them was at best wasted work, and once their rows had been compacted and
+ * collected it put the same records back on disk beside the compacted copy.
+ *
+ * A stream that fails does not stop the others, and the errors come back
+ * together. Stopping at the first meant one stream that could never be
+ * written kept every stream in the same batch out of the catalog, and a
+ * retry wrote the healthy ones again on every cycle.
+ */
 func (d *Durable) persist(ctx context.Context, batch map[string][]*model.Record) error {
+	streams := make([]string, 0, len(batch))
+	names := make([]string, 0, len(batch))
+
 	for stream, records := range batch {
-		if 0 == len(records) {
+		if 0 != len(records) {
+			streams = append(streams, stream)
+		}
+	}
+
+	// Map order is random; failures should not be.
+	sort.Strings(streams)
+
+	for _, stream := range streams {
+		names = append(names, objectName(stream, batch[stream][0]))
+	}
+
+	if 0 == len(names) {
+		return nil
+	}
+
+	registered, err := d.cat.Intend(ctx, names...)
+	if nil != err {
+		return fmt.Errorf("declaring the files about to be written: %w", err)
+	}
+
+	var errs []error
+
+	for i, stream := range streams {
+		// A replay of a segment that had already been flushed, at least this
+		// far. The object name is derived from the batch, so this is the file
+		// that flush registered.
+		if registered[names[i]] {
+			d.opts.Log.Debug("file was already registered; recovery was idempotent", "path", names[i])
 			continue
 		}
 
-		name := objectName(stream, records[0])
-
-		schema, stats, err := parquetio.Write(ctx, d.backend, name, records,
-			parquetio.WriteOptions{KeepRaw: d.opts.KeepRaw})
-		if nil != err {
-			return fmt.Errorf("writing %s: %w", name, err)
+		if err := d.write(ctx, stream, names[i], batch[stream]); nil != err {
+			errs = append(errs, err)
 		}
+	}
 
-		columns := make([]catalog.Column, 0, len(stats.Columns))
-		for _, column := range stats.Columns {
-			columns = append(columns, catalog.Column{
-				Name:        column.Name,
-				SourceKey:   column.SourceKey,
-				Kind:        column.Kind.String(),
-				Polymorphic: column.Polymorphic,
-				NullCount:   column.NullCount,
-				MinValue:    column.MinValue,
-				MaxValue:    column.MaxValue,
-				HasRange:    column.HasRange,
-			})
-		}
+	return errors.Join(errs...)
+}
 
-		_, existed, err := d.cat.Register(ctx, catalog.File{
-			Stream:   stream,
-			Path:     name,
-			Level:    catalog.LevelL0,
-			MinTs:    stats.MinTs,
-			MaxTs:    stats.MaxTs,
-			MinSeq:   stats.MinSeq,
-			MaxSeq:   stats.MaxSeq,
-			RowCount: stats.Rows,
-			ByteSize: stats.Bytes,
-			HasRaw:   stats.HasRaw,
-		}, columns)
-		if nil != err {
-			// The object is committed but unregistered. It is invisible to
-			// queries; the records are still in the WAL and the retry writes
-			// them again under the same name, and if that never happens the
-			// GC sweep collects it.
-			return fmt.Errorf("registering %s: %w", name, err)
-		}
+// write writes and registers the file for one stream of a batch.
+func (d *Durable) write(ctx context.Context, stream, name string, records []*model.Record) error {
+	schema, stats, err := parquetio.Write(ctx, d.backend, name, records,
+		parquetio.WriteOptions{KeepRaw: d.opts.KeepRaw})
+	if nil != err {
+		return fmt.Errorf("writing %s: %w", name, err)
+	}
 
-		// Replay of a segment that had already been flushed. The object name
-		// is derived from the batch, so it rewrote the same file with the same
-		// contents and the catalog correctly ignored it.
-		if existed {
-			d.opts.Log.Debug("file was already registered; recovery was idempotent", "path", name)
-			continue
-		}
+	columns := make([]catalog.Column, 0, len(stats.Columns))
+	for _, column := range stats.Columns {
+		columns = append(columns, catalog.Column{
+			Name:        column.Name,
+			SourceKey:   column.SourceKey,
+			Kind:        column.Kind.String(),
+			Polymorphic: column.Polymorphic,
+			NullCount:   column.NullCount,
+			MinValue:    column.MinValue,
+			MaxValue:    column.MaxValue,
+			HasRange:    column.HasRange,
+		})
+	}
 
-		if stats.Dropped > 0 {
-			d.opts.Log.Warn("dropped columns past the per-file cap",
-				"stream", stream, "dropped", stats.Dropped, "kept", len(schema.Columns()))
-		}
+	if _, _, err := d.cat.Register(ctx, catalog.File{
+		Stream:   stream,
+		Path:     name,
+		Level:    catalog.LevelL0,
+		MinTs:    stats.MinTs,
+		MaxTs:    stats.MaxTs,
+		MinSeq:   stats.MinSeq,
+		MaxSeq:   stats.MaxSeq,
+		RowCount: stats.Rows,
+		ByteSize: stats.Bytes,
+		HasRaw:   stats.HasRaw,
+	}, columns); nil != err {
+		// The object is committed but unregistered. It is invisible to
+		// queries; the records are still in the WAL and the retry writes
+		// them again under the same name, and if that never happens the
+		// declaration persist made lets the GC sweep collect it.
+		return fmt.Errorf("registering %s: %w", name, err)
+	}
+
+	if stats.Dropped > 0 {
+		d.opts.Log.Warn("dropped columns past the per-file cap",
+			"stream", stream, "dropped", stats.Dropped, "kept", len(schema.Columns()))
 	}
 
 	return nil
 }
 
 /*!
- * collect deletes what no query can see any more.
+ * collect deletes tombstoned files whose grace period has elapsed.
  *
- * Tombstoned files whose grace period has elapsed, first; then objects the
- * catalog never knew about, in sweep. Each deletion is independent, so one
- * that fails is reported and the rest go ahead. Returning at the first meant
- * the same file failing first on every pass, in the same order, and nothing
- * behind it ever being collected again.
+ * Each deletion is independent, so one that fails is reported and the rest go
+ * ahead. Returning at the first meant the same file failing first on every
+ * pass, in the same order, and nothing behind it ever being collected again.
+ *
+ * The object always goes; the catalog row of an L0 file does not, while a
+ * WAL segment still on disk could produce it again. Recovery is idempotent
+ * only because a replay finds the files its segment already produced
+ * registered, by path — so a row forgotten under a segment that is later
+ * replayed (one on the retry list, or one a failed removal left behind) let
+ * the replay register the same records again beside the compacted copy that
+ * already held them. And the next compaction, naming its output after that
+ * same first record, wrote over the live compacted file. Seq only grows from
+ * one segment to the next, so a row whose max_seq is below the first record
+ * of the oldest sealed segment on disk is one no replay can produce; the rest
+ * stay, objects already gone, until their segment has been retired.
  */
 func (d *Durable) collect(ctx context.Context, now time.Time) error {
 	var errs []error
@@ -742,91 +879,92 @@ func (d *Durable) collect(ctx context.Context, now time.Time) error {
 		errs = append(errs, err)
 	}
 
+	floor, bounded, err := d.log.Floor()
+	if nil != err {
+		// Keep every row this pass rather than guess.
+		errs = append(errs, fmt.Errorf("finding the oldest record a replay could produce: %w", err))
+		floor, bounded = 0, true
+	}
+
 	for _, file := range files {
 		if err := d.backend.Remove(ctx, file.Path); nil != err {
 			errs = append(errs, fmt.Errorf("removing %s: %w", file.Path, err))
 			continue
 		}
+
+		if catalog.LevelL0 == file.Level && bounded && file.MaxSeq >= floor {
+			continue
+		}
+
 		if err := d.cat.Forget(ctx, file.ID); nil != err {
 			errs = append(errs, fmt.Errorf("forgetting %s: %w", file.Path, err))
 		}
-	}
-
-	if err := d.sweep(ctx, now); nil != err {
-		errs = append(errs, err)
 	}
 
 	return errors.Join(errs...)
 }
 
 /*!
- * sweep removes objects no catalog row points at, and abandoned temp files.
+ * sweep deletes what writes that never finished left behind, and nothing
+ * else.
  *
- * Both come from writes that did not finish: a flush or a compaction that
- * committed its object and then failed to register it, or one killed before
- * it committed at all. Nothing else would ever remove them, and anything
- * that globs the directory — DuckDB pointed at it by hand — reads the orphans
- * as duplicates.
+ * Two kinds of thing: objects a flush or a compaction declared it was about
+ * to write and then never registered — committed, and then the process died
+ * or the catalog refused, before the transaction that would have made them
+ * live — and temp files from writes killed before they committed, which only
+ * Create ever makes. A declaration names the exact path, was made by the
+ * writer itself, and is dropped by the transaction that registers the object;
+ * see catalog.Intend. An object with no declaration is never deleted here,
+ * whatever it looks like.
  *
- * The danger is an object between its commit and its registration. It has no
- * row yet, and deleting it then leaves the catalog pointing at nothing, which
- * is the one state this design treats as unrecoverable. Three things rule it
- * out:
+ * It used to delete every object under streams/ that no catalog row pointed
+ * at, comparing the names a directory listing returned with the paths in the
+ * catalog, byte for byte. On a case-insensitive filesystem — macOS's default,
+ * Windows, a Docker Desktop bind mount — streams "api" and "API" share one
+ * directory, spelled however the first of them spelled it, so every object of
+ * the other, compacted ones included, listed under a name no row had and was
+ * deleted a day later. And a catalog restored from a backup, or one that lost
+ * its -wal file, has no row for anything registered after that point: all of
+ * it real data, its WAL long gone, all of it deleted.
  *
- *   - Flushes are one of the two writers, and the sweep holds the flush lock,
- *     so no flush is between its commit and its Register.
- *   - Compaction is the other. It registers in the same call that wrote the
- *     object, a directory fsync and one transaction later, and an object is
- *     only swept once it is OrphanGrace old — a day by default, that window
- *     many thousands of times over. A rename keeps the temp file's mtime, so
- *     an object's age is the time since its last byte was written.
- *   - An object older than the catalog itself is never touched. One written
- *     before this catalog existed is not its orphan: it is what is left of a
- *     catalog that was lost or replaced, and it is somebody's data.
+ * A declaration is acted on once it is OrphanGrace old, and catalog.Discard
+ * checks it again under the catalog's write lock while the object is removed.
+ * A write that retries the same path declares it again first, which makes it
+ * young — so the sweep never deletes an object a write in progress is about
+ * to register. No flush lock is needed for that, and none is held.
  *
- * All of this reasons about this process. Two servers sharing one data
+ * What remains is narrow: a catalog restored from a backup taken in the
+ * moment between one write's declaration and its registration still holds
+ * that declaration, and that one object is deleted. Restoring the catalog on
+ * its own was never supported — seq restarts behind the objects on disk —
+ * but it no longer costs everything written since.
+ *
+ * All of this reasons about one process. Two servers sharing one data
  * directory was never safe — they would share a WAL — and this does not make
  * it so.
  */
 func (d *Durable) sweep(ctx context.Context, now time.Time) error {
-	d.flushing.Lock()
-	defer d.flushing.Unlock()
-
 	cutoff := now.Add(-d.opts.OrphanGrace)
-
-	created, err := d.cat.Created(ctx)
-	if nil != err {
-		return fmt.Errorf("reading the catalog's age: %w", err)
-	}
-
-	objects, err := d.backend.List(ctx, "streams/")
-	if nil != err {
-		return err
-	}
-
-	// Read after listing, so an object registered in between is known.
-	known, err := d.cat.Paths(ctx)
-	if nil != err {
-		return err
-	}
 
 	var errs []error
 
-	for _, object := range objects {
-		orphan := !known[object.Name] &&
-			strings.HasSuffix(object.Name, ".parquet") &&
-			object.Modified.Before(cutoff) &&
-			!object.Modified.Before(created)
-		if !orphan {
+	abandoned, err := d.cat.Abandoned(ctx, cutoff)
+	if nil != err {
+		errs = append(errs, fmt.Errorf("listing unfinished writes: %w", err))
+	}
+
+	for _, path := range abandoned {
+		removed, err := d.cat.Discard(ctx, path, cutoff, func() error {
+			return d.backend.Remove(ctx, path)
+		})
+		if nil != err {
+			errs = append(errs, fmt.Errorf("removing unfinished write %s: %w", path, err))
 			continue
 		}
 
-		if err := d.backend.Remove(ctx, object.Name); nil != err {
-			errs = append(errs, fmt.Errorf("removing orphan %s: %w", object.Name, err))
-			continue
+		if removed {
+			d.opts.Log.Info("removed an object that was written and never registered", "path", path)
 		}
-
-		d.opts.Log.Info("removed an object no catalog row pointed at", "path", object.Name)
 	}
 
 	if removed, err := d.backend.Sweep(ctx, "streams/", cutoff); nil != err {
@@ -849,35 +987,10 @@ func objectName(stream string, first *model.Record) string {
 	day := first.Ts.UTC()
 
 	return fmt.Sprintf("streams/%s/%04d/%02d/%02d/L0-%020d-%d.parquet",
-		safeSegment(stream),
+		storage.SafeSegment(stream),
 		day.Year(), int(day.Month()), day.Day(),
 		first.Seq, day.UnixMicro(),
 	)
-}
-
-// safeSegment keeps a stream name usable as a directory. Stream ids come from
-// `rtail --id`, which is to say from anywhere at all.
-func safeSegment(stream string) string {
-	if "" == stream {
-		return "_unnamed"
-	}
-
-	out := []rune(stream)
-	for i, r := range out {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
-			'-' == r, '_' == r, '.' == r:
-		default:
-			out[i] = '_'
-		}
-	}
-
-	// A name of dots would escape the directory tree.
-	if "." == string(out) || ".." == string(out) {
-		return "_" + string(out)
-	}
-
-	return string(out)
 }
 
 // Sync fsyncs the write-ahead log, so every record appended before the call is

@@ -80,6 +80,17 @@ CREATE TABLE IF NOT EXISTS streams (
   dedicated  INTEGER NOT NULL DEFAULT 1
 );
 
+-- Objects a flush or a compaction is about to write. A row goes in before the
+-- object is written and comes out in the transaction that registers it, so
+-- one that outlives its write is a write whose registration never came — and
+-- that is the only kind of object garbage collection ever deletes without a
+-- file row pointing at it. Catalogs created before this table existed gain
+-- it here: CREATE TABLE IF NOT EXISTS is the whole migration.
+CREATE TABLE IF NOT EXISTS pending (
+  path       TEXT    PRIMARY KEY,
+  created_at INTEGER NOT NULL
+);
+
 -- Single-row bookkeeping that has to survive a restart. The sequence counter
 -- is the important one: seq is the tiebreaker in the (ts, seq) ordering that
 -- pagination depends on, so restarting it at 1 would make old and new records

@@ -511,13 +511,33 @@ func (c *Compactor) merge(ctx context.Context, group bucket, level int, result *
 	/*!
 	 * A retention rewrite is one file in and one file out at the same level,
 	 * so whenever the input's first record survives it would get the input's
-	 * own name. Writing that name replaces the live input in place — and then
-	 * Replace finds the path already registered, publishes nothing, and
-	 * tombstones the input: its rows end up in no live file at all. The
-	 * input's id keeps the name distinct, and stable across a retried attempt.
+	 * own name. Writing that name replaced the live input in place, and the
+	 * input was then tombstoned: its rows ended up in no live file at all.
+	 * The input's id keeps the name distinct, and stable across a retried
+	 * attempt.
 	 */
 	if 1 == len(ids) && level == inputs[0].Level {
 		name = strings.TrimSuffix(name, ".parquet") + fmt.Sprintf("-r%d.parquet", ids[0])
+	}
+
+	/*!
+	 * Declared before it is written, so that if the publish below never
+	 * happens garbage collection can find the object again; see
+	 * catalog.Intend.
+	 *
+	 * And never written if the name is already registered. An output is named
+	 * after its first record, so a known name means that record already sits
+	 * in another file — the same records reaching a merge twice, which a WAL
+	 * replay after garbage collection used to cause. Writing would replace
+	 * that file's object with this merge's, and every record only it held
+	 * would be gone. The group is left as it is, and reported on every pass.
+	 */
+	registered, err := c.cat.Intend(ctx, name)
+	if nil != err {
+		return fmt.Errorf("declaring %s: %w", name, err)
+	}
+	if registered[name] {
+		return fmt.Errorf("%w: %s, which this merge would overwrite", catalog.ErrRegistered, name)
 	}
 
 	schema, stats, err := parquetio.Write(ctx, c.backend, name, kept, options)
@@ -571,7 +591,9 @@ func (c *Compactor) merge(ctx context.Context, group bucket, level int, result *
 	if _, err := c.cat.Replace(ctx, []catalog.Replacement{output}, ids); nil != err {
 		// The object is committed but unregistered, and the inputs are still
 		// live. Queries are unaffected — they cannot see the new file — and
-		// the next pass rewrites it under the same deterministic name.
+		// the next pass rewrites it under the same deterministic name, or, if
+		// the group has changed by then, the declaration lets the GC sweep
+		// collect it.
 		return fmt.Errorf("publishing %s: %w", name, err)
 	}
 
@@ -701,43 +723,19 @@ func sourceColumns(columns []catalog.Column) []parquetio.Column {
 /*!
  * outputName is derived from the merged content, not from the clock.
  *
- * That is what makes a retried compaction idempotent: a pass that wrote its
- * object and then died produces the identical path next time, so the rewrite
- * overwrites the same bytes and the catalog recognises it as already
- * published rather than adding a duplicate.
+ * That is what makes a retried compaction converge: a pass that wrote its
+ * object and then died before publishing produces the identical path next
+ * time, so the retry overwrites the orphan it left rather than leaving a
+ * second one beside it.
  */
 func outputName(stream string, level int, first *model.Record) string {
 	day := first.Ts.UTC()
 
 	return fmt.Sprintf("streams/%s/%04d/%02d/%02d/L%d-%020d-%d.parquet",
-		safeSegment(stream),
+		storage.SafeSegment(stream),
 		day.Year(), int(day.Month()), day.Day(),
 		level, first.Seq, day.UnixMicro(),
 	)
-}
-
-// safeSegment keeps a stream name usable as a directory. Stream ids come from
-// `rtail --id`, which is to say from anywhere at all.
-func safeSegment(stream string) string {
-	if "" == stream {
-		return "_unnamed"
-	}
-
-	out := []rune(stream)
-	for i, r := range out {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
-			'-' == r, '_' == r, '.' == r:
-		default:
-			out[i] = '_'
-		}
-	}
-
-	if "." == string(out) || ".." == string(out) {
-		return "_" + string(out)
-	}
-
-	return string(out)
 }
 
 /*!
