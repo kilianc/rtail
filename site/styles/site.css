@@ -1,29 +1,30 @@
-// **
-// rtail.ciuffolo.com
-//
-// The page obeys the app's design system rather than inventing a second one:
-// tokens are imported from app/scss/_tokens.scss, so the greys, the blue, the
-// severity colours and the radii on this page are literally the values the
-// product paints with. Change the app's palette and the page follows.
-//
-// The page is dark only. The app supports both themes, but a marketing page
-// having one opinion — and that opinion being the app's default — is worth
-// more here than a toggle nobody asked for.
-//
-// Type is the one deliberate departure. The app is monospace throughout,
-// because everything on its screen is an identifier; a page of prose set that
-// way reads as a terminal emulator rather than as a product. So: a sans for
-// sentences, the app's own mono for every identifier, command and column.
-// **
+/*
+ * rtail.ciuffolo.com
+ *
+ * The page obeys the app's design system rather than inventing a second one.
+ * tools/build-site.js puts app/styles/tokens.css in front of this file, the
+ * same way tools/build.js assembles the webapp's sheet, so the greys, the
+ * blue, the severity colours and the radii here are literally the values the
+ * product paints with. Change the app's palette and the page follows.
+ *
+ * The page is dark only. The app supports both themes, but a marketing page
+ * having one opinion — and that opinion being the app's default — is worth
+ * more here than a toggle nobody asked for.
+ *
+ * Type is the one deliberate departure. The app is monospace throughout,
+ * because everything on its screen is an identifier; a page of prose set that
+ * way reads as a terminal emulator rather than as a product. So: a sans for
+ * sentences, the app's own mono for every identifier, command and column.
+ */
 
-@use '../../app/scss/tokens';
-
-// ** page-level scale **
-//
-// The app's type scale tops out at 12.5px, which is right for a console and
-// unreadable as prose. These are the page's own, and are deliberately named
-// apart from the app's so the explorer drawing below can keep using the real
-// --text-sm / --line-h / --gutter-w without a collision.
+/*
+ * page-level scale
+ *
+ * The app's type scale tops out at 12.5px, which is right for a console and
+ * unreadable as prose. These are the page's own, and are deliberately named
+ * apart from the app's so the explorer drawing below can keep using the real
+ * --text-sm / --line-h / --gutter-w without a collision.
+ */
 :root {
   --wrap: 1200px;
 
@@ -43,9 +44,11 @@
   --space-18: 72px;
   --space-22: 88px;
 
-  // The explorer drawing gives the promoted columns more room than the app
-  // does: --col-w is 72px there because a real column must not resize when a
-  // value grows, and a drawing has no such problem.
+  /*
+   * The explorer drawing gives the promoted columns more room than the app
+   * does: --col-w is 72px there because a real column must not resize when a
+   * value grows, and a drawing has no such problem.
+   */
   --col-service: 80px;
   --col-latency: 96px;
   --col-region: 104px;
@@ -89,8 +92,10 @@ code {
   color: var(--foreground);
 }
 
-// Inline code inside prose gets a plate; inside a <pre> or a heading it must
-// not, or the line acquires a lumpy background.
+/*
+ * Inline code inside prose gets a plate; inside a <pre> or a heading it must
+ * not, or the line acquires a lumpy background.
+ */
 p code,
 li code,
 td code {
@@ -139,7 +144,7 @@ h3 {
   }
 }
 
-// ** the bar **
+/* the bar */
 
 .nav {
   background: var(--surface);
@@ -209,16 +214,18 @@ h3 {
   }
 }
 
-// ** sections **
+/* sections */
 
 section {
   border-bottom: var(--hairline) solid var(--border);
   padding: var(--space-22) 0;
 }
 
-// Alternating ground, one step darker than the page rather than lighter: the
-// surfaces that read as "raised" in this system are the panels, and a band
-// that competes with them flattens the whole page.
+/*
+ * Alternating ground, one step darker than the page rather than lighter: the
+ * surfaces that read as "raised" in this system are the panels, and a band
+ * that competes with them flattens the whole page.
+ */
 .band {
   background: #1b1b1b;
 }
@@ -249,7 +256,7 @@ section {
   }
 }
 
-// ** hero **
+/* hero */
 
 .hero {
   h1 {
@@ -351,7 +358,7 @@ section {
   }
 }
 
-// ** panels and code **
+/* panels and code */
 
 .panel {
   border: var(--hairline) solid var(--border);
@@ -419,8 +426,10 @@ section {
   margin: var(--space-10) 0 0;
 }
 
-// Shell prompts and flags, the two things a reader's eye needs to separate in
-// a command: what you type, and what is tunable about it.
+/*
+ * Shell prompts and flags, the two things a reader's eye needs to separate in
+ * a command: what you type, and what is tunable about it.
+ */
 .p {
   color: var(--live);
 }
@@ -441,10 +450,12 @@ section {
   color: var(--ansi-magenta);
 }
 
-// ** card grids **
+/* card grids */
 
-// One hairline grid rather than six bordered boxes: the gap *is* the rule, so
-// the cards cannot disagree about where their edges are.
+/*
+ * One hairline grid rather than six bordered boxes: the gap *is* the rule, so
+ * the cards cannot disagree about where their edges are.
+ */
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -476,10 +487,12 @@ section {
   }
 }
 
-// Cards that carry a command. Two shapes, because the counts differ: four
-// ingest doors want a 2×2, three install steps want a row. `auto-fit` served
-// neither — at this width it made three columns of both, which left one door
-// stranded on a line of its own.
+/*
+ * Cards that carry a command. Two shapes, because the counts differ: four
+ * ingest doors want a 2×2, three install steps want a row. `auto-fit` served
+ * neither — at this width it made three columns of both, which left one door
+ * stranded on a line of its own.
+ */
 .doors,
 .steps {
   display: grid;
@@ -510,10 +523,12 @@ section {
     border-top: var(--hairline) solid var(--border);
   }
 
-  // Only when the command is the last thing in the card: it then sits on the
-  // card's floor, so a row of cards shares one baseline however long the
-  // prose above each one runs. A card that explains itself *after* the
-  // command just flows.
+  /*
+   * Only when the command is the last thing in the card: it then sits on the
+   * card's floor, so a row of cards shares one baseline however long the
+   * prose above each one runs. A card that explains itself *after* the
+   * command just flows.
+   */
   pre:last-child {
     margin-top: auto;
   }
@@ -579,15 +594,17 @@ section {
   color: var(--faint-foreground);
 }
 
-// ** tables **
+/* tables */
 
 .table-box {
   border: var(--hairline) solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
 
-  // A table has a minimum width below which the columns stop meaning
-  // anything, so it scrolls inside its box rather than wrapping into mush.
+  /*
+   * A table has a minimum width below which the columns stop meaning
+   * anything, so it scrolls inside its box rather than wrapping into mush.
+   */
   > div {
     overflow-x: auto;
   }
@@ -647,12 +664,13 @@ table {
   }
 }
 
-// ** the explorer drawing **
-//
-// Not a screenshot: it is markup, dimensioned by the app's own tokens, so the
-// row height, the gutter and the severity column here are the ones the
-// product uses. It cannot be pixel-perfect — it is a drawing — but it cannot
-// drift in the dimensions that matter either.
+/*
+ * the explorer drawing
+ * Not a screenshot: it is markup, dimensioned by the app's own tokens, so the
+ * row height, the gutter and the severity column here are the ones the
+ * product uses. It cannot be pixel-perfect — it is a drawing — but it cannot
+ * drift in the dimensions that matter either.
+ */
 
 .app {
   border: var(--hairline) solid var(--border);
@@ -857,8 +875,10 @@ table {
     border-radius: var(--radius-xs) var(--radius-xs) 0 0;
   }
 
-  // The spike the query was opened for. Severity, not emphasis: these buckets
-  // are errors, and they are tall because there were more of them.
+  /*
+   * The spike the query was opened for. Severity, not emphasis: these buckets
+   * are errors, and they are tall because there were more of them.
+   */
   .e1 { height: 52px; background: var(--level-error); }
   .e2 { height: 60px; background: var(--level-error); }
   .e3 { height: 66px; background: var(--level-error); }
@@ -972,8 +992,10 @@ table {
   text-transform: uppercase;
   color: var(--muted-foreground);
 
-  // Field names are identifiers and keep their case; the chrome's own labels
-  // (Sev, Timestamp, Summary) are words and do not.
+  /*
+   * Field names are identifiers and keep their case; the chrome's own labels
+   * (Sev, Timestamp, Summary) are words and do not.
+   */
   .field {
     text-transform: none;
     letter-spacing: 0;
@@ -1005,7 +1027,7 @@ table {
   background: var(--level-warn);
 }
 
-// ** the rQL demo **
+/* the rQL demo */
 
 .demo {
   .demo-bar {
@@ -1120,7 +1142,7 @@ table {
   }
 }
 
-// ** callouts **
+/* callouts */
 
 .callouts {
   display: flex;
@@ -1155,7 +1177,7 @@ table {
   }
 }
 
-// ** docs **
+/* docs */
 
 .docs {
   display: flex;
@@ -1240,8 +1262,10 @@ table {
   }
 }
 
-// The docs sidebar is a column beside the prose on a laptop and a block above
-// it on a phone, where a 240px rail would leave the text in a slot.
+/*
+ * The docs sidebar is a column beside the prose on a laptop and a block above
+ * it on a phone, where a 240px rail would leave the text in a slot.
+ */
 @media (max-width: 900px) {
   .docs-nav {
     flex: 1 1 100%;
@@ -1256,7 +1280,7 @@ table {
   }
 }
 
-// ** footer **
+/* footer */
 
 .footer {
   border-bottom: 0;
@@ -1301,7 +1325,7 @@ table {
   }
 }
 
-// ** narrow **
+/* narrow */
 
 @media (max-width: 640px) {
   :root {

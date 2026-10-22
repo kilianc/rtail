@@ -8,18 +8,18 @@
  * that one builds the product, this one builds the page that advertises it.
  *
  * The page is static HTML and one stylesheet. It carries a drawing of the
- * explorer rather than the explorer itself, because v2's app is a query client
- * for a Go server that holds a socket open and reads Parquet — none of which a
- * static deployment can do. The drawing is dimensioned by the app's own tokens
- * (site/scss/site.scss imports app/scss/_tokens.scss), so the greys, the blue,
+ * explorer rather than the explorer itself, because the app is a query client
+ * for a Go server that holds a stream open and reads Parquet — none of which a
+ * static deployment can do. The drawing is dimensioned by the app's own tokens,
+ * which this build puts in front of the page's sheet, so the greys, the blue,
  * the severity colours, the row height and the gutter cannot drift from the
  * product even though the markup is the page's own.
  */
 
-import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { watch } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import * as sass from 'sass'
+import * as esbuild from 'esbuild'
 
 const root = new URL('../', import.meta.url)
 const path = (rel) => fileURLToPath(new URL(rel, root))
@@ -33,22 +33,26 @@ const outDir = path('site/dist')
 // is copied, and nothing is bundled — see site/site.js for why.
 const statics = ['index.html', 'docs.html', 'site.js', 'robots.txt']
 
+// The page's sheet, behind the app's tokens. Concatenated rather than
+// `@import`ed, the same way tools/build.js assembles the webapp's stylesheet:
+// one request, and no question about which palette won.
+const SHEETS = [path('app/styles/tokens.css'), path('site/styles/site.css')]
+
 /**
- * Compile the stylesheet. Returns the files sass actually read, so --watch can
- * watch the partials too rather than guessing at them.
+ * Build the stylesheet.
  */
 async function buildCss() {
-  const result = sass.compile(path('site/scss/site.scss'), {
-    style: 'compressed',
-    quietDeps: true
+  const parts = await Promise.all(SHEETS.map((file) => readFile(file, 'utf8')))
+
+  // esbuild's CSS minifier, on a string: no bundling, so nothing resolves or
+  // rewrites a url() behind our back.
+  const { code } = await esbuild.transform(parts.join('\n'), {
+    loader: 'css',
+    minify: true
   })
 
   await mkdir(`${outDir}/css`, { recursive: true })
-  await writeFile(`${outDir}/css/site.css`, result.css)
-
-  return result.loadedUrls
-    .filter((url) => 'file:' === url.protocol)
-    .map((url) => fileURLToPath(url))
+  await writeFile(`${outDir}/css/site.css`, code)
 }
 
 async function buildStatic() {
@@ -87,8 +91,8 @@ if (isWatch) {
 
   // Directory watches rather than file watches: most editors save atomically
   // by renaming, which detaches a watch on the file itself.
-  watch(path('site/scss'), () => rebuild('css', buildCss))
-  watch(path('app/scss'), () => rebuild('css', buildCss))
+  watch(path('site/styles'), () => rebuild('css', buildCss))
+  watch(path('app/styles'), () => rebuild('css', buildCss))
   watch(path('site'), () => rebuild('html', buildStatic))
 
   console.log('watching for changes ...')
