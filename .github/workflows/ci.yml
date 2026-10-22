@@ -7,10 +7,23 @@ name: CI
 # free to disagree. The script is the description; this file only supplies the
 # machines.
 
+# Pushes to main, and pull requests. Deliberately NOT every branch: with
+# `push: ['**']` and `pull_request:` both set, a push to a branch that has a PR
+# open fires the whole matrix twice over for one commit, and the second run
+# tells you nothing the first one did not. Branch work gets its CI when the PR
+# opens; `make ci` is the answer before that.
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
+
+# One run per ref. A force-push or a quick follow-up commit retires the run it
+# superseded rather than racing it — but only on pull requests, because a run
+# against main is a record of whether that commit was good and is worth
+# finishing even if the next one lands on top of it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # The server. v2 moved it from Node to Go; the webapp is embedded into the
