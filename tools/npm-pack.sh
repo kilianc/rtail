@@ -28,7 +28,7 @@ VERSION="${1:?usage: npm-pack.sh <version> [outdir]}"
 ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
 OUT_REL="${2:-dist/npm}"
 
-rm -rf "$ROOT/$OUT_REL"
+rm -rf "${ROOT:?}/${OUT_REL:?}"
 mkdir -p "$ROOT/$OUT_REL"
 OUT="$(CDPATH='' cd -- "$ROOT/$OUT_REL" && pwd)"
 
@@ -75,7 +75,7 @@ for row in $PLATFORMS; do
   "description": "The rtail client binary for ${nodeos} ${nodearch}.",
   "os": ["${nodeos}"],
   "cpu": ["${nodearch}"],
-  "files": ["bin"],
+  "files": ["bin", "NOTICE"],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kilianc/rtail.git"
@@ -84,14 +84,17 @@ for row in $PLATFORMS; do
 }
 JSON
 
-  cp "$ROOT/LICENSE" "$dir/LICENSE"
+  # npm packs LICENSE whatever `files` says, and NOTICE only if it is named
+  # there. Apache-2.0 §4(d) has anyone who redistributes this pass NOTICE on,
+  # which they can only do if the package carries it.
+  cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$dir/"
 done
 
 # ** the package people install **
 
 mkdir -p "$OUT/rtail"
 cp -R "$ROOT/npm/rtail/bin" "$OUT/rtail/bin"
-cp "$ROOT/LICENSE" "$ROOT/README.md" "$OUT/rtail/"
+cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$ROOT/README.md" "$OUT/rtail/"
 
 # The optional dependencies are pinned to this exact version. A caret range
 # would let npm resolve a launcher and a binary from two different releases,
@@ -113,7 +116,7 @@ cat > "$OUT/rtail/package.json" <<JSON
   "description": "Terminal output to the browser in seconds, using UNIX pipes.",
   "keywords": ["log", "logging", "logio", "logs", "tail", "udp"],
   "bin": { "rtail": "bin/rtail.js" },
-  "files": ["bin"],
+  "files": ["bin", "NOTICE"],
   "engines": { "node": ">=20" },
   "optionalDependencies": {${deps}
   },

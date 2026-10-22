@@ -18,7 +18,15 @@ services:
       - '8888:8888'
       - '9999:9999/udp'
     environment:
-      # Uncomment to see every line the server ingests.
-      # DEBUG: 'rtail:*'
+      # Uncomment to log at debug level.
+      # RTAIL_VERBOSE: 'true'
+      # Uncomment, with the two volume blocks below, to keep logs across
+      # restarts. Without it the server is memory-only.
+      # RTAIL_DATA: /data
       RTAIL_WEB_PORT: '8888'
       RTAIL_UDP_PORT: '9999'
+    # volumes:
+    #   - rtail-data:/data
+
+# volumes:
+#   rtail-data:

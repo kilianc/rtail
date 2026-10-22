@@ -1,7 +1,18 @@
 # Cut a release.
 #
-# Tag `v2.0.0` and this builds the binaries, the container image, and the
-# GitHub release that carries them.
+# Tag `v2.0.0` and this tests the commit, builds the binaries and the container
+# image, publishes the npm packages, and creates the GitHub release that carries
+# the tarballs.
+#
+# ** Nothing is published until everything before it is green. **
+#
+# A tag is the only thing that says a commit is releasable, and nothing stops
+# one landing on a commit CI never saw — so the release runs the tests itself,
+# before it builds anything. After that the order is how hard each step is to
+# take back: the image (an image tag can be pushed again), then npm (a
+# version, once published, can never be published again, not even after an
+# unpublish), then the GitHub release (an edit). A failed smoke test on any of
+# the four targets stops all three.
 #
 # ** Why there is a build matrix instead of one static binary. **
 #
@@ -29,11 +40,52 @@ on:
   # So the whole thing can be rehearsed on a branch without cutting a tag.
   workflow_dispatch:
 
+# ** Read-only unless a job says otherwise. **
+#
+# `npm ci` runs code from every package in the lockfile, and none of it needs a
+# token that can push an image or rewrite a release. So the default is read,
+# the two jobs that write are granted exactly what they write, checkout does
+# not leave the token behind in .git/config, and `npm ci` runs with
+# --ignore-scripts — esbuild finds its platform binary without its postinstall.
+#
+# Actions are pinned to a commit for the same reason. A tag is a pointer that
+# anyone with push rights on that repository can move; the SHA is the code
+# that was looked at. The comment beside it says which release it is.
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
+  # The Linux half of CI's `server` job, run again on the tagged commit.
+  #
+  # CI runs on pull requests and on main, and a tag is neither: a tag on a
+  # commit that never went through a PR, or on one whose CI went red, would
+  # otherwise build, smoke-test and publish without a single test having run
+  # against it. Linux only — the macOS half costs ten times as much a minute,
+  # and both macOS binaries are started and asked for /healthz below before
+  # anything is published.
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: '1.26'
+          cache-dependency-path: go.mod
+
+      # Exactly as ci.yml installs it: the interop tests skip themselves
+      # without duckdb, and tools/ci.sh refuses to run rather than let them.
+      - name: Install duckdb
+        run: |
+          curl -fsSL -o /tmp/duckdb.zip \
+            https://github.com/duckdb/duckdb/releases/download/v1.4.1/duckdb_cli-linux-amd64.zip
+          sudo unzip -q /tmp/duckdb.zip -d /usr/local/bin
+
+      - run: sh tools/ci.sh server
+
   # The webapp is built once and shared: it is identical on every platform,
   # and building it per-target would be four chances to ship four different
   # bundles under one version number.
@@ -41,25 +93,42 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      # The webapp reads its version from package.json; everything else reads
+      # it from the tag. This is the only thing that holds the two together,
+      # and without it a tag that disagrees ships a UI announcing a version
+      # other than the one it was downloaded as. Read with sed, the way the
+      # Makefile does.
+      - name: The tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' package.json)"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag $GITHUB_REF_NAME is $tag, package.json says $pkg"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: npm
 
-      - run: npm ci --no-audit --no-fund
+      - run: npm ci --ignore-scripts --no-audit --no-fund
 
       - run: npm run dist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: webapp
           path: web/dist
           retention-days: 1
 
   binaries:
-    needs: webapp
+    needs: [webapp, test]
 
     strategy:
       fail-fast: false
@@ -75,7 +144,7 @@ jobs:
           # 4 December 2025, and a job asking for it is not refused — it is
           # queued, for ever. The v2.0.0-rc.1 release sat at six hours of
           # "queued" on this line with the other three targets built in under
-          # a minute, and `image` and `release` both wait on all four.
+          # a minute, and everything after this job waits on all four.
           #
           # This is the last Intel macOS runner GitHub offers; x86_64 macOS
           # goes away when the macOS 15 image retires in autumn 2027.
@@ -89,14 +158,16 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: '1.26'
           cache-dependency-path: go.mod
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: webapp
           path: web/dist
@@ -179,13 +250,16 @@ jobs:
         run: |
           name="rtail_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
           mkdir -p "dist/$name"
-          cp rtail-server rtail README.md LICENSE "dist/$name/"
+          # NOTICE travels with LICENSE: Apache-2.0 §4(d) has anyone who
+          # redistributes this pass it on, which they can only do if the
+          # tarball carries it.
+          cp rtail-server rtail README.md LICENSE NOTICE "dist/$name/"
           tar -czf "dist/$name.tar.gz" -C dist "$name"
           # Checksums are produced next to the artifact and merged later, so a
           # failed target cannot silently drop a line from the manifest.
           ( cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256" )
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
@@ -197,29 +271,48 @@ jobs:
     needs: binaries
     runs-on: ubuntu-latest
 
+    # The only job that writes to the registry, and so the only one that can.
+    permissions:
+      contents: read
+      packages: write
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: docker/setup-qemu-action@v3
+      - name: Version from the tag
+        id: version
+        run: |
+          ref="${GITHUB_REF#refs/tags/}"
+          if [ "$ref" = "$GITHUB_REF" ]; then
+            ref="0.0.0-$(git rev-parse --short HEAD)"
+          fi
+          echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
 
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/metadata-action@v5
+      # `latest` is the newest *release*, not the newest tag. docker-compose.yml
+      # and the README both pull it, so an rc gets its own version tag and
+      # leaves `latest` where it was.
+      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         id: meta
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') }}
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           # arm64 is emulated here rather than built on a native runner. It is
@@ -229,7 +322,9 @@ jobs:
           push: ${{ startsWith(github.ref, 'refs/tags/') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: VERSION=${{ github.ref_name }}
+          # Without the `v`, as the tarballs and npm have it, so /healthz and
+          # --version agree whichever way rtail was installed.
+          build-args: VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -243,19 +338,26 @@ jobs:
   # The platform packages go first and the launcher last: a published `rtail`
   # whose optional dependencies do not exist yet is an install that fails for
   # everyone who is quick.
+  #
+  # And the whole job waits for the binaries and the image. npm is the one
+  # step here that cannot be taken back — a version number, once published, is
+  # spent for good — so it happens only after everything that could still fail
+  # has had its chance to.
   npm:
-    needs: webapp
+    needs: [binaries, image]
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: '1.26'
           cache-dependency-path: go.mod
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           registry-url: https://registry.npmjs.org
@@ -297,27 +399,46 @@ jobs:
           [ "$got" = "$version" ]
           printf 'hello\n' | ./node_modules/.bin/rtail --port 9999 | grep -qx hello
 
+      # Anything already on npm at this version is skipped, so a publish that
+      # died halfway — a registry hiccup on the third package — is finished by
+      # re-running the job. Without that the re-run fails on the first package,
+      # because republishing a version is refused, and the launcher is never
+      # published at all.
       - name: Publish
         if: startsWith(github.ref, 'refs/tags/')
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          version="${{ steps.version.outputs.version }}"
           tag=latest
-          case "${{ steps.version.outputs.version }}" in *-*) tag=next ;; esac
+          case "$version" in *-*) tag=next ;; esac
+
+          publish() {
+            name="$(node -p "require('./$1/package.json').name")"
+            if [ -n "$(npm view "$name@$version" version 2>/dev/null)" ]; then
+              echo "$name@$version is already on npm; skipping"
+              return
+            fi
+            npm publish "$1" --access public --tag "$tag"
+          }
 
           for dir in dist/npm/rtail-*; do
-            npm publish "$dir" --access public --tag "$tag"
+            publish "$dir"
           done
 
-          npm publish dist/npm/rtail --access public --tag "$tag"
+          publish dist/npm/rtail
 
   release:
     needs: [binaries, image, npm]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
 
+    # Creating the release and uploading its assets is the only write here.
+    permissions:
+      contents: write
+
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: binary-*
           merge-multiple: true
@@ -326,7 +447,7 @@ jobs:
       - name: One checksum manifest
         run: cat dist/*.sha256 > dist/checksums.txt && rm dist/*.sha256
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: dist/*
           generate_release_notes: true

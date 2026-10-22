@@ -41,6 +41,13 @@ case "$(uname -m)" in
   *)               NODE_ARCH=x64   ;;
 esac
 
+# The OS too, so the npm job installs the package for the machine it is on —
+# the toolchain container is Linux, a Mac running `sh tools/ci.sh npm` is not.
+case "$(uname -s)" in
+  Darwin) NODE_OS=darwin ;;
+  *)      NODE_OS=linux  ;;
+esac
+
 step() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 fail() { printf '\n\033[31m!! %s\033[0m\n' "$1" >&2; exit 1; }
 
@@ -75,16 +82,26 @@ job_server() {
   # install.sh is the one piece of this project that runs on a stranger's
   # machine, straight off the internet, before they have read it. A syntax
   # error there is a broken install for everyone, so it is parsed here.
+  #
+  # The toolchain image has no shellcheck, so the lint runs wherever one
+  # happens to be installed — GitHub's Ubuntu runners have it — and when it
+  # runs, what it finds fails the job. A lint that can only ever pass is not a
+  # check.
   step 'parse install.sh'
   sh -n install.sh
-  command -v shellcheck >/dev/null 2>&1 && shellcheck -s sh install.sh || true
+  if command -v shellcheck >/dev/null 2>&1; then
+    shellcheck -s sh install.sh
+  fi
 }
 
 # ** webapp **
 
 job_webapp() {
+  # --ignore-scripts: nothing in the lockfile needs an install script to work
+  # — esbuild finds its platform binary without one — and each would be a
+  # stranger's code running with everything the job can reach.
   step 'npm ci'
-  npm ci --no-audit --no-fund
+  npm ci --ignore-scripts --no-audit --no-fund
 
   step 'typecheck'
   npm run typecheck
@@ -114,8 +131,8 @@ job_npm() {
   step 'install as a user would, and run it'
   rm -rf /tmp/rtail-ci && mkdir -p /tmp/rtail-ci/tgz /tmp/rtail-ci/launch
 
-  ( cd "dist/npm/rtail-linux-$NODE_ARCH" && npm pack --pack-destination /tmp/rtail-ci/tgz )
-  ( cd dist/npm/rtail                    && npm pack --pack-destination /tmp/rtail-ci/tgz )
+  ( cd "dist/npm/rtail-$NODE_OS-$NODE_ARCH" && npm pack --pack-destination /tmp/rtail-ci/tgz )
+  ( cd dist/npm/rtail                       && npm pack --pack-destination /tmp/rtail-ci/tgz )
 
   cd /tmp/rtail-ci/launch
   npm init -y >/dev/null
@@ -123,7 +140,7 @@ job_npm() {
   # The platform package goes in on its own because the one the launcher wants
   # is not published yet; --omit=optional then stops npm reaching for the
   # other four.
-  npm install "/tmp/rtail-ci/tgz/rtail-linux-$NODE_ARCH-0.0.0-ci.tgz" --no-audit --no-fund
+  npm install "/tmp/rtail-ci/tgz/rtail-$NODE_OS-$NODE_ARCH-0.0.0-ci.tgz" --no-audit --no-fund
   npm install /tmp/rtail-ci/tgz/rtail-0.0.0-ci.tgz --omit=optional --no-audit --no-fund
 
   [ "$(./node_modules/.bin/rtail --version)" = '0.0.0-ci' ] \
@@ -177,7 +194,9 @@ job_image() {
   docker rm -f rtail-ci >/dev/null
 }
 
-for job in ${*:-server webapp npm}; do
+[ $# -gt 0 ] || set -- server webapp npm
+
+for job in "$@"; do
   case "$job" in
     server | webapp | npm | image) "job_$job" ;;
     *) fail "no such job: $job (server, webapp, npm, image)" ;;
