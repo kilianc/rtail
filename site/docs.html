@@ -198,10 +198,7 @@
     <div class="panel">
       <div class="panel-bar"><span class="panel-label">POST /v1/sql</span></div>
       <pre><code>{
-  <span class="k">"sql"</span>: <span class="s">"SELECT a_service, count(*) n,
-          quantile_cont(a_latency_ms, 0.95) p95
-          FROM logs WHERE level = 'ERROR'
-          GROUP BY 1 ORDER BY n DESC"</span>,
+  <span class="k">"sql"</span>: <span class="s">"SELECT a_service, count(*) n, quantile_cont(a_latency_ms, 0.95) p95 FROM logs WHERE level = 'ERROR' GROUP BY 1 ORDER BY n DESC"</span>,
   <span class="k">"from"</span>: <span class="s">"-6h"</span>
 }</code></pre>
     </div>

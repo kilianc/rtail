@@ -435,10 +435,10 @@
         <article class="panel">
           <div class="door-body">
             <h3>HTTP</h3>
-            <p>For anything that would mind losing a line. A 200 means the records are in the write-ahead log; anything else is safe to retry.</p>
+            <p>For anything that would mind losing a line. A 200 means every line is in the write-ahead log. Anything else may follow a partial write, so every response says how many lines it <code>accepted</code>: resume after those rather than replay the batch.</p>
           </div>
           <pre><code><span class="p">$</span> curl -XPOST \
-    localhost:8888/v1/ingest?stream=api \
+    <span class="s">'localhost:8888/v1/ingest?stream=api'</span> \
     --data-binary @events.ndjson</code></pre>
         </article>
 
@@ -572,10 +572,7 @@
       <div class="panel">
         <div class="panel-bar"><span class="panel-label">POST /v1/sql</span></div>
         <pre><code>{
-  <span class="k">"sql"</span>: <span class="s">"SELECT a_service, count(*) n,
-          quantile_cont(a_latency_ms, 0.95) p95
-          FROM logs WHERE level = 'ERROR'
-          GROUP BY 1 ORDER BY n DESC"</span>,
+  <span class="k">"sql"</span>: <span class="s">"SELECT a_service, count(*) n, quantile_cont(a_latency_ms, 0.95) p95 FROM logs WHERE level = 'ERROR' GROUP BY 1 ORDER BY n DESC"</span>,
   <span class="k">"from"</span>: <span class="s">"-6h"</span>
 }</code></pre>
       </div>
