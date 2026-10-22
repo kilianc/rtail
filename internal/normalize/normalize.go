@@ -62,6 +62,13 @@ var pinoLevels = map[int64]string{
 	10: "TRACE", 20: "DEBUG", 30: "INFO", 40: "WARN", 50: "ERROR", 60: "FATAL",
 }
 
+// PinoLevel names a numeric level the way ingest does, so a query for the
+// number finds the records it named.
+func PinoLevel(n int64) (string, bool) {
+	name, ok := pinoLevels[n]
+	return name, ok
+}
+
 // Timestamps outside this window are assumed not to be timestamps at all — a
 // field called `time` holding a duration of 500 would otherwise land the record
 // in 1970 and wreck the ordering of everything around it.
@@ -406,7 +413,7 @@ func normalizeLevel(value Value) string {
 		return strings.ToUpper(trimmed)
 
 	case model.KindInt:
-		if name, ok := pinoLevels[value.Int]; ok {
+		if name, ok := PinoLevel(value.Int); ok {
 			return name
 		}
 	}

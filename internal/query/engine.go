@@ -134,6 +134,18 @@ func Open(cat *catalog.Catalog, backend storage.Backend, limits Limits) (*Engine
 		setup = append(setup, fmt.Sprintf("SET threads=%d", limits.Threads))
 	}
 
+	/*!
+	 * UTC, whatever the host's zone.
+	 *
+	 * ts is a TIMESTAMPTZ, and DuckDB renders one as text in the session's
+	 * zone: on a host in Los Angeles `ts:"2026-10-22 13"` matched on the tail
+	 * and found nothing in search, and the field explorer listed local times.
+	 * GLOBAL, because TimeZone is otherwise per connection, this statement
+	 * runs on one of several the pool opens, and once the configuration is
+	 * locked no connection can set it for itself.
+	 */
+	setup = append(setup, "SET GLOBAL TimeZone='UTC'")
+
 	setup = append(setup,
 		"SET enable_external_access=false",
 		"SET lock_configuration=true",

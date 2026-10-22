@@ -161,10 +161,100 @@ var queries = []string{
 }
 
 func TestSQLAndPredicateAgree(t *testing.T) {
-	ctx := context.Background()
-
 	h := newHarness(t)
-	records := h.ingest(t, "agree", corpus)
+	agree(t, h, h.ingest(t, "agree", corpus), queries)
+}
+
+/*!
+ * textCorpus is where the two have to agree on text rather than on values.
+ *
+ * SQL reads a nested value back as the text DuckDB writes for it, a number
+ * written as a string through try_cast, and ts through DuckDB's rendering of
+ * a timestamp; the predicate has to produce the same text from the record in
+ * hand. Each case here was a disagreement once, bar the levels, where the
+ * two were wrong alike; TestTextMeansWhatItShould pins those.
+ *
+ * Two batches, so two files: a key only one of them has is read from raw in
+ * the other, through a JSON path built from the field name.
+ */
+var textCorpus = [][]string{
+	{
+		// Numbers as text, read as DuckDB's try_cast reads them: no hex
+		// floats, and past the largest double is infinity, not an error.
+		`{"msg":"v hex float","v":"0x1p4"}`,
+		`{"msg":"v hex","v":"0x10"}`,
+		`{"msg":"v huge","v":"1e400"}`,
+		`{"msg":"v negative huge","v":"-1e400"}`,
+		`{"msg":"v spaced","v":" 12 "}`,
+		// Nested values: members in their order, no HTML escaping, control
+		// characters as yyjson writes them, the first of a repeated key.
+		`{"msg":"order","o":{"inner":{"b":1,"a":2}}}`,
+		`{"msg":"html","o":{"inner":{"h":"<a&b>"}}}`,
+		`{"msg":"spaced array","o":{"inner":[1, 2.50]}}`,
+		`{"msg":"controls","o":{"inner":{"c":"tab\there\u001f"}}}`,
+		`{"msg":"repeated","o":{"inner":{"k":1,"k":2},"k":"first","k":"second"}}`,
+		`{"msg":"escaped","o":{"s":"a\u00e9\"b"}}`,
+		// pino's numeric levels, which ingest names; a quoted one it does not.
+		`{"level":50,"msg":"pino error"}`,
+		`{"level":40,"msg":"pino warn"}`,
+		`{"level":"50","msg":"text fifty"}`,
+	},
+	{
+		// Numbers nested, which DuckDB writes back its own way.
+		`{"msg":"f 1.50","o":{"f":1.50}}`,
+		`{"msg":"f 1e2","o":{"f":1e2}}`,
+		`{"msg":"f 1.0","o":{"f":1.0}}`,
+		`{"msg":"f 1e20","o":{"f":1e20}}`,
+		`{"msg":"f 1e21","o":{"f":1e21}}`,
+		`{"msg":"f 1e-7","o":{"f":1e-7}}`,
+		`{"msg":"f 0.000001","o":{"f":0.000001}}`,
+		`{"msg":"f -0.0","o":{"f":-0.0}}`,
+		`{"msg":"f -0","o":{"f":-0}}`,
+		`{"msg":"f int64","o":{"f":123456789012345678}}`,
+		`{"msg":"f bignum","o":{"f":100000000000000000000}}`,
+		// Keys no unquoted JSON path can name.
+		`{"msg":"odd keys","user[email]":"x@y","w":{"*":2,"":{"z":3},"[0]":4}}`,
+		`plain text`,
+	},
+}
+
+var textQueries = []string{
+	`v>5`, `v=16`, `v>1e300`, `v<-1e300`, `v=12`, `v=*`,
+
+	`o.inner:~"^[{].b"`, `o.inner:"\"b\":1"`, `o.inner:"<a"`, `o.inner:"\\u003c"`,
+	`o.inner:"1,2.5"`, `o.inner:"1, 2"`, `o.inner:"\\t"`, `o.inner:~"u001F"`,
+	`o.inner:"\"k\":1,\"k\":2"`, `o.k=first`, `o.k=second`,
+	`o.s:"é"`, `o.s:"\\u00e9"`, `o.s:"\""`,
+
+	`o.f="1.5"`, `o.f="1.50"`, `o.f="100.0"`, `o.f="100"`, `o.f="1.0"`, `o.f="1"`,
+	`o.f="100000000000000000000.0"`, `o.f="1e20"`, `o.f="1e21"`, `o.f="1e-7"`, `o.f="0.000001"`,
+	`o.f="-0.0"`, `o.f="0"`, `o.f="-0"`, `o.f="123456789012345678"`, `o.f="100000000000000000000"`,
+	`o.f:e`, `o.f:"e+"`, `o.f=100`, `o.f=1`, `o.f>1e19`, `o.f=0`,
+
+	`user[email]=x@y`, `user[email]=*`, `w.*=2`, `w..z=3`, `w.[0]=4`, `w.x.=1`, `nope.x[0]=1`,
+
+	`level=50`, `level=40`, `level>=40`, `level>=50`, `level<50`, `level="50"`, `-level=50`,
+
+	`ts:~"[+]00$"`, `ts:~"[.][0-9]+[+]"`, `ts:~"^20[0-9][0-9]-"`, `ingest_ts:~"[+]00$"`, `ts:" "`,
+}
+
+func TestSQLAndPredicateAgreeOnText(t *testing.T) {
+	h := newHarness(t)
+
+	var records []*model.Record
+	for _, batch := range textCorpus {
+		records = append(records, h.ingest(t, "text", batch)...)
+	}
+
+	agree(t, h, records, textQueries)
+}
+
+// agree runs each query through both compilers and fails on any record they
+// answer differently.
+func agree(t *testing.T, h *harness, records []*model.Record, queries []string) {
+	t.Helper()
+
+	ctx := context.Background()
 
 	for _, query := range queries {
 		t.Run(label(query), func(t *testing.T) {
@@ -212,12 +302,10 @@ func TestSQLAndPredicateAgree(t *testing.T) {
  * actually supposed to return, by message.
  */
 func TestQueriesMeanWhatTheyShould(t *testing.T) {
-	ctx := context.Background()
-
 	h := newHarness(t)
 	h.ingest(t, "agree", corpus)
 
-	cases := map[string][]string{
+	mean(t, h, map[string][]string{
 		// No level is not a level at or above DEBUG.
 		`level>=DEBUG -level>=INFO`: {"cache warm"},
 		`-level>=DEBUG`:             {"no level here", "a plain line mentioning timeout", "another plain line"},
@@ -234,7 +322,43 @@ func TestQueriesMeanWhatTheyShould(t *testing.T) {
 		`req.status="200"`:          {"nested"},
 		`-"plain line" -msg:~.`:     nil,
 		`-(service=api OR service=worker OR service=cron) -"line mentioning"`: {"another plain line"},
+	})
+}
+
+func TestTextMeansWhatItShould(t *testing.T) {
+	h := newHarness(t)
+	for _, batch := range textCorpus {
+		h.ingest(t, "text", batch)
 	}
+
+	mean(t, h, map[string][]string{
+		// Not a number to DuckDB, and infinity to it.
+		`v=16`:    nil,
+		`v>1e300`: {"v huge"},
+		// DuckDB's text, not the document's.
+		`o.f="100.0"`:                   {"f 1e2"},
+		`o.f="1.0"`:                     {"f 1.0"},
+		`o.f="100000000000000000000.0"`: {"f 1e20"},
+		`o.f="100000000000000000000"`:   {"f bignum"},
+		`o.f="0"`:                       {"f -0"},
+		`o.inner:"<a"`:                  {"html"},
+		`o.k=first`:                     {"repeated"},
+		// Keys that are not paths.
+		`user[email]=x@y`: {"odd keys"},
+		`w.*=2`:           {"odd keys"},
+		`w..z=3`:          {"odd keys"},
+		// pino's 50 is ERROR, and 40 WARN; the text "50" is neither.
+		`level=50`:   {"pino error"},
+		`level>=40`:  {"pino error", "pino warn"},
+		`level="50"`: {"text fifty"},
+	})
+}
+
+// mean checks that each query matches exactly the records with these messages.
+func mean(t *testing.T, h *harness, cases map[string][]string) {
+	t.Helper()
+
+	ctx := context.Background()
 
 	for query, want := range cases {
 		result, err := h.engine.Search(ctx, request(query))

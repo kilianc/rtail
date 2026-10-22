@@ -141,10 +141,22 @@ func (l Literal) String() string {
 		return "*"
 	default:
 		if l.Quoted || needsQuoting(l.Str) {
-			return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(l.Str) + `"`
+			return quoted(l.Str)
 		}
 		return l.Str
 	}
+}
+
+/*!
+ * quoted renders text as a quoted string the lexer reads back as that text.
+ *
+ * Both the quote and the backslash are escaped, because lexQuoted unescapes
+ * both. A phrase used to escape only the quote, so the one typed as
+ * `"a b\\"` rendered as `"a b\"` — an unterminated string — and
+ * `"C:\\temp dir"` lost its backslash on the way back.
+ */
+func quoted(text string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(text) + `"`
 }
 
 func needsQuoting(s string) bool {
@@ -181,7 +193,7 @@ func String(node Node) string {
 		// A phrase that is a keyword has to stay quoted: bare, `"OR"` would
 		// come back as the operator rather than the word.
 		if needsQuoting(n.Value) || "AND" == n.Value || "OR" == n.Value || "NOT" == n.Value {
-			return `"` + strings.ReplaceAll(n.Value, `"`, `\"`) + `"`
+			return quoted(n.Value)
 		}
 		return n.Value
 

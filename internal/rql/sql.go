@@ -17,6 +17,7 @@ package rql
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -84,6 +85,25 @@ func Rank(level string) int {
 		return 0
 	}
 	return DefaultSeverityRank
+}
+
+/*!
+ * levelOf reads a level literal as the level ingest would have stored.
+ *
+ * Text goes through normalize.Level, so `warning` is WARN. A bare number is
+ * pino's scale, because that is what ingest read it as: a line carrying
+ * `"level":50` was stored as ERROR, and reading the literal 50 as the text
+ * "50" meant `level=50` found none of them and `level>=40` ranked 40 as a
+ * level nobody had heard of. A number off the scale stays text, as a quoted
+ * one always does.
+ */
+func levelOf(literal Literal) string {
+	if KindNumber == literal.Kind && literal.Num == math.Trunc(literal.Num) {
+		if name, ok := normalize.PinoLevel(int64(literal.Num)); ok {
+			return name
+		}
+	}
+	return normalize.Level(literal.Str)
 }
 
 // SQL is a compiled predicate and its bound arguments.
@@ -242,7 +262,7 @@ func (c *compiler) ordered(n *Comparison, expr string, kind FieldKind) (string, 
 		 * every level nobody has heard of — so `level=AUDIT` by rank matched
 		 * every other unknown level, and `level=FATAL` matched EMERGENCY.
 		 */
-		level := normalize.Level(n.Value.Str)
+		level := levelOf(n.Value)
 		if OpEquals == n.Op {
 			return "(" + expr + " = " + c.bind(level) + ")", nil
 		}
@@ -321,11 +341,14 @@ func severityCase(expr string) string {
 }
 
 // The forms a timestamp may be written in, tried in order. A time without a
-// zone is UTC, which is what every stored timestamp is.
+// zone is UTC, which is what every stored timestamp is. The one with a bare
+// hour offset is how DuckDB writes ts as text, so a value the field explorer
+// shows can be filtered on as shown.
 var timestampLayouts = []string{
 	time.RFC3339Nano,
 	"2006-01-02T15:04:05.999999999",
 	"2006-01-02 15:04:05.999999999",
+	"2006-01-02 15:04:05.999999999-07",
 	"2006-01-02T15:04",
 	"2006-01-02",
 }

@@ -166,3 +166,40 @@ func TestSearchedRecordsWithoutRawKeepTheirFields(t *testing.T) {
 		t.Errorf("one query slot: fields = %v", result.Records[0].Fields)
 	}
 }
+
+/*!
+ * Of two columns DuckDB cannot tell apart, a record with no raw gets neither.
+ *
+ * a_User and a_user are one name to DuckDB, which reads whichever comes first
+ * under both: the record that had "User" came back with a "user" too, and
+ * the one that had "user" lost it. With no raw to read them from, leaving
+ * them out is the only answer that is not wrong. The rest still come back.
+ */
+func TestRestoredFieldsSkipColumnsThatDifferOnlyInCase(t *testing.T) {
+	h := openHarness(t, false)
+
+	h.ingest(t, "r", []string{
+		`{"msg":"upper","User":"bob","n":1}`,
+		`{"msg":"lower","user":"alice","n":2}`,
+	})
+
+	result, err := h.engine.Search(context.Background(), request(""))
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 2 != len(result.Records) {
+		t.Fatalf("found %d records, want 2", len(result.Records))
+	}
+
+	for _, rec := range result.Records {
+		for key, value := range rec.Fields {
+			if ("upper" == rec.Msg && "user" == key) || ("lower" == rec.Msg && "User" == key) {
+				t.Errorf("%s came back with %s=%s, which it never had", rec.Msg, key, value.Text())
+			}
+		}
+
+		if _, ok := rec.Fields["n"]; !ok {
+			t.Errorf("%s lost a field that collides with nothing: %v", rec.Msg, rec.Fields)
+		}
+	}
+}
