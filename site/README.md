@@ -13,9 +13,10 @@ one means the file you read is the file the browser runs.
 
 ## The page follows the app, not a second design
 
-`site/scss/site.scss` starts with `@use '../../app/scss/tokens'`, so the greys,
-the blue, the severity red and amber, the radii and the fixed sizes on this
-page are the values the product paints with. There is no second palette to keep
+`tools/build-site.js` builds the page's stylesheet with `app/styles/tokens.css`
+in front of `site/styles/site.css`, so the greys, the blue, the severity red and
+amber, the radii and the fixed sizes on this page are the values the product
+paints with. There is no second palette to keep
 in sync, and changing the app's changes the page.
 
 Two things are the page's own, on purpose:

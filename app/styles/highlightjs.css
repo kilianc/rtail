@@ -1,9 +1,5 @@
 /* highlight.js colours for JSON payloads */
 
-.stream-line-content pre {
-  color: var(--text-secondary);
-}
-
 .hljs-attr,
 .hljs-attribute {
   color: var(--ansi-cyan);
@@ -23,5 +19,5 @@
 }
 
 .hljs-punctuation {
-  color: var(--text-faint);
+  color: var(--faint-foreground);
 }

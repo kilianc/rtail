@@ -53,9 +53,12 @@ async function resolve(pathname) {
   for (const candidate of candidates(pathname)) {
     // A path that climbs out of the output directory is not a candidate, it
     // is an attempt: resolve it against root and check where it landed.
+    // A candidate that parses as a URL of its own — `/http:x` — is not
+    // resolved against root at all, and fileURLToPath throws on anything that
+    // is not file:, so the scheme is checked before the path is.
     const file = new URL(candidate, `file://${root}`)
 
-    if (!fileURLToPath(file).startsWith(root)) {
+    if ('file:' !== file.protocol || !fileURLToPath(file).startsWith(root)) {
       continue
     }
 
@@ -74,8 +77,23 @@ async function resolve(pathname) {
 }
 
 const server = createServer(async (req, res) => {
-  const { pathname } = new URL(req.url, 'http://localhost')
-  const file = await resolve(decodeURIComponent(pathname))
+  let file
+
+  /*!
+   * A path that cannot be read is a bad request, not a crash.
+   *
+   * The handler is async, so anything thrown in it is an unhandled rejection,
+   * and that takes the whole process down: one `/%` — a malformed escape,
+   * which decodeURIComponent throws on — ended the preview for every tab.
+   */
+  try {
+    const { pathname } = new URL(req.url, 'http://localhost')
+    file = await resolve(decodeURIComponent(pathname))
+  } catch {
+    res.writeHead(400, { 'content-type': TYPES['.txt'] })
+    res.end('bad request\n')
+    return
+  }
 
   if (!file) {
     res.writeHead(404, { 'content-type': TYPES['.txt'] })

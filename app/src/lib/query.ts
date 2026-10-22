@@ -57,6 +57,15 @@ export function terms(query: string): Term[] {
       continue
     }
 
+    // Any whitespace separates terms, newlines included, because that is
+    // what the server's lexer does — a query written on two lines is two
+    // lines of terms, not one term with a line break inside it.
+    if (/\s/.test(char)) {
+      if (0 === depth) flush()
+      else current += char
+      continue
+    }
+
     switch (char) {
       case '"':
       case "'":
@@ -72,12 +81,6 @@ export function terms(query: string): Term[] {
       case ')':
         depth = Math.max(0, depth - 1)
         current += char
-        break
-
-      case ' ':
-      case '\t':
-        if (0 === depth) flush()
-        else current += char
         break
 
       default:
@@ -182,11 +185,6 @@ export function withoutField(query: string, field: string): string {
   return render(terms(query).filter((term) => term.field !== field))
 }
 
-/** Removes one exact term. */
-export function withoutTerm(query: string, text: string): string {
-  return render(terms(query).filter((term) => term.text !== text))
-}
-
 /** Reports whether a query already asserts exactly this. */
 export function hasTerm(
   query: string,
@@ -217,8 +215,16 @@ export function toggleTerm(
   value: string,
   negated = false
 ): string {
+  // Removed by what the term says, not by how it is written: found by value,
+  // a bare `region=us-east-1` typed by hand would otherwise be recognised and
+  // then not removed, because the click spells it `region="us-east-1"`.
   if (hasTerm(query, field, op, value, negated)) {
-    return withoutTerm(query, termText(field, op, value, negated))
+    return render(
+      terms(query).filter(
+        (term) =>
+          !(term.field === field && term.op === op && term.value === value && term.negated === negated)
+      )
+    )
   }
   return withTerm(query, field, op, value, negated)
 }
@@ -259,7 +265,9 @@ export function complete(
   fields: { name: string; kind: string; occurrences?: number }[]
 ): { from: number; to: number; items: Completion[] } {
   const before = query.slice(0, cursor)
-  const start = Math.max(before.lastIndexOf(' '), before.lastIndexOf('(')) + 1
+  // Back to the last whitespace of any kind, or an opening paren — a token
+  // starts at the beginning of a line as readily as after a space.
+  const start = before.search(/[\s(][^\s(]*$/) + 1
   const token = query.slice(start, cursor)
 
   // Past an operator the user is typing a value, and we have nothing better to
@@ -328,6 +336,10 @@ const HTML_ESCAPE = /[&<>"]/
  * not match the entity it became. That is rare in a search box and the failure
  * is a missing highlight rather than broken markup, which is the right way
  * round.
+ *
+ * Entities are markup too, and are stepped over the same way tags are. A
+ * needle of `lt` or `27` otherwise landed inside `&lt;` or `&#x27;` and split
+ * it, and the row showed the pieces of the entity instead of the character.
  */
 export function highlight(html: string, needles: string[]): string {
   if (0 === needles.length) return html
@@ -340,7 +352,12 @@ export function highlight(html: string, needles: string[]): string {
     'gi'
   )
 
-  const mark = (text: string) => text.replace(pattern, '<mark>$&</mark>')
+  // split() with a capture keeps the entities, at the odd indices.
+  const mark = (text: string) =>
+    text
+      .split(/(&#?\w+;)/)
+      .map((part, index) => (index % 2 ? part : part.replace(pattern, '<mark>$&</mark>')))
+      .join('')
 
   let out = ''
   let at = 0
@@ -444,7 +461,10 @@ export interface Token {
  * wrong in a way "what does this query mean" does not.
  */
 export function tokenize(query: string): Token[] {
-  const pattern = /("(?:[^"\\]|\\.)*"?)|(>=|<=|!=|=|>|<|:)|(\s+)|([^\s"<>=!:]+)/g
+  // The last alternative is the catch-all that keeps that promise: a `!` with
+  // no `=` after it matched nothing else, so `wow! level=ERROR` was drawn as
+  // `wow level=ERROR` and every column after it sat one off from the caret.
+  const pattern = /("(?:[^"\\]|\\.)*"?)|(>=|<=|!=|=|>|<|:)|(\s+)|([^\s"<>=!:]+)|([\s\S])/g
   const tokens: Token[] = []
 
   // What the last word meant, so the word after an operator reads as a value
@@ -452,7 +472,7 @@ export function tokenize(query: string): Token[] {
   let afterOp = false
 
   for (const match of query.matchAll(pattern)) {
-    const [text, string, op, space, word] = match
+    const [text, string, op, space, word, other] = match
 
     if (undefined !== string) {
       tokens.push({ kind: 'string', text, at: match.index })
@@ -466,7 +486,7 @@ export function tokenize(query: string): Token[] {
       continue
     }
 
-    if (undefined !== space) {
+    if (undefined !== space || undefined !== other) {
       tokens.push({ kind: 'plain', text, at: match.index })
       continue
     }

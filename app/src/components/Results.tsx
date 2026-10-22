@@ -201,8 +201,19 @@ export function Results({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      /*!
+       * Only bare keys, and only when nothing else has the keyboard.
+       *
+       * A chord is somebody else's: ⌘K focuses the query, and read as `k` it
+       * also moved the selection up and scrolled the list, which paused a
+       * live tail. A focused control owns its own keys too — Enter on a
+       * button is that button's click, and Escape in a popover closes the
+       * popover — so neither should reach the rows underneath.
+       */
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+
       const target = event.target as HTMLElement | null
-      if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return
+      if (target && (/^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(target.tagName) || target.isContentEditable)) return
 
       switch (event.key) {
         case 'j':

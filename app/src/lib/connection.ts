@@ -51,6 +51,20 @@ export function connect(): Connection {
   let current: { stream: string | null; query: string } | null = null
   let closed = false
 
+  /*!
+   * The retry EventSource will not do.
+   *
+   * It re-opens after a dropped connection by itself, but an HTTP error is
+   * final to it: a 502 from a proxy while the server restarts closes the feed
+   * for good, and the tab sat on a tail that would never move again. So a
+   * feed closed by anything but a rejected query is re-opened here, backing
+   * off from a second to half a minute, and the count resets once one opens.
+   */
+  let retry: ReturnType<typeof setTimeout> | undefined
+  let attempt = 0
+  /** The fetch asking why the feed closed, so it can be called off. */
+  let probe: AbortController | null = null
+
   const dispatch = <K extends keyof ServerEvents>(
     event: K,
     ...args: Parameters<ServerEvents[K]>
@@ -72,13 +86,17 @@ export function connect(): Connection {
   /**
    * Opens (or re-opens) the feed.
    *
-   * The subscription *is* the URL, so changing it means a new connection. That
-   * is also why the guard in `subscribe` matters: EventSource re-opens by
-   * itself after a drop and App re-subscribes on 'connect', and without the
-   * guard those two would chase each other forever.
+   * The subscription *is* the URL, so changing it means a new connection —
+   * which is why `subscribe` refuses to re-open the pair already open: doing
+   * so would drop the feed and pull the backlog again for nothing. Anything
+   * left over from the feed this replaces — a retry waiting to fire, a probe
+   * still in flight — is cancelled first, or it would act on this one.
    */
   function open(stream: string | null, query: string): void {
     source?.close()
+    clearTimeout(retry)
+    probe?.abort()
+    probe = null
 
     if (closed) return
 
@@ -88,9 +106,13 @@ export function connect(): Connection {
     if (stream) url.searchParams.set('stream', stream)
     if (query) url.searchParams.set('q', query)
 
-    source = new EventSource(url)
+    const feed = new EventSource(url)
+    source = feed
 
-    source.addEventListener('open', () => dispatch('connect'))
+    source.addEventListener('open', () => {
+      attempt = 0
+      dispatch('connect')
+    })
 
     source.addEventListener('streams', (event) => {
       const streams = parse<string[]>(event.data)
@@ -110,21 +132,43 @@ export function connect(): Connection {
      * An SSE error carries no detail — the spec gives the page a bare event —
      * so a rejected filter cannot be reported through it. Rather than guess,
      * the request is replayed with fetch, which does return the reason, and
-     * only a genuine 4xx is surfaced. A dropped connection stays silent
-     * because EventSource is already retrying it.
+     * only a genuine 4xx is surfaced; anything else is retried. A dropped
+     * connection stays silent because EventSource is already retrying it, and
+     * only a feed it has given up on (CLOSED) is asked about at all.
+     *
+     * The replay is a real request for the tail. The server does not read
+     * Accept, so when the query is fine it answers 200 with an event stream
+     * that would otherwise stay open beside the real one for the life of the
+     * tab — so a success is cancelled as soon as it is seen, and the whole
+     * probe is aborted if this feed is replaced or closed before it lands.
      */
     source.addEventListener('error', () => {
-      if (closed) return
+      if (closed || source !== feed || EventSource.CLOSED !== feed.readyState) return
 
-      fetch(url, { headers: { accept: 'application/json' } })
+      const controller = new AbortController()
+      probe = controller
+
+      const later = () => {
+        if (controller.signal.aborted) return
+        retry = setTimeout(() => open(stream, query), Math.min(30_000, 1_000 * 2 ** attempt++))
+      }
+
+      fetch(url, { headers: { accept: 'application/json' }, signal: controller.signal })
         .then(async (response) => {
-          if (response.ok || response.status < 400) return
+          if (response.status < 400 || response.status >= 500) {
+            response.body?.cancel().catch(() => {})
+            later()
+            return
+          }
+
           const body = await response.json().catch(() => ({}))
+          if (controller.signal.aborted) return
+
           // The position is what lets the command bar underline the offending
           // character, so it has to survive this detour.
           dispatch('error', body.message ?? body.error ?? 'the live feed was rejected', body.position)
         })
-        .catch(() => {})
+        .catch(later)
     })
   }
 
@@ -152,6 +196,9 @@ export function connect(): Connection {
 
     close() {
       closed = true
+      clearTimeout(retry)
+      probe?.abort()
+      probe = null
       source?.close()
       source = null
     }

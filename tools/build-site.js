@@ -75,18 +75,23 @@ await buildStatic()
 console.log('built site/dist/')
 
 if (isWatch) {
-  let pending = null
+  // One timer per target. They shared one, so an html change inside the 50ms
+  // window cancelled a css rebuild already queued, and the stylesheet stayed
+  // stale until something else touched it.
+  const pending = new Map()
 
   const rebuild = (what, run) => {
-    clearTimeout(pending)
-    pending = setTimeout(async () => {
+    clearTimeout(pending.get(what))
+    pending.set(what, setTimeout(async () => {
+      pending.delete(what)
+
       try {
         await run()
         console.log(`${what} rebuilt`)
       } catch (err) {
         console.error(`${what} error:`, err.message)
       }
-    }, 50)
+    }, 50))
   }
 
   // Directory watches rather than file watches: most editors save atomically

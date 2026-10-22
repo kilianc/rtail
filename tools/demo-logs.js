@@ -54,6 +54,8 @@ const LEVELS = [
   ...Array(2).fill('trace'),
   'notice',
   'critical',
+  'alert',
+  'emergency',
   'fatal',
   // Spellings the normalizer maps onto the same canonical names, and one it
   // does not know — "audit" should survive as AUDIT rather than disappearing.
@@ -116,7 +118,7 @@ function request() {
 /** A payload shaped like something a billing worker would emit. */
 function billing() {
   return {
-    level: pick([30, 40, 50, 20]), // pino's numeric scale
+    level: pick([30, 40, 50, 20, 10, 60]), // pino's numeric scale, 10 through 60
     msg: pick(['charge captured', 'charge declined', 'refund issued', 'invoice settled']),
     ts: new Date().toISOString(),
     invoice: {

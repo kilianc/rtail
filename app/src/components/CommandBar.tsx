@@ -57,7 +57,11 @@ interface Props {
   error?: { message: string; position?: number } | null
   busy: boolean
   onChange: (query: string) => void
-  onSubmit: () => void
+  /**
+   * Runs the query. Given text, runs that rather than the draft — the draft
+   * the caller holds is a render behind an onChange made in the same handler.
+   */
+  onSubmit: (query?: string) => void
   /** The time range control, rendered inside the pane's footer. */
   children?: ComponentChildren
 }
@@ -145,6 +149,10 @@ export function CommandBar({
           apply(items[active])
           return
         case 'Enter':
+          // ⌘⏎ still runs, menu or no menu: it is the one chord that means
+          // "go", and an open menu is the normal state while typing.
+          if (event.metaKey || event.ctrlKey) break
+
           // Enter takes the completion when the menu is open, and inserts a
           // newline when it is not — so it never does two things at once.
           event.preventDefault()
@@ -274,7 +282,9 @@ export function CommandBar({
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => {
                 onChange('')
-                onSubmit()
+                // Submitted explicitly: onSubmit alone would run the draft
+                // this render still holds, which is the query just cleared.
+                onSubmit('')
                 input.current?.focus()
               }}
             />
@@ -328,7 +338,7 @@ export function CommandBar({
           <div class="command-actions">
             {children}
 
-            <Button variant="solid" onClick={onSubmit}>
+            <Button variant="solid" onClick={() => onSubmit()}>
               Run query
               <kbd>⌘⏎</kbd>
             </Button>
