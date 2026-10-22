@@ -5,8 +5,8 @@
  *
  * UDP is at-most-once and capped at one datagram, which is exactly right for
  * `cmd | rtail` and wrong for anything that would mind losing a line. This is
- * the path that acknowledges: the response is written after the records are in
- * the write-ahead log, so a 200 means durable.
+ * the path that acknowledges: the response is written after the records are
+ * fsynced to the write-ahead log, so a 200 means durable.
  *
  * Every response carries the same body, whatever its status:
  *
@@ -168,8 +168,26 @@ func (h *HTTP) Lines(w http.ResponseWriter, r *http.Request) {
 		truncated int
 	)
 
-	// finish answers with what is stored so far, which is every response.
+	/*!
+	 * finish answers with what is stored so far, which is every response.
+	 *
+	 * Stored means synced. Append leaves a record in the write-ahead log's
+	 * buffer, fsynced on the next tick, and a 200 sent before that tick was a
+	 * promise a crash could break — the shipper drops its copy on a 200. So
+	 * whatever the status, the lines counted as accepted are synced before
+	 * they are reported. If the sync fails none of them can be vouched for:
+	 * the answer is a 503 with nothing accepted, and a retry of the whole
+	 * batch may store some twice, which is the right way round to be wrong.
+	 */
 	finish := func(status int, err error) {
+		if 0 != out.Accepted {
+			if syncErr := h.opts.Store.Sync(r.Context()); nil != syncErr {
+				h.opts.Log.Error("syncing ingested records", "stream", stream, "err", syncErr)
+				status, err = http.StatusServiceUnavailable, fmt.Errorf("storing records: %w", syncErr)
+				out.Accepted = 0
+			}
+		}
+
 		if 0 != truncated {
 			out.Errors = append(out.Errors,
 				fmt.Sprintf("%d line(s) exceeded %d bytes and were truncated", truncated, maxLine))

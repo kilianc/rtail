@@ -45,6 +45,13 @@ type Store interface {
 	// Append records one event. The store assigns its Seq.
 	Append(ctx context.Context, rec *model.Record) error
 
+	// Sync makes everything appended so far durable, and returns once it is.
+	// Append alone only promises the record is in the write-ahead log's
+	// buffer, which a crash in the next hundred milliseconds still loses — so
+	// anything that tells a sender its records are safe calls this first. A
+	// store that keeps nothing on disk has nothing to sync.
+	Sync(ctx context.Context) error
+
 	// Streams lists every known stream.
 	Streams(ctx context.Context) ([]string, error)
 

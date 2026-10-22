@@ -513,6 +513,118 @@ func TestIngestAnswers503WithWhatWasStored(t *testing.T) {
 	}
 }
 
+// syncingStore records when it was synced, and can refuse to be.
+type syncingStore struct {
+	*logstore.Memory
+	appended int
+	// syncedAt is how many records had been appended at the last Sync, or -1
+	// when Sync was never called.
+	syncedAt int
+	refuse   error
+}
+
+func (s *syncingStore) Append(ctx context.Context, rec *model.Record) error {
+	s.appended++
+	return s.Memory.Append(ctx, rec)
+}
+
+func (s *syncingStore) Sync(context.Context) error {
+	if nil != s.refuse {
+		return s.refuse
+	}
+	s.syncedAt = s.appended
+	return nil
+}
+
+func newSyncingStore(t *testing.T, refuse error) *syncingStore {
+	memory := logstore.NewMemory(10)
+	t.Cleanup(func() { memory.Close() })
+	return &syncingStore{Memory: memory, syncedAt: -1, refuse: refuse}
+}
+
+/*!
+ * A 200 is sent after the records are synced, not merely appended.
+ *
+ * Append leaves a record in the write-ahead log's buffer until the next sync
+ * tick, and a shipper drops its copy the moment it reads a 200 — so an
+ * acknowledgement sent between the two was one a crash could take back.
+ */
+func TestIngestSyncsBeforeItAcknowledges(t *testing.T) {
+	store := newSyncingStore(t, nil)
+	h := newHTTPHarnessWith(t, ingest.HTTPOptions{Store: store})
+
+	response := h.post(t, "/v1/ingest?stream=s", "text/plain", strings.NewReader("one\ntwo\nthree\n"), nil)
+
+	if http.StatusOK != response.StatusCode {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+	if 3 != store.syncedAt {
+		t.Errorf("synced after %d of 3 records, want all 3 (-1 is never)", store.syncedAt)
+	}
+}
+
+// A batch that stopped early reports what it stored, and that is synced too.
+func TestIngestSyncsWhatAnEarlyStopAccepted(t *testing.T) {
+	store := newSyncingStore(t, nil)
+	h := newHTTPHarnessWith(t, ingest.HTTPOptions{Store: store, MaxBody: 10})
+
+	response := h.post(t, "/v1/ingest?stream=s", "text/plain", strings.NewReader("one\ntwo\nthree\nfour\n"), nil)
+
+	if http.StatusRequestEntityTooLarge != response.StatusCode {
+		t.Fatalf("status = %d, want 413", response.StatusCode)
+	}
+
+	out := decodeAnswer(t, response)
+	if 0 == out.Accepted || store.syncedAt != out.Accepted {
+		t.Errorf("accepted %d, synced after %d", out.Accepted, store.syncedAt)
+	}
+}
+
+// When the sync fails nothing can be vouched for, so nothing is accepted: a
+// retry may store some lines twice, which beats a shipper skipping lines that
+// were never on disk.
+func TestIngestAcceptsNothingWhenTheSyncFails(t *testing.T) {
+	store := newSyncingStore(t, errors.New("fsync: input/output error"))
+	h := newHTTPHarnessWith(t, ingest.HTTPOptions{Store: store})
+
+	response := h.post(t, "/v1/ingest?stream=s", "text/plain", strings.NewReader("one\ntwo\n"), nil)
+
+	if http.StatusServiceUnavailable != response.StatusCode {
+		t.Fatalf("status = %d, want 503", response.StatusCode)
+	}
+
+	out := decodeAnswer(t, response)
+	if 0 != out.Accepted || 1 != out.Rejected {
+		t.Errorf("accepted %d rejected %d, want 0 and 1", out.Accepted, out.Rejected)
+	}
+}
+
+// OTLP acknowledges with partialSuccess, and a collector drops its batch on
+// it just the same.
+func TestOTLPSyncsBeforeItAcknowledges(t *testing.T) {
+	for _, refuse := range []error{nil, errors.New("fsync: input/output error")} {
+		store := newSyncingStore(t, refuse)
+		h := newHTTPHarnessWith(t, ingest.HTTPOptions{Store: store})
+
+		batch := otlpBatch("svc", "hello", logspb.SeverityNumber_SEVERITY_NUMBER_INFO, time.Now())
+		body, err := proto.Marshal(batch)
+		if nil != err {
+			t.Fatal(err)
+		}
+
+		response := h.post(t, "/v1/logs", "application/x-protobuf", bytes.NewReader(body), nil)
+
+		switch {
+		case nil == refuse && http.StatusOK != response.StatusCode:
+			t.Errorf("status = %d, want 200", response.StatusCode)
+		case nil == refuse && 1 != store.syncedAt:
+			t.Errorf("synced after %d of 1 records", store.syncedAt)
+		case nil != refuse && http.StatusServiceUnavailable != response.StatusCode:
+			t.Errorf("with a failing sync, status = %d, want 503", response.StatusCode)
+		}
+	}
+}
+
 // The peer's address is the record's host, and an IPv6 one has colons in it.
 func TestIngestReadsAnIPv6PeerAddress(t *testing.T) {
 	store := logstore.NewMemory(10)

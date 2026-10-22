@@ -880,6 +880,12 @@ func safeSegment(stream string) string {
 	return string(out)
 }
 
+// Sync fsyncs the write-ahead log, so every record appended before the call is
+// on disk when it returns — what the HTTP receivers wait for before they
+// acknowledge. The periodic sync still runs for everything else, and a sync
+// with nothing new to write costs a mutex.
+func (d *Durable) Sync(context.Context) error { return d.log.Sync() }
+
 func (d *Durable) Streams(context.Context) ([]string, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

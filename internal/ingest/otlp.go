@@ -141,6 +141,16 @@ func (h *HTTP) OTLP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Synced before it is acknowledged, for the reason Lines' finish gives:
+	// a collector drops its copy of a batch on success.
+	if 0 != out.Accepted {
+		if err := h.opts.Store.Sync(r.Context()); nil != err {
+			h.opts.Log.Error("syncing OTLP records", "err", err)
+			h.fail(w, http.StatusServiceUnavailable, fmt.Errorf("storing records: %w", err))
+			return
+		}
+	}
+
 	/*!
 	 * OTLP expects an ExportLogsServiceResponse, and a collector reads
 	 * `partialSuccess` to decide whether to retry. An empty object means
