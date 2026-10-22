@@ -15,6 +15,7 @@ package model
 
 import (
 	"encoding/json"
+	"math"
 	"strconv"
 	"time"
 )
@@ -71,6 +72,11 @@ func JSON(text string) Value { return Value{Kind: KindJSON, Str: text} }
 
 // MarshalJSON renders the value as its natural JSON counterpart, so a promoted
 // field survives a round trip through the API unchanged.
+//
+// The one value that cannot is a non-finite float. OTLP carries IEEE doubles,
+// NaN and Infinity included, and JSON has no spelling for either — so they go
+// out as null. Failing instead would fail the whole response the record is
+// in: every search page that holds it, and every tail backlog, forever.
 func (v Value) MarshalJSON() ([]byte, error) {
 	switch v.Kind {
 	case KindBool:
@@ -78,6 +84,9 @@ func (v Value) MarshalJSON() ([]byte, error) {
 	case KindInt:
 		return strconv.AppendInt(nil, v.Int, 10), nil
 	case KindFloat:
+		if math.IsNaN(v.Float) || math.IsInf(v.Float, 0) {
+			return []byte("null"), nil
+		}
 		return json.Marshal(v.Float)
 	case KindString:
 		return json.Marshal(v.Str)
