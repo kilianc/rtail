@@ -383,3 +383,53 @@ func TestSweepRemovesOnlyAbandonedTempFiles(t *testing.T) {
 		t.Errorf("a committed object was swept: %v", err)
 	}
 }
+
+/*!
+ * A stream id becomes a directory, so it has to be a name every filesystem
+ * takes. A 300-character id failed every write with "file name too long", and
+ * the segment holding it could never be flushed or, after a restart, replayed.
+ */
+func TestSafeSegmentIsAlwaysOneUsableName(t *testing.T) {
+	long := strings.Repeat("a", 300)
+
+	for in, want := range map[string]string{
+		"":             "_unnamed",
+		"api":          "api",
+		"web-1.prod_A": "web-1.prod_A",
+		"a/b c":        "a_b_c",
+		"..":           "_..",
+		".":            "_.",
+		"ünï":          "_n_",
+	} {
+		if got := SafeSegment(in); want != got {
+			t.Errorf("SafeSegment(%q) = %q, want %q", in, got, want)
+		}
+	}
+
+	capped := SafeSegment(long)
+	if len(capped) > maxSegment {
+		t.Errorf("a %d-byte id became a %d-byte name, over the %d cap", len(long), len(capped), maxSegment)
+	}
+	if !strings.HasPrefix(capped, strings.Repeat("a", 64)) {
+		t.Errorf("capped name %q lost the id's beginning", capped)
+	}
+	if capped != SafeSegment(long) {
+		t.Error("the capped name is not stable")
+	}
+
+	// Two long ids with the same beginning stay apart.
+	if SafeSegment(long) == SafeSegment(long+"b") {
+		t.Error("two long ids that differ only past the cap share a name")
+	}
+
+	// And the name really is one a filesystem accepts.
+	backend := newTestBackend(t)
+	writer, err := backend.Create(context.Background(), "streams/"+capped+"/x.parquet")
+	if nil != err {
+		t.Fatal(err)
+	}
+	writer.Write([]byte("PAR1"))
+	if err := writer.Commit(); nil != err {
+		t.Fatalf("committing under the capped name: %v", err)
+	}
+}

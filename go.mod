@@ -4,16 +4,22 @@
 // /v2 once a v2.x.x tag exists, and it does. Declaring it up front meant the
 // tags needed no import rewrite anywhere.
 //
-// Two direct dependencies, both deliberately pure Go, so the server is still a
-// static binary and the container image is still distroless:
+// The direct dependencies, and what each one is for:
 //
-//   parquet-go     the storage format
-//   modernc/sqlite the catalog — the cgo-free SQLite, since the catalog is not
-//                  a hot path and a static binary is worth more than the
-//                  marginal speed of the cgo driver
+//   parquet-go          the storage format
+//   modernc/sqlite      the catalog — the cgo-free SQLite, since the catalog
+//                       is not a hot path and did not need to be a second
+//                       cgo dependency
+//   go-duckdb           search and SQL. The one cgo dependency, and the
+//                       reason the server is not a static binary: it links
+//                       glibc, the image is Debian slim rather than
+//                       distroless, and every platform is built on its own
+//                       runner
+//   otlp, protobuf      the OpenTelemetry logs receiver
+//   klauspost/compress  zstd request bodies on ingest
+//   json5               the client's JSON5 lines
 //
-// That changes at P2. DuckDB is cgo, and bringing it in means a glibc base
-// image and a per-platform build matrix.
+// The client imports json5 alone, so it is still CGO_ENABLED=0 and static.
 module github.com/kilianc/rtail/v2
 
 go 1.25.0

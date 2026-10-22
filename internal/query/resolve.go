@@ -21,6 +21,7 @@ package query
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/kilianc/rtail/v2/internal/catalog"
@@ -85,12 +86,24 @@ var _ rql.Resolver = (*Resolver)(nil)
 func NewResolver(files []catalog.File, columns map[int64][]catalog.Column) *Resolver {
 	r := &Resolver{facts: map[string]*columnFacts{}, files: len(files)}
 
+	// owners maps each column name, folded, to the first key seen using it;
+	// shared names the keys that met another key there. See below.
+	owners := map[string]string{}
+	shared := map[string]bool{}
+
 	for _, file := range files {
 		if file.HasRaw {
 			r.withRaw++
 		}
 
 		for _, column := range columns[file.ID] {
+			folded := strings.ToLower(column.Name)
+			if owner, ok := owners[folded]; !ok {
+				owners[folded] = column.SourceKey
+			} else if owner != column.SourceKey {
+				shared[owner], shared[column.SourceKey] = true, true
+			}
+
 			facts, ok := r.facts[column.SourceKey]
 			if !ok {
 				facts = &columnFacts{column: column.Name, kind: column.Kind}
@@ -126,6 +139,22 @@ func NewResolver(files []catalog.File, columns map[int64][]catalog.Column) *Reso
 		facts.missing = r.files - facts.present
 	}
 
+	/*!
+	 * A column name that answers for more than one key reads as neither.
+	 *
+	 * DuckDB matches identifiers without regard to case, so "User" and
+	 * "user", stored as a_User and a_user, are one column to it: inside a
+	 * file it binds both names to whichever comes first, and across files
+	 * union_by_name folds them together. `user=alice` read bob's column and
+	 * `id=bob` found the record that had said "ID". Two keys that mangle to
+	 * the very same name in different files — "a.b" here, "a-b" there — fold
+	 * the same way. raw still tells them apart, so it is what such a key is
+	 * read from; ToLower is enough, because a column name is ASCII.
+	 */
+	for key := range shared {
+		r.facts[key].column = ""
+	}
+
 	return r
 }
 
@@ -141,7 +170,7 @@ func (r *Resolver) Resolve(field string) (string, rql.FieldKind, bool) {
 	// tail is a path into it. Otherwise the whole thing indexes into raw.
 	if head, tail, dotted := strings.Cut(field, "."); dotted {
 		if facts, ok := r.facts[head]; ok && "" != facts.column && "json" == facts.kind {
-			expr := fmt.Sprintf("%s ->> %s", facts.column, quote("$."+tail))
+			expr := fmt.Sprintf("%s ->> %s", facts.column, quote(jsonPath(tail)))
 
 			if facts.missing > 0 && r.withRaw > 0 {
 				expr = fmt.Sprintf("coalesce(%s, %s)", expr, rawPath(field))
@@ -215,9 +244,41 @@ func kindOf(kind string) rql.FieldKind {
  * every mixed stream is in.
  */
 func rawPath(field string) string {
-	extract := fmt.Sprintf("%s ->> %s", parquetio.ColRaw, quote("$."+field))
+	extract := fmt.Sprintf("%s ->> %s", parquetio.ColRaw, quote(jsonPath(field)))
 
 	return fmt.Sprintf("CASE WHEN json_valid(%s) THEN %s END", parquetio.ColRaw, extract)
+}
+
+/*!
+ * jsonPath writes a dotted field as a DuckDB JSON path, every key quoted.
+ *
+ * A key is any string JSON allows, and DuckDB parses a path when it binds
+ * the statement: `$.user[email]` or `$.x.` is a syntax error that fails the
+ * whole query — the search, and the sidebar count of every other field
+ * asked for beside it. Quoted, a segment is a key, escaped the way DuckDB
+ * unescapes it: `\\` and `\"`.
+ *
+ * Except two that quoting cannot name. DuckDB rejects `$.""`, and reads
+ * `$."*"` as a wildcard all the same, which returns a list. A path with
+ * either is a JSON pointer instead, where the empty key is nothing between
+ * two slashes, `*` is only a star, and `~` and `/` are all that is escaped.
+ */
+func jsonPath(field string) string {
+	segments := strings.Split(field, ".")
+
+	if slices.Contains(segments, "") || slices.Contains(segments, "*") {
+		escape := strings.NewReplacer("~", "~0", "/", "~1")
+		for i, segment := range segments {
+			segments[i] = escape.Replace(segment)
+		}
+		return "/" + strings.Join(segments, "/")
+	}
+
+	escape := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+	for i, segment := range segments {
+		segments[i] = `"` + escape.Replace(segment) + `"`
+	}
+	return "$." + strings.Join(segments, ".")
 }
 
 // castFromRaw reads a key out of raw as the type the column has, so the

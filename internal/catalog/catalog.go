@@ -42,6 +42,10 @@ const (
 	StateTombstoned = "tombstoned"
 )
 
+// ErrRegistered is returned when publishing a file whose path is already in
+// the catalog would mean its object had been overwritten. See Replace.
+var ErrRegistered = errors.New("catalog: path is already registered")
+
 // Levels in the LSM-ish hierarchy: L0 is a flush, L1 hourly, L2 daily.
 const (
 	LevelL0 = 0
@@ -151,7 +155,9 @@ func Open(path string) (*Catalog, error) {
 		return nil, fmt.Errorf("migrating catalog schema: %w", err)
 	}
 
-	// Recorded once, the first time a catalog is opened; see Created.
+	// Recorded once, the first time a catalog is opened. Nothing here reads it
+	// any more — garbage collection used to, see Abandoned — but a release
+	// that still does may open this file again.
 	if _, err := db.Exec(`INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING`,
 		metaCreated, strconv.FormatInt(time.Now().UTC().UnixMicro(), 10)); nil != err {
 		db.Close()
@@ -182,7 +188,50 @@ func migrate(db *sql.DB) error {
 		}
 	}
 
-	return nil
+	return recountRollups(db)
+}
+
+/*!
+ * recountRollups rebuilds every stream's row and byte totals from its live
+ * files, once per catalog.
+ *
+ * The totals are counters moved by deltas, which is only right if every
+ * delta was applied. Retention expiry used to tombstone files without taking
+ * their rows off, and retiring a file now subtracts only what is still live —
+ * so a catalog that expired anything under that release would count those
+ * rows forever. Summing the live files is what the counters mean, and doing
+ * it once, recorded in meta, puts every catalog back on that footing.
+ */
+func recountRollups(db *sql.DB) error {
+	var done int
+	if err := db.QueryRow(`SELECT count(*) FROM meta WHERE key = ?`, metaRecounted).Scan(&done); nil != err {
+		return err
+	}
+	if 0 != done {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if nil != err {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`
+		UPDATE streams SET
+			row_count = coalesce((SELECT sum(row_count) FROM files
+				WHERE files.stream = streams.name AND files.state = ?), 0),
+			byte_size = coalesce((SELECT sum(byte_size) FROM files
+				WHERE files.stream = streams.name AND files.state = ?), 0)`,
+		StateLive, StateLive); nil != err {
+		return fmt.Errorf("recounting stream rollups: %w", err)
+	}
+
+	if _, err := tx.Exec(`INSERT INTO meta (key, value) VALUES (?, '1')`, metaRecounted); nil != err {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 // Close releases the database.
@@ -194,15 +243,16 @@ func (c *Catalog) Close() error { return c.db.Close() }
  * One transaction, so the file either exists in the catalog completely or not
  * at all. The caller must have committed the object to storage first: a
  * catalog row pointing at a file that is not there is unrecoverable, whereas a
- * file with no catalog row is merely garbage that the next GC pass collects.
+ * file with no catalog row is merely garbage — which GC collects if the write
+ * was declared with Intend, and the same transaction drops that declaration.
  *
  * Registering a path that is already known is a no-op returning existed=true.
- * That is what makes crash recovery idempotent rather than merely
- * duplicate-tolerant: object names are derived from the batch's first record,
- * so replaying a WAL segment that was already flushed produces the same path,
- * lands on this branch, and adds nothing. Without it, the rollups in `streams`
- * would be double-counted every time a crash landed between the catalog commit
- * and the segment being retired.
+ * Recovery is idempotent because object names are derived from the batch's
+ * first record: replaying a WAL segment that was already flushed produces the
+ * same paths, Intend reports them registered, and the replay writes nothing.
+ * This branch is the backstop behind that. Without it, the rollups in
+ * `streams` would be double-counted every time a crash landed between the
+ * catalog commit and the segment being retired.
  */
 func (c *Catalog) Register(ctx context.Context, file File, columns []Column) (int64, bool, error) {
 	tx, err := c.db.BeginTx(ctx, nil)
@@ -247,6 +297,12 @@ func insertFileTx(
 	columns []Column,
 	mode insertMode,
 ) (int64, bool, error) {
+	// Registered or not, the write is no longer pending: either it is about to
+	// be, or it already was.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM pending WHERE path = ?`, file.Path); nil != err {
+		return 0, false, fmt.Errorf("clearing the pending write: %w", err)
+	}
+
 	var existing int64
 	switch err := tx.QueryRowContext(ctx, `SELECT id FROM files WHERE path = ?`, file.Path).Scan(&existing); {
 	case nil == err:
@@ -374,12 +430,19 @@ type Replacement struct {
  * file list a moment ago still has its files on disk until the GC grace period
  * elapses; see Collectable.
  *
- * Idempotent, which is what makes crash recovery work: output paths are derived
- * from their content, so a compaction that died after writing the objects but
- * before committing rewrites the same files and lands here again. An output
- * whose path already exists is skipped, and an input that is already tombstoned
- * is not retired twice — both of which matter because the stream rollups are
- * counters, and applying either twice would corrupt them permanently.
+ * An output whose path is already registered fails the whole replacement,
+ * inputs included. A compaction that died before this transaction never
+ * registered anything, so its retry does not get here with a known path; one
+ * that committed has retired its inputs, which no pass reads again. A known
+ * path therefore means the output's first record is already in some other
+ * file — the same records reaching a merge twice — and the object at that path
+ * has just been overwritten with this merge's. Treating that as an earlier
+ * attempt's success, as this used to, retired the inputs too, and every
+ * record only the overwritten file held was gone. The compactor checks before
+ * it writes (see Intend); this is the backstop.
+ *
+ * An input that is already tombstoned is not retired twice: the stream
+ * rollups are counters, and subtracting a file twice would corrupt them.
  */
 func (c *Catalog) Replace(ctx context.Context, outputs []Replacement, inputs []int64) ([]int64, error) {
 	tx, err := c.db.BeginTx(ctx, nil)
@@ -396,10 +459,8 @@ func (c *Catalog) Replace(ctx context.Context, outputs []Replacement, inputs []i
 			return nil, err
 		}
 
-		// Already published by an earlier attempt at this same compaction.
 		if existed {
-			ids = append(ids, id)
-			continue
+			return nil, fmt.Errorf("%w: %s", ErrRegistered, output.File.Path)
 		}
 
 		ids = append(ids, id)
@@ -715,65 +776,152 @@ func (c *Catalog) Forget(ctx context.Context, id int64) error {
 }
 
 /*!
- * Paths lists every object path the catalog knows, in any state.
+ * Intend declares that the caller is about to write each of paths, and
+ * reports which of them are registered already.
  *
- * This is the other half of garbage collection: an object on disk that is
- * not in this set is one no row will ever point at — a write that committed
- * and then failed to register — and so is safe to delete once it is old
- * enough that no registration can still be on its way.
+ * A declaration is the only thing that lets garbage collection delete an
+ * object no file row points at: it names the exact path, it was made by the
+ * writer itself, and Register or Replace drops it in the transaction that
+ * makes the object live. One that outlives its write by long enough marks an
+ * object that was committed and never registered. See Abandoned.
+ *
+ * Declaring a path again makes the declaration young again, which is what a
+ * retried write needs: an old declaration is about to be acted on, and the
+ * write it would act on is the one now in progress.
+ *
+ * A path that is already registered is not declared, and is reported instead,
+ * so the caller can decline to write it: a replay skips what an earlier flush
+ * of the same segment already landed, and a compaction refuses to overwrite a
+ * live file's object.
  */
-func (c *Catalog) Paths(ctx context.Context) (map[string]bool, error) {
-	rows, err := c.db.QueryContext(ctx, `SELECT path FROM files`)
+func (c *Catalog) Intend(ctx context.Context, paths ...string) (map[string]bool, error) {
+	tx, err := c.db.BeginTx(ctx, nil)
+	if nil != err {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	registered := map[string]bool{}
+	now := time.Now().UTC().UnixMicro()
+
+	for _, path := range paths {
+		var id int64
+		switch err := tx.QueryRowContext(ctx, `SELECT id FROM files WHERE path = ?`, path).Scan(&id); {
+		case nil == err:
+			registered[path] = true
+			continue
+		case !errors.Is(err, sql.ErrNoRows):
+			return nil, err
+		}
+
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO pending (path, created_at) VALUES (?, ?)
+			ON CONFLICT(path) DO UPDATE SET created_at = excluded.created_at`,
+			path, now); nil != err {
+			return nil, fmt.Errorf("declaring %s: %w", path, err)
+		}
+	}
+
+	if err := tx.Commit(); nil != err {
+		return nil, fmt.Errorf("committing pending writes: %w", err)
+	}
+
+	return registered, nil
+}
+
+/*!
+ * Abandoned lists declared writes older than before, oldest first.
+ *
+ * A candidate list, not a verdict: one may have been registered, or declared
+ * again, by the time it is looked at. Discard decides.
+ */
+func (c *Catalog) Abandoned(ctx context.Context, before time.Time) ([]string, error) {
+	rows, err := c.db.QueryContext(ctx,
+		`SELECT path FROM pending WHERE created_at < ? ORDER BY created_at, path`, before.UnixMicro())
 	if nil != err {
 		return nil, err
 	}
 	defer rows.Close()
 
-	paths := map[string]bool{}
+	var paths []string
 
 	for rows.Next() {
 		var path string
 		if err := rows.Scan(&path); nil != err {
 			return nil, err
 		}
-		paths[path] = true
+		paths = append(paths, path)
 	}
 
 	return paths, rows.Err()
 }
 
 /*!
+ * Discard settles one declared write that Abandoned listed, and reports
+ * whether remove was called.
+ *
+ * Inside one transaction it checks the declaration is still older than
+ * before and its path still unregistered, calls remove to delete the object,
+ * and drops the declaration. A declaration whose path did get registered is
+ * just dropped; one that is no longer old was made again by a write now in
+ * progress, and is left alone.
+ *
+ * remove runs while the transaction holds the catalog's write lock, and that
+ * is the point: a writer about to write the same path has to declare it
+ * first, and cannot until the object is gone — so it never writes an object
+ * this then deletes, and never registers a path whose object this deleted.
+ * remove must not use the catalog itself, and should be quick; it is one
+ * unlink.
+ */
+func (c *Catalog) Discard(ctx context.Context, path string, before time.Time, remove func() error) (bool, error) {
+	tx, err := c.db.BeginTx(ctx, nil)
+	if nil != err {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	var created int64
+	switch err := tx.QueryRowContext(ctx, `SELECT created_at FROM pending WHERE path = ?`, path).Scan(&created); {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case nil != err:
+		return false, err
+	}
+
+	if created >= before.UnixMicro() {
+		return false, nil
+	}
+
+	var registered int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM files WHERE path = ?`, path).Scan(&registered); nil != err {
+		return false, err
+	}
+
+	if 0 == registered {
+		if err := remove(); nil != err {
+			return false, err
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM pending WHERE path = ?`, path); nil != err {
+		return false, err
+	}
+
+	if err := tx.Commit(); nil != err {
+		return false, fmt.Errorf("committing a discarded write: %w", err)
+	}
+
+	return 0 == registered, nil
+}
+
+/*!
  * Meta values that have to survive a restart.
  */
 const (
-	metaMaxSeq  = "max_seq"
-	metaCreated = "created_at"
+	metaMaxSeq    = "max_seq"
+	metaCreated   = "created_at"
+	metaRecounted = "rollups_recounted"
 )
-
-/*!
- * Created is when this catalog was first opened — or, for one that predates
- * the record, first opened by a release that keeps it.
- *
- * Garbage collection needs a lower bound as much as an upper one. An object
- * no row points at is an orphan of this catalog only if this catalog was in
- * charge when it was written. A directory whose catalog.sqlite was lost or
- * replaced is full of objects no row points at, and every one of them is
- * somebody's data rather than garbage.
- */
-func (c *Catalog) Created(ctx context.Context) (time.Time, error) {
-	var value string
-
-	if err := c.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = ?`, metaCreated).Scan(&value); nil != err {
-		return time.Time{}, err
-	}
-
-	micros, err := strconv.ParseInt(value, 10, 64)
-	if nil != err {
-		return time.Time{}, err
-	}
-
-	return time.UnixMicro(micros).UTC(), nil
-}
 
 // MaxSeq returns the highest sequence number ever registered.
 //

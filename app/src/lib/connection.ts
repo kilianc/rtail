@@ -19,6 +19,8 @@ interface ServerEvents {
   streams: (streams: string[]) => void
   backlog: (lines: WireLine[] | null) => void
   line: (line: WireLine) => void
+  /** Lines the server skipped because this client fell behind, since the last notice. */
+  dropped: (count: number) => void
   error: (message: string, position?: number) => void
 }
 
@@ -34,7 +36,7 @@ export interface Connection {
 }
 
 export function connect(): Connection {
-  const handlers: Handlers = { connect: [], streams: [], backlog: [], line: [], error: [] }
+  const handlers: Handlers = { connect: [], streams: [], backlog: [], line: [], dropped: [], error: [] }
 
   let source: EventSource | null = null
   /*!
@@ -129,6 +131,19 @@ export function connect(): Connection {
     })
 
     /*!
+     * Loss, made visible.
+     *
+     * The store skips lines for a subscriber that cannot keep up rather than
+     * stall ingest, and says so in a frame of its own. The delta is passed on
+     * rather than the running total, because the total is per connection and
+     * starts again at zero whenever EventSource reconnects by itself.
+     */
+    source.addEventListener('dropped', (event) => {
+      const body = parse<{ dropped?: number }>(event.data)
+      if (body?.dropped) dispatch('dropped', body.dropped)
+    })
+
+    /*!
      * An SSE error carries no detail — the spec gives the page a bare event —
      * so a rejected filter cannot be reported through it. Rather than guess,
      * the request is replayed with fetch, which does return the reason, and
@@ -155,6 +170,39 @@ export function connect(): Connection {
 
       fetch(url, { headers: { accept: 'application/json' }, signal: controller.signal })
         .then(async (response) => {
+          /*!
+           * A 401 is the session, not the query.
+           *
+           * The token was rotated or the cookie went stale, and retrying
+           * cannot fix either — it showed as a red query error over a tail
+           * that never moved again. Reloading makes it a navigation, which is
+           * what gets the sign-in page.
+           */
+          if (401 === response.status) {
+            response.body?.cancel().catch(() => {})
+            window.location.reload()
+            return
+          }
+
+          /*!
+           * A success that is not an event stream is not the tail.
+           *
+           * It is whatever stands in front of it — an auth proxy's login page,
+           * typically, answering 200 with HTML. EventSource refuses it, and
+           * retrying fetched the same page every thirty seconds for the life
+           * of the tab, without a word. It is said once instead, and left.
+           */
+          const type = response.headers.get('content-type') ?? ''
+          if (response.ok && !type.startsWith('text/event-stream')) {
+            response.body?.cancel().catch(() => {})
+            if (controller.signal.aborted) return
+            dispatch(
+              'error',
+              `the live feed answered with ${type.split(';')[0] || 'no content type'} instead of an event stream — is something in front of rtail asking you to sign in?`
+            )
+            return
+          }
+
           if (response.status < 400 || response.status >= 500) {
             response.body?.cancel().catch(() => {})
             later()

@@ -23,6 +23,7 @@ package rql
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"regexp"
@@ -31,7 +32,6 @@ import (
 	"time"
 
 	"github.com/kilianc/rtail/v2/internal/model"
-	"github.com/kilianc/rtail/v2/internal/normalize"
 )
 
 // Predicate reports whether a record matches.
@@ -155,7 +155,7 @@ func comparisonPredicate(n *Comparison) (Predicate, error) {
 	// Severity, matching the SQL compiler: the level as stored, equality by
 	// name and ordering by rank.
 	if isSeverityField(field) {
-		level := normalize.Level(n.Value.Str)
+		level := levelOf(n.Value)
 		want := Rank(level)
 		return func(rec *model.Record) bool {
 			value, ok := lookup(rec, field)
@@ -209,9 +209,17 @@ func timestampOf(rec *model.Record, field string) time.Time {
 	return rec.Ts.UTC().Truncate(time.Microsecond)
 }
 
-// timestampText is DuckDB's rendering of a TIMESTAMP as VARCHAR, which is what
-// `ts:2024-01` and `ts:~...` match against in SQL.
-const timestampText = "2006-01-02 15:04:05.999999"
+/*!
+ * timestampText is DuckDB's rendering of ts as VARCHAR, which is what
+ * `ts:2024-01` and `ts:~...` match against in SQL.
+ *
+ * ts is a TIMESTAMPTZ — Parquet's UTC-adjusted timestamp — and DuckDB renders
+ * one in the session's time zone, offset included: `…05.12+00`, trailing
+ * zeros trimmed, no fraction at all on a whole second. The engine pins the
+ * session to UTC, so the offset is always +00, which is what "-07" writes for
+ * UTC. Without it `ts:~"[+]"` disagreed everywhere.
+ */
+const timestampText = "2006-01-02 15:04:05.999999-07"
 
 /*!
  * lookup reads a field off a record.
@@ -288,46 +296,21 @@ func lookup(rec *model.Record, field string) (model.Value, bool) {
  * A scalar comes back as text, because that is what SQL reads it as: `->>`
  * returns VARCHAR whatever the JSON held. So `req.status="200"` matches a
  * nested 200 in both, and `req.status>100` still compares numbers in both,
- * through the same read-as-a-number rule any text field gets.
+ * through the same read-as-a-number rule any text field gets. Which text is
+ * jsonValue's business: DuckDB's, not the document's.
  */
 func jsonPath(document, path string) (model.Value, bool) {
-	current := any(nil)
-
-	if err := unmarshal(document, &current); nil != err {
-		return model.Value{}, false
-	}
+	current := json.RawMessage(document)
 
 	for _, segment := range strings.Split(path, ".") {
-		object, ok := current.(map[string]any)
+		next, ok := member(current, segment)
 		if !ok {
 			return model.Value{}, false
 		}
-
-		current, ok = object[segment]
-		if !ok {
-			return model.Value{}, false
-		}
+		current = next
 	}
 
-	switch value := current.(type) {
-	case nil:
-		return model.Value{}, false
-	case bool:
-		return model.Str(model.Bool(value).Text()), true
-	case float64:
-		if value == float64(int64(value)) {
-			return model.Str(model.Int(int64(value)).Text()), true
-		}
-		return model.Str(model.Float(value).Text()), true
-	case string:
-		return model.Str(value), true
-	default:
-		encoded, err := marshal(value)
-		if nil != err {
-			return model.Value{}, false
-		}
-		return model.JSON(encoded), true
-	}
+	return jsonValue(current)
 }
 
 /*!
@@ -374,8 +357,19 @@ func numericOf(value model.Value) (float64, bool) {
 	case model.KindFloat:
 		return value.Float, true
 	case model.KindString, model.KindJSON:
-		n, err := strconv.ParseFloat(strings.TrimSpace(value.Str), 64)
-		return n, nil == err
+		/*!
+		 * Read as DuckDB's try_cast reads it, which is what SQL compares.
+		 * ParseFloat also takes Go's hex floats, so "0x1p4" was 16 here and
+		 * no number there; and it calls a number past the largest double an
+		 * error, where DuckDB calls "1e400" infinity. ParseFloat has already
+		 * returned the infinity, with ErrRange beside it.
+		 */
+		text := strings.TrimSpace(value.Str)
+		if strings.ContainsAny(text, "xX") {
+			return 0, false
+		}
+		n, err := strconv.ParseFloat(text, 64)
+		return n, nil == err || errors.Is(err, strconv.ErrRange)
 	}
 	return 0, false
 }
@@ -452,12 +446,4 @@ func compareBools(a, b bool, op Op) bool {
 		order = -1
 	}
 	return compareOrder(order, op)
-}
-
-// Thin wrappers so the JSON dependency stays in one place.
-func unmarshal(text string, out any) error { return json.Unmarshal([]byte(text), out) }
-
-func marshal(value any) (string, error) {
-	encoded, err := json.Marshal(value)
-	return string(encoded), err
 }

@@ -73,23 +73,49 @@ type Options struct {
 // DefaultSyncInterval bounds how much a crash can cost.
 const DefaultSyncInterval = 100 * time.Millisecond
 
+// bufferSize is how much the log holds in memory before writing it out.
+const bufferSize = 256 << 10
+
 // Log is an append-only record log in numbered segments.
 type Log struct {
 	dir      string
 	interval time.Duration
 
-	mu      sync.Mutex
-	file    *os.File
-	writer  *bufio.Writer
-	active  uint64
-	dirty   bool
-	closed  bool
+	// syncing serializes fsyncs and is taken before mu. Sync holds only it
+	// across the fsync itself, so an append — which needs mu — waits for a
+	// copy into the page cache, never for the disk. Rotate and Close hold
+	// both: a rotation's fsync and its swap have to happen with no append in
+	// between.
+	syncing sync.Mutex
+
+	mu     sync.Mutex
+	file   segmentFile
+	active uint64
+	closed bool
+
+	// buffer holds whole frames not yet written to file. written is how much
+	// of file holds whole frames, and synced how much of that is known to be
+	// on disk. torn means a failed write may have left part of a frame past
+	// written, which has to be cut off before anything else is written.
+	buffer  []byte
+	written int64
+	synced  int64
+	torn    bool
 	pending int
 
 	// listed records whether the active segment's directory entry is durable.
 	// Until it is, fsyncing the segment's data proves nothing: a power loss
 	// can take the file's name away and leave its blocks unreachable.
 	listed bool
+}
+
+// segmentFile is what the log needs of an open segment: an *os.File, or in
+// tests one that fails on demand.
+type segmentFile interface {
+	io.Writer
+	Sync() error
+	Truncate(size int64) error
+	Close() error
 }
 
 /*!
@@ -140,31 +166,29 @@ func Open(dir string, opts Options) (*Log, error) {
 }
 
 func (l *Log) openSegment(number uint64) error {
-	file, writer, err := l.createSegment(number)
+	file, err := l.createSegment(number)
 	if nil != err {
 		return err
 	}
 
-	l.file, l.writer, l.active, l.dirty, l.pending, l.listed = file, writer, number, true, 0, false
+	l.file, l.active = file, number
+	l.buffer = append(make([]byte, 0, bufferSize), magic...)
+	l.written, l.synced, l.torn, l.pending, l.listed = 0, 0, false, 0, false
+
 	return nil
 }
 
-func (l *Log) createSegment(number uint64) (*os.File, *bufio.Writer, error) {
+// createSegment opens a new segment file. Its header is not written here: it
+// goes at the front of the buffer, and out with the first frames.
+func (l *Log) createSegment(number uint64) (*os.File, error) {
 	path := filepath.Join(l.dir, segmentName(number))
 
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if nil != err {
-		return nil, nil, fmt.Errorf("opening wal segment: %w", err)
+		return nil, fmt.Errorf("opening wal segment: %w", err)
 	}
 
-	writer := bufio.NewWriterSize(file, 256<<10)
-
-	if _, err := writer.WriteString(magic); nil != err {
-		file.Close()
-		return nil, nil, err
-	}
-
-	return file, writer, nil
+	return file, nil
 }
 
 // Active is the current segment's file name.
@@ -181,6 +205,12 @@ func (l *Log) Active() string {
  * Frame layout is [u32 length][u32 crc32c][payload]. The checksum covers the
  * payload only; a length that survives but a payload that does not is exactly
  * the torn-write case replay has to notice.
+ *
+ * The frame joins the buffer, which is written out once full. A buffer that
+ * cannot be written out refuses the frame, and the error says so: the record
+ * was not accepted, the caller does not add it to its batch, and the segment
+ * keeps holding exactly the records the caller believes it holds. Taking the
+ * frame anyway would grow memory for as long as the disk stays full.
  */
 func (l *Log) Append(rec *model.Record) error {
 	payload, err := marshal(rec)
@@ -199,59 +229,165 @@ func (l *Log) Append(rec *model.Record) error {
 		return errors.New("wal: log is closed")
 	}
 
+	if 0 != len(l.buffer) && len(l.buffer)+8+len(payload) > bufferSize {
+		if err := l.writeLocked(); nil != err {
+			return err
+		}
+	}
+
 	var header [8]byte
 	binary.LittleEndian.PutUint32(header[0:4], uint32(len(payload)))
 	binary.LittleEndian.PutUint32(header[4:8], crc32.Checksum(payload, castagnoli))
 
-	if _, err := l.writer.Write(header[:]); nil != err {
-		return err
-	}
-	if _, err := l.writer.Write(payload); nil != err {
-		return err
-	}
-
-	l.dirty = true
+	l.buffer = append(l.buffer, header[:]...)
+	l.buffer = append(l.buffer, payload...)
 	l.pending++
 
 	return nil
 }
 
-// Sync flushes and fsyncs everything appended so far.
-func (l *Log) Sync() error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+/*!
+ * writeLocked moves the buffer into the segment file.
+ *
+ * The frames stay in the buffer until all of them are written. A write that
+ * fails part way — ENOSPC, EIO — leaves part of a frame in the file, so that
+ * is cut off again, and the next attempt starts on a frame boundary and
+ * writes the same frames whole. If the cut fails too, nothing more is written
+ * until it succeeds: a frame appended after a torn one would be unreadable,
+ * and so would everything after it.
+ *
+ * This used to be a bufio.Writer, which keeps the first error it sees and
+ * returns it from every call after. One full disk failed every append, sync
+ * and rotation from then on, until a restart, long after the space was back.
+ *
+ * Nothing appended is ever dropped to recover, either. The store flushes its
+ * batch from memory and retries a batch that failed from its sealed segment,
+ * and a replay names files after each stream's first record in the segment;
+ * all of that relies on the segment holding exactly the batch's records. A
+ * frame dropped from the segment while its record stayed in the batch would
+ * be lost on a retry, and turn a replay's file names into new ones — the
+ * records duplicated under them.
+ */
+func (l *Log) writeLocked() error {
+	if l.torn {
+		if err := l.file.Truncate(l.written); nil != err {
+			return fmt.Errorf("cutting a partial frame off %s: %w", segmentName(l.active), err)
+		}
+		l.torn = false
+	}
 
-	return l.syncLocked()
-}
-
-func (l *Log) syncLocked() error {
-	if !l.dirty || l.closed {
+	if 0 == len(l.buffer) {
 		return nil
 	}
 
-	if err := l.writer.Flush(); nil != err {
-		return err
-	}
-	if err := l.file.Sync(); nil != err {
-		return err
-	}
-
-	/*!
-	 * The first sync of a segment also syncs the directory, which is what makes
-	 * the segment's name durable. Doing it here rather than when the segment is
-	 * created keeps the extra fsync off Rotate, which runs while ingest waits,
-	 * and costs nothing in durability: no record in the segment is promised
-	 * before this sync anyway.
-	 */
-	if !l.listed {
-		if err := syncDir(l.dir); nil != err {
-			return err
+	n, err := l.file.Write(l.buffer)
+	if nil != err {
+		if n > 0 {
+			if err := l.file.Truncate(l.written); nil != err {
+				l.torn = true
+			}
 		}
-		l.listed = true
+		return err
 	}
 
-	l.dirty = false
-	l.pending = 0
+	l.written += int64(n)
+	l.buffer = l.buffer[:0]
+
+	// One oversized record should not pin its size for the segment's life.
+	if cap(l.buffer) > 2*bufferSize {
+		l.buffer = make([]byte, 0, bufferSize)
+	}
+
+	return nil
+}
+
+// dirtyLocked reports whether anything appended is not yet known to be on disk.
+func (l *Log) dirtyLocked() bool {
+	return 0 != len(l.buffer) || l.torn || l.written != l.synced || !l.listed
+}
+
+/*!
+ * Sync writes and fsyncs everything appended so far.
+ *
+ * The fsync runs without mu, so appends carry on while the disk works: they
+ * wait at most for the buffer to be copied into the page cache. Whatever they
+ * append meanwhile is left for the next sync, which is all a sync promises —
+ * the records appended before it was called.
+ *
+ * A failure leaves everything as it was, to be written and synced again by
+ * the next call: the records stay in the segment, and in the store's batch,
+ * and reach disk once the disk lets them. A caller told the sync failed — an
+ * HTTP batch answered 503 — may send them again and get duplicates, which is
+ * what at-least-once costs; it never gets an acknowledgement for a record
+ * that was not on disk.
+ */
+func (l *Log) Sync() error {
+	l.syncing.Lock()
+	defer l.syncing.Unlock()
+
+	l.mu.Lock()
+
+	if l.closed || !l.dirtyLocked() {
+		l.mu.Unlock()
+		return nil
+	}
+
+	if err := l.writeLocked(); nil != err {
+		l.mu.Unlock()
+		return err
+	}
+
+	// Rotate and Close need syncing too, so none of this changes until the
+	// fsync is done; only appends move on.
+	file, upTo, listed, covered := l.file, l.written, l.listed, l.pending
+
+	l.mu.Unlock()
+
+	if err := l.persist(file, listed); nil != err {
+		return err
+	}
+
+	l.mu.Lock()
+	l.synced, l.listed = upTo, true
+	l.pending -= covered
+	l.mu.Unlock()
+
+	return nil
+}
+
+// syncLocked is Sync for a caller that holds both locks.
+func (l *Log) syncLocked() error {
+	if !l.dirtyLocked() {
+		return nil
+	}
+
+	if err := l.writeLocked(); nil != err {
+		return err
+	}
+	if err := l.persist(l.file, l.listed); nil != err {
+		return err
+	}
+
+	l.synced, l.listed, l.pending = l.written, true, 0
+
+	return nil
+}
+
+/*!
+ * persist fsyncs a segment's data, and the first time also the directory,
+ * which is what makes the segment's name durable. Doing that here rather than
+ * when the segment is created keeps the extra fsync off Rotate, which runs
+ * while ingest waits, and costs nothing in durability: no record in the
+ * segment is promised before this sync anyway.
+ */
+func (l *Log) persist(file segmentFile, listed bool) error {
+	if err := file.Sync(); nil != err {
+		return err
+	}
+
+	if !listed {
+		return syncDir(l.dir)
+	}
 
 	return nil
 }
@@ -278,6 +414,9 @@ func (l *Log) Pending() int {
  * therefore opened before the old one is let go.
  */
 func (l *Log) Rotate() (string, error) {
+	l.syncing.Lock()
+	defer l.syncing.Unlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -289,14 +428,17 @@ func (l *Log) Rotate() (string, error) {
 		return "", err
 	}
 
-	file, writer, err := l.createSegment(l.active + 1)
+	file, err := l.createSegment(l.active + 1)
 	if nil != err {
 		return "", err
 	}
 
 	sealed, previous := segmentName(l.active), l.file
 
-	l.file, l.writer, l.active, l.dirty, l.pending, l.listed = file, writer, l.active+1, true, 0, false
+	// The buffer is empty: syncLocked wrote it out.
+	l.file, l.active = file, l.active+1
+	l.buffer = append(l.buffer[:0], magic...)
+	l.written, l.synced, l.torn, l.pending, l.listed = 0, 0, false, 0, false
 
 	// The sealed segment's data and name are already durable — syncLocked
 	// returned — so a failing close cannot lose anything, and reporting it
@@ -370,6 +512,78 @@ func (l *Log) Orphans() ([]string, error) {
 	}
 
 	return orphans, nil
+}
+
+// errFound stops a replay at its first record.
+var errFound = errors.New("wal: found")
+
+/*!
+ * Floor is the sequence number of the first record in the oldest sealed
+ * segment on disk, and false when no sealed segment holds a record.
+ *
+ * Sequence numbers only grow from one segment to the next, so every record a
+ * replay of what is on disk could still produce has a seq at least this —
+ * which is what tells garbage collection which catalog rows a replay could
+ * still need to recognise. A segment that disappears while being read was
+ * just retired, and is passed over.
+ */
+func (l *Log) Floor() (uint64, bool, error) {
+	sealed, err := l.Orphans()
+	if nil != err {
+		return 0, false, err
+	}
+
+	for _, segment := range sealed {
+		var (
+			first uint64
+			found bool
+		)
+
+		err := l.Replay(segment, func(rec *model.Record) error {
+			first, found = rec.Seq, true
+			return errFound
+		})
+		if found {
+			return first, true, nil
+		}
+		if nil != err && !errors.Is(err, os.ErrNotExist) {
+			return 0, false, err
+		}
+	}
+
+	return 0, false, nil
+}
+
+/*!
+ * Quarantine moves a sealed segment out of the log, into quarantine/ beside
+ * the segments, and returns where it went.
+ *
+ * For a segment that cannot be replayed, which would otherwise stop every
+ * boot: out of the log it is never replayed again, and it is kept rather than
+ * deleted because it still holds whatever could not be read. The name gains
+ * the time, since segment numbers restart from the highest left in the log
+ * and the next one quarantined could otherwise carry the same name.
+ */
+func (l *Log) Quarantine(segment string) (string, error) {
+	if segment == l.Active() {
+		return "", fmt.Errorf("wal: refusing to quarantine the active segment %s", segment)
+	}
+
+	dir := filepath.Join(l.dir, "quarantine")
+	if err := os.MkdirAll(dir, 0o755); nil != err {
+		return "", err
+	}
+
+	target := filepath.Join(dir, segment+"."+time.Now().UTC().Format("20060102T150405.000000000Z"))
+	if err := os.Rename(filepath.Join(l.dir, segment), target); nil != err {
+		return "", err
+	}
+
+	if err := syncDir(dir); nil != err {
+		return target, err
+	}
+
+	return target, syncDir(l.dir)
 }
 
 /*!
@@ -469,6 +683,9 @@ func (l *Log) Replay(segment string, fn func(*model.Record) error) error {
 // Close syncs and releases the active segment. The segment stays on disk: it
 // may hold records that are not in Parquet yet.
 func (l *Log) Close() error {
+	l.syncing.Lock()
+	defer l.syncing.Unlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 

@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -920,4 +921,248 @@ func removeParquet(t *testing.T, dir string) {
 	if nil != err || 0 == removed {
 		t.Fatalf("removing parquet files under %s: %v (%d removed)", dir, err, removed)
 	}
+}
+
+/*!
+ * Keys that differ only in case are one column to DuckDB.
+ *
+ * It matches identifiers without regard to case: inside a file a_user reads
+ * a_User, and across files union_by_name folds the two into one. Both keys
+ * are read from raw, where they are still different keys.
+ */
+func TestKeysThatDifferOnlyInCase(t *testing.T) {
+	h := newHarness(t)
+
+	// Both in one file.
+	h.ingest(t, "one", []string{`{"msg":"upper","User":"bob"}`, `{"msg":"lower","user":"alice"}`})
+
+	// One in each of two.
+	h.ingest(t, "two", []string{`{"msg":"upper id","ID":"bob"}`})
+	h.ingest(t, "two", []string{`{"msg":"lower id","id":"alice"}`})
+
+	mean(t, h, map[string][]string{
+		`user=alice`: {"lower"},
+		`User=bob`:   {"upper"},
+		`user=bob`:   nil,
+		`User=alice`: nil,
+		`user=*`:     {"lower"},
+		`User=*`:     {"upper"},
+		`id=alice`:   {"lower id"},
+		`ID=bob`:     {"upper id"},
+		`id=bob`:     nil,
+		`ID=alice`:   nil,
+	})
+}
+
+// Two keys that mangle to the same column in different files are one column
+// once union_by_name has read them, the same way.
+func TestResolverReadsSharedColumnNamesFromRaw(t *testing.T) {
+	files := []catalog.File{{ID: 1, HasRaw: true}, {ID: 2, HasRaw: true}}
+
+	for name, columns := range map[string]map[int64][]catalog.Column{
+		"case": {
+			1: {{Name: "a_User", SourceKey: "User", Kind: "string"}},
+			2: {{Name: "a_user", SourceKey: "user", Kind: "string"}},
+		},
+		"mangling": {
+			1: {{Name: "a_a_b", SourceKey: "a.b", Kind: "string"}},
+			2: {{Name: "a_a_b", SourceKey: "a-b", Kind: "string"}},
+		},
+	} {
+		resolver := query.NewResolver(files, columns)
+
+		for _, file := range columns {
+			key := file[0].SourceKey
+			if expr, _, ok := resolver.Resolve(key); !ok || strings.Contains(expr, file[0].Name) || !strings.Contains(expr, "raw ->>") {
+				t.Errorf("%s: %s resolved to %q, want raw alone", name, key, expr)
+			}
+		}
+	}
+
+	// A key alone with its column keeps it.
+	alone := map[int64][]catalog.Column{1: {{Name: "a_user", SourceKey: "user", Kind: "string"}}, 2: nil}
+	if expr, _, _ := query.NewResolver(files, alone).Resolve("user"); !strings.HasPrefix(expr, "coalesce(a_user, ") {
+		t.Errorf("user resolved to %q, want its column", expr)
+	}
+}
+
+/*!
+ * A key is any string JSON allows, and a JSON path is not.
+ *
+ * `$.user[email]` was a syntax error DuckDB raised while binding, which made
+ * a 500 of the search, the field's values and — because FieldCounts asks for
+ * every field in one statement — the sidebar's count of every other field.
+ */
+func TestKeysThatAreNotJSONPaths(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+
+	// Two files, so the key is read through raw in the one that lacks it.
+	h.ingest(t, "k", []string{`{"msg":"a","user[email]":"x@y","w":{"*":1,"[0]":2}}`})
+	h.ingest(t, "k", []string{`{"msg":"b","service":"api"}`})
+
+	counts, err := h.engine.FieldCounts(ctx, request(""), []string{"msg", "service", "user[email]", "w.*", "w.[0]", "w.x."})
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 2 != counts["msg"] || 1 != counts["service"] || 1 != counts["user[email]"] || 1 != counts["w.*"] || 1 != counts["w.[0]"] {
+		t.Errorf("counts = %v", counts)
+	}
+
+	values, err := h.engine.FieldValues(ctx, request(""), "user[email]", 10)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 1 != len(values) || "x@y" != values[0].Value {
+		t.Errorf("values = %+v, want x@y", values)
+	}
+
+	mean(t, h, map[string][]string{
+		`user[email]=x@y`: {"a"},
+		`w.*=1`:           {"a"},
+		`w.[0]=2`:         {"a"},
+		`w.x.=1`:          nil,
+		`x..y=1`:          nil,
+	})
+}
+
+/*!
+ * The cap holds however the statement ends.
+ *
+ * It used to be spliced onto the same line as the LIMIT, so a statement
+ * ending in `) --` commented the LIMIT out and returned every row.
+ */
+func TestSQLCannotCommentAwayTheCap(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+
+	lines := make([]string, 20)
+	for i := range lines {
+		lines[i] = fmt.Sprintf(`{"msg":"m%d"}`, i)
+	}
+	h.ingest(t, "s", lines)
+
+	capped, err := query.Open(h.store.Catalog(), h.store.Backend(), query.Limits{MaxRows: 3})
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer capped.Close()
+
+	for _, statement := range []string{
+		`SELECT * FROM logs`,
+		`SELECT * FROM logs -- every row`,
+		`SELECT * FROM logs) --`,
+		`SELECT * FROM logs) /*`,
+		`SELECT * FROM logs) UNION ALL (SELECT * FROM logs`,
+	} {
+		_, rows, _, err := capped.SQL(ctx, statement, request(""))
+		if nil == err && len(rows) > 3 {
+			t.Errorf("%q returned %d rows past a cap of 3", statement, len(rows))
+		}
+	}
+
+	if _, rows, _, err := capped.SQL(ctx, `SELECT * FROM logs -- every row`, request("")); nil != err || 3 != len(rows) {
+		t.Errorf("a trailing comment: %d rows, %v; want the cap", len(rows), err)
+	}
+
+	// A filter is spliced in too, and a comment at its end is its own.
+	req := request(`msg LIKE 'm%' -- every m`)
+	req.Lang = query.LangSQL
+	if result, err := capped.Search(ctx, req); nil != err || 3 != len(result.Records) {
+		t.Errorf("a filter with a trailing comment: %v", err)
+	}
+}
+
+/*!
+ * The read-only check reads words, not letters, and not what is quoted.
+ *
+ * It looked for substrings anywhere, so a search for an attachment, an
+ * update or a download was refused as a mutation.
+ */
+func TestReadOnlyCheckIgnoresQuotedText(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+	h.ingest(t, "s", []string{`{"msg":"update done"}`, `{"msg":"attachment saved"}`})
+
+	for _, filter := range []string{
+		`msg ILIKE '%attachment%'`,
+		`msg = 'update done'`,
+		`msg LIKE '%download %'`,
+		`msg = 'installation'`,
+		`msg = 'it''s a drop table'`,
+		`"msg" = 'create ' -- delete later`,
+		`msg = 'x' /* insert here */`,
+		`msg LIKE '%exported%'`,
+	} {
+		req := request(filter)
+		req.Lang = query.LangSQL
+
+		if _, err := h.engine.Search(ctx, req); nil != err {
+			t.Errorf("%q was refused: %v", filter, err)
+		}
+	}
+
+	if _, rows, _, err := h.engine.SQL(ctx, `SELECT msg FROM logs WHERE msg = 'update done'`, request("")); nil != err || 1 != len(rows) {
+		t.Errorf("an update in a literal: %d rows, %v", len(rows), err)
+	}
+
+	for _, statement := range []string{
+		`drop table logs`,
+		`SELECT 1; LOAD httpfs`,
+		`PRAGMA version`,
+		`CALL pragma_version()`,
+		`SELECT 'quoted' FROM logs WHERE "msg" = 'x' OR 1 = 1 -- harmless
+		 UNION ALL SELECT * FROM (INSERT INTO t VALUES (1))`,
+	} {
+		if _, _, _, err := h.engine.SQL(ctx, statement, request("")); nil == err {
+			t.Errorf("%q was allowed", statement)
+		}
+	}
+}
+
+/*!
+ * Every connection reads time in UTC.
+ *
+ * ts renders as text in the session's zone, so on a host anywhere else a
+ * text match on ts disagreed with the tail, and the field explorer listed
+ * local times. The setting is per connection unless made global, and the
+ * pool opens several.
+ */
+func TestEveryConnectionIsInUTC(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t)
+	records := h.ingest(t, "tz", []string{`{"msg":"x"}`})
+
+	// Held all at once, so the pool has to open every one of them.
+	conns := make([]*sql.Conn, query.DefaultConcurrency)
+	for i := range conns {
+		conn, err := h.engine.DB().Conn(ctx)
+		if nil != err {
+			t.Fatal(err)
+		}
+		conns[i] = conn
+	}
+
+	for i, conn := range conns {
+		var zone, text string
+		err := conn.QueryRowContext(ctx,
+			`SELECT current_setting('TimeZone'), CAST(TIMESTAMPTZ '2024-01-02 03:04:05.12+00' AS VARCHAR)`).Scan(&zone, &text)
+		if nil != err {
+			t.Fatal(err)
+		}
+		if "UTC" != zone || "2024-01-02 03:04:05.12+00" != text {
+			t.Errorf("connection %d: zone %s renders %s", i, zone, text)
+		}
+	}
+
+	for _, conn := range conns {
+		conn.Close()
+	}
+
+	hour := records[0].Ts.UTC().Format("2006-01-02 15")
+	mean(t, h, map[string][]string{fmt.Sprintf(`ts:"%s"`, hour): {"x"}})
 }

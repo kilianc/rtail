@@ -113,13 +113,26 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 	 * fell back to keeping everything forever, and RTAIL_WEB_PORT=80a to
 	 * listening somewhere nobody was looking — both silent, both found out
 	 * about much later. A container that will not start says why at once.
+	 *
+	 * Unless the flag was given too. The flag wins, so the variable was never
+	 * going to be read, and refusing to start over it helps nobody — least of
+	 * all a pod whose environment Kubernetes wrote. Kept in registration
+	 * order, so the error is the first variable's, as it always was.
 	 */
-	var envErr error
-	noteEnv := func(err error) {
-		if nil == envErr {
-			envErr = err
+	type envError struct {
+		long string
+		err  error
+	}
+	var envErrs []envError
+	noteEnv := func(long string, err error) {
+		if nil != err {
+			envErrs = append(envErrs, envError{long, err})
 		}
 	}
+
+	// aliases maps each short flag to its long name, to tell which option a
+	// flag on the command line set.
+	aliases := map[string]string{}
 
 	// Each option is registered under its long name and its v1 short alias,
 	// both pointing at the same field, so either spelling works.
@@ -128,12 +141,13 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 		set.StringVar(field, long, value, usage)
 		if "" != short {
 			set.StringVar(field, short, value, "alias for --"+long)
+			aliases[short] = long
 		}
 	}
 
 	dur := func(field *time.Duration, fallback time.Duration, long, usage string) {
 		value, err := envDuration(long, fallback)
-		noteEnv(err)
+		noteEnv(long, err)
 		set.Func(long, usage+" (default "+value.String()+")", func(raw string) error {
 			parsed, err := ParseDuration(raw)
 			if nil != err {
@@ -147,10 +161,11 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 
 	num := func(field *int, fallback int, long, short, usage string) {
 		value, err := envInt(long, fallback)
-		noteEnv(err)
+		noteEnv(long, err)
 		set.IntVar(field, long, value, usage)
 		if "" != short {
 			set.IntVar(field, short, value, "alias for --"+long)
+			aliases[short] = long
 		}
 	}
 
@@ -180,7 +195,7 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 
 	boolean := func(field *bool, fallback bool, long, usage string) {
 		value, err := envBool(long, fallback)
-		noteEnv(err)
+		noteEnv(long, err)
 		set.BoolVar(field, long, value, usage)
 	}
 
@@ -204,8 +219,20 @@ func Parse(args []string, version string, out io.Writer) (*Config, error) {
 		return nil, flag.ErrHelp
 	}
 
-	if nil != envErr {
-		return nil, envErr
+	// The options set on the command line, by long name.
+	given := map[string]bool{}
+	set.Visit(func(f *flag.Flag) {
+		long := f.Name
+		if alias, ok := aliases[f.Name]; ok {
+			long = alias
+		}
+		given[long] = true
+	})
+
+	for _, failed := range envErrs {
+		if !given[failed.long] {
+			return nil, failed.err
+		}
 	}
 
 	if cfg.Backlog < 1 {
@@ -327,7 +354,7 @@ func env(name, fallback string) string {
 
 func envInt(name string, fallback int) (int, error) {
 	value, ok := os.LookupEnv(envKey(name))
-	if !ok {
+	if !ok || serviceLink(envKey(name), value) {
 		return fallback, nil
 	}
 
@@ -337,6 +364,30 @@ func envInt(name string, fallback int) (int, error) {
 	}
 
 	return n, nil
+}
+
+/*!
+ * serviceLink reports whether a variable is one Kubernetes wrote, not one
+ * meant for us.
+ *
+ * Kubernetes gives every pod a <SERVICE>_PORT=tcp://ip:port for each Service
+ * in its namespace, so a Service named rtail-web sets RTAIL_WEB_PORT — and
+ * rtail-udp and rtail-syslog do the same to theirs. Nobody configures a port
+ * as a URL, so a value shaped like one is that and is passed over, quietly:
+ * there is no logger yet, and nothing is wrong.
+ */
+func serviceLink(key, value string) bool {
+	if !strings.HasSuffix(key, "_PORT") {
+		return false
+	}
+
+	for _, scheme := range []string{"tcp://", "udp://", "sctp://"} {
+		if strings.HasPrefix(value, scheme) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func envBool(name string, fallback bool) (bool, error) {

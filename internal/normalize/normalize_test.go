@@ -192,6 +192,42 @@ func TestFromLineReplacesInvalidUTF8(t *testing.T) {
 	}
 }
 
+/*!
+ * Two keys that differ only in their invalid bytes clean to the same name, as
+ * a syslog device's structured data can make them. Which one keeps the name
+ * is not up to map order, a key that was valid all along keeps its own, and
+ * no value is lost.
+ */
+func TestSanitizeKeepsCollidingKeysApart(t *testing.T) {
+	want := map[string]string{
+		"sd.a\uFFFD":   "fe",
+		"sd.a\uFFFD~2": "ff",
+		"sd.b\uFFFD":   "valid",
+		"sd.b\uFFFD~2": "invalid",
+	}
+
+	// Map order differs run to run, so once is no proof.
+	for range 50 {
+		rec := &model.Record{Fields: map[string]model.Value{
+			"sd.a\xff":   model.Str("ff"),
+			"sd.a\xfe":   model.Str("fe"),
+			"sd.b\uFFFD": model.Str("valid"),
+			"sd.b\xff":   model.Str("invalid"),
+		}}
+
+		Sanitize(rec)
+
+		if len(want) != len(rec.Fields) {
+			t.Fatalf("fields = %v, want %v", rec.Fields, want)
+		}
+		for key, value := range want {
+			if value != rec.Fields[key].Str {
+				t.Fatalf("%q = %q, want %q", key, rec.Fields[key].Str, value)
+			}
+		}
+	}
+}
+
 func TestFromPayloadReplacesInvalidUTF8(t *testing.T) {
 	rec := FromPayload("api", "", 0, time.Time{}, json.RawMessage("{\"msg\":\"caf\xe9\",\"tags\":[\"\xff\"]}"))
 	assertValidUTF8(t, "object payload", rec)

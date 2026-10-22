@@ -1787,6 +1787,7 @@ background: none;
   .results-footer { border-block-start: var(--hairline) solid var(--border); }
 
   .results-matched strong { color: var(--foreground); font-weight: 500; }
+  .results-dropped { color: var(--level-warn); cursor: help; }
   .results-dot { color: var(--border-strong); }
   .results-gap { flex: 1 1 auto; }
 
@@ -2304,6 +2305,16 @@ background: none;
     }
 
     &.active .leaf-key { color: var(--foreground); }
+
+    /*
+     * A payload key the envelope shadows has no actions, and the dotted rule
+     * says there is a reason why, in the tooltip it points at.
+     */
+    &.shadowed .leaf-key {
+      cursor: help;
+      text-decoration: underline dotted;
+      text-underline-offset: 3px;
+    }
   }
 
   .leaf-key {

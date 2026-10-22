@@ -2,6 +2,7 @@ package compact_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -386,20 +387,19 @@ func TestReplaceIsAtomicAndIdempotent(t *testing.T) {
 		t.Fatalf("live files = %+v, want just the merged one", files)
 	}
 
-	// Replaying the identical operation — what a crashed-and-retried
-	// compaction does — must change nothing at all.
+	/*!
+	 * Replaying the identical operation must change nothing at all. It fails,
+	 * too: a path that is already registered means its object was just
+	 * overwritten, which no retried compaction does — one that died before
+	 * this transaction registered nothing.
+	 */
 	streamsBefore, _ := h.cat.Streams(ctx)
 
-	second, err := h.cat.Replace(ctx, []catalog.Replacement{output}, ids)
-	if nil != err {
-		t.Fatal(err)
+	if _, err := h.cat.Replace(ctx, []catalog.Replacement{output}, ids); !errors.Is(err, catalog.ErrRegistered) {
+		t.Errorf("replay err = %v, want ErrRegistered", err)
 	}
 
-	if 1 != len(second) || first[0] != second[0] {
-		t.Errorf("replay returned %v, want the same id as %v", second, first)
-	}
-
-	if 1 != len(h.live(t)) {
+	if 1 != len(h.live(t)) || first[0] != h.live(t)[0].ID {
 		t.Errorf("replay changed the live set: %+v", h.live(t))
 	}
 
@@ -1200,5 +1200,73 @@ func TestRetentionShrinksTheStreamRollup(t *testing.T) {
 	}
 	if 1 != len(streams) || 2 != streams[0].RowCount {
 		t.Errorf("streams = %+v, want api with the 2 rows still stored", streams)
+	}
+}
+
+/*!
+ * A merge whose output name is already registered writes nothing and retires
+ * nothing. Names come from the first record, so a known name means that
+ * record is already in another file; a WAL replay after garbage collection
+ * produced exactly that, and the merge then overwrote the live file's object
+ * and retired its own inputs — every record only the overwritten file held,
+ * gone.
+ */
+func TestMergeNeverOverwritesARegisteredFile(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
+
+	var first *model.Record
+	for batch := range 2 {
+		records := h.flush(t, "api", hoursAgo(3).Add(time.Duration(batch)*time.Minute), lines("b", 2))
+		if nil == first {
+			first = records[0]
+		}
+	}
+
+	inputs := h.live(t)
+
+	// A live L1 already at the name this merge would pick.
+	day := first.Ts.UTC()
+	taken := fmt.Sprintf("streams/api/%04d/%02d/%02d/L1-%020d-%d.parquet",
+		day.Year(), int(day.Month()), day.Day(), first.Seq, day.UnixMicro())
+
+	writer, err := h.backend.Create(ctx, taken)
+	if nil != err {
+		t.Fatal(err)
+	}
+	writer.Write([]byte("the only copy of something"))
+	if err := writer.Commit(); nil != err {
+		t.Fatal(err)
+	}
+	if _, _, err := h.cat.Register(ctx, catalog.File{
+		Stream: "api", Path: taken, Level: catalog.LevelL1,
+		MinTs: first.Ts, MaxTs: first.Ts, MinSeq: first.Seq, MaxSeq: first.Seq,
+		RowCount: 1, ByteSize: 26,
+	}, nil); nil != err {
+		t.Fatal(err)
+	}
+
+	_, err = compactor(h, compact.Options{KeepRaw: true, L1MinFiles: 2}).RunOnce(ctx)
+	if !errors.Is(err, catalog.ErrRegistered) {
+		t.Fatalf("err = %v, want ErrRegistered", err)
+	}
+
+	reader, err := h.backend.Open(ctx, taken)
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+
+	content, err := io.ReadAll(reader)
+	if nil != err {
+		t.Fatal(err)
+	}
+	if "the only copy of something" != string(content) {
+		t.Errorf("the registered file was overwritten: %q", content)
+	}
+
+	if live := h.live(t); len(inputs)+1 != len(live) {
+		t.Errorf("live files = %d, want the %d inputs untouched beside the existing L1", len(live), len(inputs))
 	}
 }

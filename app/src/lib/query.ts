@@ -53,7 +53,17 @@ export function terms(query: string): Term[] {
 
     if (quote) {
       current += char
-      if (char === quote && '\\' !== query[i - 1]) quote = ''
+
+      // A backslash escapes whatever follows it, itself included. Looking
+      // back one character for it read the second half of `"C:\\"` as
+      // escaping the closing quote, and every term after it was swallowed
+      // into the string.
+      if ('\\' === char && i + 1 < query.length) {
+        current += query[++i]
+        continue
+      }
+
+      if (char === quote) quote = ''
       continue
     }
 
@@ -132,7 +142,10 @@ function parseTerm(text: string): Term {
 
   // A group or a bare keyword is not a comparison. Keywords are upper case
   // only, as the server reads them: `not` is a word somebody searched for.
-  if (body.startsWith('(') || /^(AND|OR|NOT)$/.test(body)) {
+  // Neither is a quoted phrase, whatever it contains — the server lexes a
+  // chunk that opens with a quote as one string, so `"error: timeout"` is
+  // text, not a field called `"error`.
+  if (body.startsWith('(') || body.startsWith('"') || body.startsWith("'") || /^(AND|OR|NOT)$/.test(body)) {
     return { text, negated }
   }
 
@@ -167,14 +180,41 @@ function unquote(value: string): string {
 }
 
 /**
- * Quotes a value if it would not survive being written bare.
+ * A value as clicked: text, or the typed scalar a record actually carried.
  *
- * Deliberately matches the server's own rule, so a query built by clicking and
- * one typed by hand render identically.
+ * The type is part of the value. A numeric column answers only a number and a
+ * boolean one only a boolean, so `ok=true` and `ok="true"` are different
+ * filters — and a click has to write the one that matches what was clicked.
  */
-export function quote(value: string): string {
+export type Scalar = string | number | boolean | null
+
+/** A finite decimal, as the server's literalOf reads one. */
+const NUMBER = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/
+
+/** Bare words the server reads as something other than text. */
+const RESERVED = /^(true|false|null|nil|\*)$/i
+
+/**
+ * Writes a value as an rQL literal of its own type.
+ *
+ * The server's rule for text, so a query built by clicking and one typed by
+ * hand render identically — plus the two cases that rule cannot see, because
+ * it only ever sees text:
+ *
+ * A number is written bare. The `-` that forces quoting turned `-5` into
+ * `"-5"`, a string, which never matches a numeric column; and a number read
+ * from a text field still matches bare, because text compared with a number
+ * is read as one.
+ *
+ * Text that spells a literal is quoted. Bare, `true` is a boolean, `null` and
+ * `nil` mean "absent", and `*` means "present" — so a string field holding
+ * the word `null` filtered to every record without the field.
+ */
+export function quote(value: Scalar): string {
+  if ('string' !== typeof value) return String(value)
   if ('' === value) return '""'
-  if (/[\s"'()<>=:-]/.test(value)) {
+  if (NUMBER.test(value)) return value
+  if (RESERVED.test(value) || /[\s"'()<>=:-]/.test(value)) {
     return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
   }
   return value
@@ -184,7 +224,7 @@ function render(terms: Term[]): string {
   return terms.map((term) => term.text).join(' ').trim()
 }
 
-function termText(field: string, op: string, value: string, negated: boolean): string {
+function termText(field: string, op: string, value: Scalar, negated: boolean): string {
   return `${negated ? '-' : ''}${field}${op}${quote(value)}`
 }
 
@@ -192,19 +232,26 @@ function termText(field: string, op: string, value: string, negated: boolean): s
  * Adds `field op value`, replacing any existing term for the same field and
  * operator — clicking two values of one field means "show me that one", not
  * "show me rows that are somehow both".
+ *
+ * Exclusions accumulate instead. Excluding INFO and then DEBUG means "neither",
+ * and replacing the first with the second brought INFO back; so a negated term
+ * only displaces the identical one.
  */
 export function withTerm(
   query: string,
   field: string,
   op: string,
-  value: string,
+  value: Scalar,
   negated = false
 ): string {
+  const text = String(value)
+
   const kept = terms(query).filter(
-    (term) => !(term.field === field && term.op === op && term.negated === negated)
+    (term) =>
+      !(term.field === field && term.op === op && term.negated === negated && (!negated || term.value === text))
   )
 
-  kept.push({ text: termText(field, op, value, negated), field, op, value, negated })
+  kept.push({ text: termText(field, op, value, negated), field, op, value: text, negated })
 
   return render(kept)
 }
@@ -219,14 +266,14 @@ export function hasTerm(
   query: string,
   field: string,
   op: string,
-  value: string,
+  value: Scalar,
   negated = false
 ): boolean {
   return terms(query).some(
     (term) =>
       term.field === field &&
       term.op === op &&
-      term.value === value &&
+      term.value === String(value) &&
       term.negated === negated
   )
 }
@@ -241,7 +288,7 @@ export function toggleTerm(
   query: string,
   field: string,
   op: string,
-  value: string,
+  value: Scalar,
   negated = false
 ): string {
   // Removed by what the term says, not by how it is written: found by value,
@@ -251,7 +298,7 @@ export function toggleTerm(
     return render(
       terms(query).filter(
         (term) =>
-          !(term.field === field && term.op === op && term.value === value && term.negated === negated)
+          !(term.field === field && term.op === op && term.value === String(value) && term.negated === negated)
       )
     )
   }

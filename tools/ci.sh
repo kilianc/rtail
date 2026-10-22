@@ -2,9 +2,10 @@
 #
 # ci.sh — everything CI checks, in one script, runnable on a laptop.
 #
-#   sh tools/ci.sh            all of it
+#   sh tools/ci.sh            server, webapp and npm — all but image
 #   sh tools/ci.sh server     one job
 #   sh tools/ci.sh webapp npm several
+#   sh tools/ci.sh image      the fourth, which needs a Docker daemon
 #
 # ** Why this is a script and not a workflow. **
 #
@@ -83,14 +84,21 @@ job_server() {
   # machine, straight off the internet, before they have read it. A syntax
   # error there is a broken install for everyone, so it is parsed here.
   #
-  # The toolchain image has no shellcheck, so the lint runs wherever one
-  # happens to be installed — GitHub's Ubuntu runners have it — and when it
-  # runs, what it finds fails the job. A lint that can only ever pass is not a
-  # check.
+  # The toolchain image carries shellcheck, as GitHub's Ubuntu runners do, and
+  # when it runs, what it finds fails the job. A lint that can only ever pass
+  # is not a check. It cannot be required outright — the macOS runners have
+  # none — but a skip is said out loud rather than passing for a green run,
+  # because here the usual reason for one is a toolchain image built before
+  # it carried shellcheck, and `make` does not rebuild an image it already
+  # has.
   step 'parse install.sh'
   sh -n install.sh
   if command -v shellcheck >/dev/null 2>&1; then
+    step 'shellcheck install.sh'
     shellcheck -s sh install.sh
+  else
+    printf '\n\033[33m!! no shellcheck here: install.sh was parsed, not linted.\n' >&2
+    printf '   In the toolchain container, rebuild the image: docker build -t rtail-tools tools/\033[0m\n' >&2
   fi
 }
 
@@ -160,6 +168,11 @@ job_npm() {
 # Needs a Docker daemon, so this one runs on the host rather than inside the
 # toolchain container. `make ci` drives it; `sh tools/ci.sh image` works too
 # wherever docker is reachable.
+#
+# The release runs it once per architecture, which is what the two knobs are
+# for: RTAIL_CI_PLATFORM runs an image built for another one (linux/arm64,
+# under QEMU), and RTAIL_CI_HEALTH_WAIT gives that emulated server longer than
+# the native thirty seconds to answer.
 
 job_image() {
   # CI builds the image with buildx and a layer cache that lives on GitHub,
@@ -174,10 +187,11 @@ job_image() {
 
   step 'smoke-test the image'
   docker rm -f rtail-ci >/dev/null 2>&1 || true
-  docker run -d --name rtail-ci -p 8899:8888 -p 9988:9999/udp rtail:ci >/dev/null
+  docker run -d ${RTAIL_CI_PLATFORM:+--platform "$RTAIL_CI_PLATFORM"} \
+    --name rtail-ci -p 8899:8888 -p 9988:9999/udp rtail:ci >/dev/null
 
   ok=''
-  for _ in $(seq 1 30); do
+  for _ in $(seq 1 "${RTAIL_CI_HEALTH_WAIT:-30}"); do
     if curl -sf http://127.0.0.1:8899/healthz >/dev/null 2>&1; then ok=1; break; fi
     sleep 1
   done

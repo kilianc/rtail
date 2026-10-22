@@ -435,7 +435,7 @@
         <article class="panel">
           <div class="door-body">
             <h3>HTTP</h3>
-            <p>For anything that would mind losing a line. A 200 means every line is in the write-ahead log. Anything else may follow a partial write, so every response says how many lines it <code>accepted</code>: resume after those rather than replay the batch.</p>
+            <p>For anything that would mind losing a line. With <code>--data</code>, a 200 means every line has been fsynced to the write-ahead log; without it the server keeps only an in-memory ring, and a 200 means received, not stored. Anything else may follow a partial write, so every response says how many lines it <code>accepted</code>: resume after those rather than replay the batch.</p>
           </div>
           <pre><code><span class="p">$</span> curl -XPOST \
     <span class="s">'localhost:8888/v1/ingest?stream=api'</span> \
@@ -455,9 +455,10 @@
         <article class="panel">
           <div class="door-body">
             <h3>Syslog</h3>
-            <p>RFC5424 and RFC3164, UDP and TCP on one port. The priority becomes a real severity, so <code>level&gt;=ERROR</code> works without anyone writing a parser.</p>
+            <p>RFC5424 and RFC3164, UDP and TCP on one port. The priority becomes a real severity, so <code>level&gt;=ERROR</code> works without anyone writing a parser. It listens on loopback unless told otherwise, and carries no token — <code>--auth-token</code> covers HTTP only — so off loopback you are trusting your network.</p>
           </div>
-          <pre><code><span class="p">$</span> rtail-server <span class="f">--data</span> ./logs <span class="f">--syslog-port</span> 5140</code></pre>
+          <pre><code><span class="p">$</span> rtail-server <span class="f">--data</span> ./logs \
+    <span class="f">--syslog-host</span> 0.0.0.0 <span class="f">--syslog-port</span> 5140</code></pre>
         </article>
       </div>
 
@@ -599,11 +600,11 @@
         <article class="panel">
           <div class="panel-bar">
             <span class="panel-label">01 · the server</span>
-            <button class="copy" type="button" data-copy="docker run -d --name rtail -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail">Copy</button>
+            <button class="copy" type="button" data-copy="docker run -d --name rtail -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail:next">Copy</button>
           </div>
           <pre><code><span class="p">$</span> docker run -d --name rtail \
     <span class="f">-p</span> 8888:8888 <span class="f">-p</span> 9999:9999/udp \
-    ghcr.io/kilianc/rtail</code></pre>
+    ghcr.io/kilianc/rtail:next</code></pre>
           <p>Then open <a href="http://localhost:8888">localhost:8888</a> and start piping. Every flag is also an <code>RTAIL_*</code> environment variable.</p>
         </article>
 
@@ -643,8 +644,8 @@
           pipeline that publishes four tarballs, six npm packages and a container image
           per tag. <code>2.0.0-rc.2</code> is the current release — until
           <code>2.0.0</code> is tagged, reaching it takes <code>RTAIL_PRERELEASE=1</code>
-          or the <code>@next</code> tag, because “latest” means the older thing in both
-          GitHub's vocabulary and npm's.
+          or the <code>next</code> tag, on npm and on the container image alike, because
+          “latest” means the older thing in GitHub's vocabulary, npm's and the registry's.
         </p>
       </div>
       <div class="danger">

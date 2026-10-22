@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -191,7 +192,8 @@ func sqlPredicate(expr string) (*rql.SQL, error) {
 		return nil, err
 	}
 
-	return &rql.SQL{Expr: "(" + trimmed + ")"}, nil
+	// The newline keeps a trailing `-- comment` from eating the parenthesis.
+	return &rql.SQL{Expr: "(" + trimmed + "\n)"}, nil
 }
 
 /*!
@@ -317,7 +319,7 @@ func (e *Engine) Search(ctx context.Context, req Request) (*Result, error) {
 	// Released as soon as the page is read, not when Search returns:
 	// restoreFields below takes slots of its own, and holding this one while
 	// it waits for them is a deadlock whenever every slot is a Search.
-	records, err := scanRecords(rows)
+	records, err := scanRecords(rows, limit+1)
 	done()
 	if nil != err {
 		return nil, e.failure(err, statement, user)
@@ -381,7 +383,7 @@ func (e *Engine) restoreFields(ctx context.Context, plan *Plan, records []*model
 			return nil
 		}
 
-		columns := plan.Columns[file.ID]
+		columns := distinct(plan.Columns[file.ID])
 		if 0 == len(columns) {
 			continue
 		}
@@ -402,6 +404,31 @@ func (e *Engine) restoreFields(ctx context.Context, plan *Plan, records []*model
 	}
 
 	return nil
+}
+
+/*!
+ * distinct drops the columns of one file whose names differ only in case.
+ *
+ * DuckDB matches identifiers without regard to case, so of a_User and a_user
+ * it reads whichever comes first under both names: the record with "User"
+ * came back with a "user" it never had, and the one with "user" lost it. See
+ * NewResolver, which reads such keys from raw instead. A record restored here
+ * has no raw to read, and a missing field is the honest answer.
+ */
+func distinct(columns []catalog.Column) []catalog.Column {
+	names := make(map[string]int, len(columns))
+	for _, column := range columns {
+		names[strings.ToLower(column.Name)]++
+	}
+
+	out := make([]catalog.Column, 0, len(columns))
+	for _, column := range columns {
+		if 1 == names[strings.ToLower(column.Name)] {
+			out = append(out, column)
+		}
+	}
+
+	return out
 }
 
 // readFields fills in the fields of the records at seqs from one file's
@@ -721,11 +748,20 @@ func (e *Engine) SQL(ctx context.Context, statement string, req Request) (column
 		limit = e.limits.MaxRows
 	}
 
+	/*!
+	 * The statement ends on a line of its own, and the cap is enforced twice.
+	 *
+	 * Spliced in on one line with the LIMIT, a statement ending in `) --`
+	 * commented the LIMIT out and returned every row in the window. The
+	 * newline keeps a line comment to the caller's own text; the row loop
+	 * below stops at the cap whatever the text managed to do to the LIMIT.
+	 */
 	wrapped := fmt.Sprintf(`
 		WITH logs AS (
 			SELECT * FROM %s WHERE ts >= ? AND ts <= ?
 		)
-		SELECT * FROM (%s) LIMIT %d`,
+		SELECT * FROM (%s
+		) LIMIT %d`,
 		e.Source(plan), statement, limit)
 
 	result, done, queryErr := e.query(ctx, true, wrapped, plan.From, plan.To)
@@ -739,7 +775,7 @@ func (e *Engine) SQL(ctx context.Context, statement string, req Request) (column
 		return nil, nil, Scanned{}, e.failure(err, wrapped, true)
 	}
 
-	for result.Next() {
+	for len(rows) < limit && result.Next() {
 		cells := make([]any, len(columns))
 		targets := make([]any, len(columns))
 		for i := range cells {
@@ -775,30 +811,91 @@ func (e *Engine) SQL(ctx context.Context, statement string, req Request) (column
  * there is nothing to write to and no filesystem to reach. This exists to turn
  * "DROP TABLE" into a clear error rather than a confusing one — and a 400
  * with a position, because it is the query's fault, not the server's.
+ *
+ * Whole words, outside quotes and comments. It used to look for substrings
+ * anywhere, so `msg ILIKE '%attachment%'`, `msg = 'update done'` and
+ * "installation" were all refused as mutations.
  */
 func rejectMutations(statement string) error {
-	lowered := strings.ToLower(statement)
-
-	for _, word := range []string{
-		"attach", "copy ", "create ", "delete ", "drop ", "export",
-		"insert ", "install", "load ", "pragma", "update ", "call ",
-	} {
-		if at := strings.Index(lowered, word); at >= 0 {
-			return &rql.Error{
-				Message:  fmt.Sprintf("only read-only queries are allowed here (found %q)", strings.TrimSpace(word)),
-				Position: at,
-			}
+	if at := mutations.FindStringIndex(blankQuoted(statement)); nil != at {
+		return &rql.Error{
+			Message:  fmt.Sprintf("only read-only queries are allowed here (found %q)", strings.ToLower(statement[at[0]:at[1]])),
+			Position: at[0],
 		}
 	}
 
 	return nil
 }
 
-// scanRecords reads the envelope columns back into records.
-func scanRecords(rows *sql.Rows) ([]*model.Record, error) {
+var mutations = regexp.MustCompile(
+	`(?i)\b(attach|copy|create|delete|drop|export|insert|install|load|pragma|update|call)\b`)
+
+/*!
+ * blankQuoted blanks out string literals, quoted identifiers and comments,
+ * leaving everything else where it was so a position still points into the
+ * statement as written.
+ *
+ * A literal is '…' with '' for a quote inside it, an identifier "…" with "",
+ * a comment `--` to the end of the line or `/*` to the next close. Anything
+ * subtler — an E'…' string's backslashes, a $$-quoted one — can fool it
+ * either way, which is acceptable in a guard whose job is a clear message:
+ * the sandbox, not this, is what a query cannot get past.
+ */
+func blankQuoted(statement string) string {
+	out := []byte(statement)
+
+	for i := 0; i < len(out); {
+		end := i + 1
+
+		switch {
+		case '\'' == statement[i] || '"' == statement[i]:
+			quote := statement[i]
+			for end < len(statement) {
+				if quote != statement[end] {
+					end++
+				} else if end+1 < len(statement) && quote == statement[end+1] {
+					end += 2
+				} else {
+					end++
+					break
+				}
+			}
+
+		case strings.HasPrefix(statement[i:], "--"):
+			if at := strings.IndexByte(statement[i:], '\n'); at >= 0 {
+				end = i + at
+			} else {
+				end = len(out)
+			}
+
+		case strings.HasPrefix(statement[i:], "/*"):
+			if at := strings.Index(statement[i+2:], "*/"); at >= 0 {
+				end = i + 2 + at + 2
+			} else {
+				end = len(out)
+			}
+
+		default:
+			i++
+			continue
+		}
+
+		for j := i; j < end; j++ {
+			out[j] = ' '
+		}
+		i = end
+	}
+
+	return string(out)
+}
+
+// scanRecords reads the envelope columns back into records, at most limit of
+// them: a lang=sql filter is spliced into the statement, so the LIMIT there is
+// not the only thing holding the page to its size.
+func scanRecords(rows *sql.Rows, limit int) ([]*model.Record, error) {
 	var out []*model.Record
 
-	for rows.Next() {
+	for len(out) < limit && rows.Next() {
 		var (
 			rec              model.Record
 			level, msg, host sql.NullString
@@ -917,6 +1014,46 @@ func (e *Engine) FieldCounts(ctx context.Context, req Request, fields []string) 
 		return map[string]int64{}, nil
 	}
 
+	counts, err := e.countFields(ctx, req, plan, predicate, names, projections)
+	if nil == err {
+		return counts, nil
+	}
+
+	/*!
+	 * One field DuckDB cannot read must not cost every other field its count.
+	 *
+	 * The sidebar leaves `matches` off altogether when this fails, so one odd
+	 * key anywhere in a stream's history — a path DuckDB would not bind —
+	 * took the numbers off every field beside it. So a statement that fails
+	 * is checked a field at a time, bound against the same files with
+	 * nothing to scan, and run again without the fields that fail on their
+	 * own, which are then skipped as the unresolvable ones are. When none
+	 * fails alone, or every one does, the fault is not a field's, and the
+	 * error stands.
+	 */
+	var keptNames, kept []string
+	for i, projection := range projections {
+		if nil == e.binds(ctx, plan, projection) {
+			keptNames = append(keptNames, names[i])
+			kept = append(kept, projection)
+		}
+	}
+
+	if 0 == len(kept) || len(kept) == len(projections) {
+		return nil, err
+	}
+
+	return e.countFields(ctx, req, plan, predicate, keptNames, kept)
+}
+
+// countFields runs FieldCounts' one statement.
+func (e *Engine) countFields(
+	ctx context.Context,
+	req Request,
+	plan *Plan,
+	predicate *rql.SQL,
+	names, projections []string,
+) (map[string]int64, error) {
 	source, args := e.scoped(plan, req.Stream, "")
 	args = append(args, predicate.Args...)
 
@@ -958,4 +1095,21 @@ func (e *Engine) FieldCounts(ctx context.Context, req Request, fields []string) 
 	}
 
 	return counts, nil
+}
+
+// binds reports whether DuckDB accepts a projection over a plan's files,
+// without reading a row of them.
+func (e *Engine) binds(ctx context.Context, plan *Plan, projection string) error {
+	statement := fmt.Sprintf("SELECT %s FROM %s WHERE FALSE", projection, e.Source(plan))
+
+	rows, done, err := e.query(ctx, false, statement)
+	if nil != err {
+		return err
+	}
+	defer done()
+
+	for rows.Next() {
+	}
+
+	return rows.Err()
 }

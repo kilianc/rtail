@@ -71,7 +71,9 @@ FROM debian:bookworm-slim AS runtime
 # /data is created here, owned by the user the server runs as, so --data has
 # somewhere to point that the server can actually write. A named volume
 # mounted over an existing directory starts out with that directory's owner,
-# which is what makes `-v rtail-data:/data` work with no chown of its own.
+# which is what makes `-v rtail-data:/data` work with no chown of its own. A
+# bind mount does not: it keeps the host directory's owner, so that directory
+# needs `chown 10001:10001`, or the container needs `--user` to match it.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/* \

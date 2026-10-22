@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { api, type Field, type FieldValue, type Params } from '../lib/api.js'
 import { formatCount } from '../lib/format.js'
+import type { Scalar } from '../lib/query.js'
 import { Button } from './Button.js'
 
 interface Props {
@@ -23,12 +24,15 @@ interface Props {
   active: string[]
   /** Fields already promoted to columns. */
   columns: string[]
-  onFilter: (field: string, value: string, negated: boolean) => void
+  onFilter: (field: string, value: Scalar, negated: boolean) => void
   onToggleColumn: (field: string) => void
 }
 
 /** Fields worth opening first — the ones a person almost always wants. */
 const FAVOURED = ['level', 'service', 'stream', 'host', 'status', 'env', 'region']
+
+/** Favoured fields already on screen elsewhere: level has the breakdown above. */
+const SHOWN = ['level']
 
 /*!
  * The envelope keys worth listing.
@@ -65,12 +69,18 @@ export function FieldExplorer({ fields, params, active, columns, onFilter, onTog
    * catalog has not loaded, so it opened nothing, every time. Once only: after
    * that, what is open is the reader's choice, and a later query bringing the
    * same fields back must not reopen the ones they closed.
+   *
+   * In FAVOURED's order, not the catalog's: the catalog lists the envelope
+   * first, so the first three were always level, stream and host — never
+   * `service` — and level is the breakdown already pinned above the list.
    */
   const seeded = useRef(false)
   useEffect(() => {
     if (seeded.current || 0 === fields.length) return
     seeded.current = true
-    setOpen(fields.filter((field) => FAVOURED.includes(field.name)).slice(0, 3).map((field) => field.name))
+
+    const present = new Set(fields.map((field) => field.name))
+    setOpen(FAVOURED.filter((name) => present.has(name) && !SHOWN.includes(name)).slice(0, 3))
   }, [fields])
 
   /*!
@@ -169,7 +179,7 @@ function Severities({
   onFilter
 }: {
   params: Params
-  onFilter: (field: string, value: string, negated: boolean) => void
+  onFilter: (field: string, value: Scalar, negated: boolean) => void
 }) {
   const [values, setValues] = useState<FieldValue[]>([])
 
@@ -227,12 +237,24 @@ interface GroupProps {
   column: boolean
   onToggle: () => void
   onToggleColumn: () => void
-  onFilter: (field: string, value: string, negated: boolean) => void
+  onFilter: (field: string, value: Scalar, negated: boolean) => void
 }
 
 function FieldGroup({ field, params, open, active, column, onToggle, onToggleColumn, onFilter }: GroupProps) {
   const [values, setValues] = useState<FieldValue[] | null>(null)
   const [error, setError] = useState(false)
+
+  /*!
+   * A value back in the type its field holds.
+   *
+   * The server sends every value as text, and text that spells a literal is
+   * written quoted, as the string it is (see quote) — which a boolean column
+   * never equals. So a boolean field's value goes back to being a boolean
+   * first. Numbers need no help: a number-shaped value is written bare
+   * whatever its type.
+   */
+  const typed = (value: string): Scalar =>
+    'boolean' === field.kind && ('true' === value || 'false' === value) ? 'true' === value : value
 
   // Re-fetches whenever the surrounding query changes, because "top values"
   // means top values of what is currently on screen — a sidebar showing the
@@ -319,7 +341,7 @@ function FieldGroup({ field, params, open, active, column, onToggle, onToggleCol
               <button
                 class="explorer-value-main"
                 title={`Filter to ${field.name}=${value.value}`}
-                onClick={() => onFilter(field.name, value.value, false)}
+                onClick={() => onFilter(field.name, typed(value.value), false)}
               >
                 {/*
                   The share bar sits behind the label rather than beside it:
@@ -337,7 +359,7 @@ function FieldGroup({ field, params, open, active, column, onToggle, onToggleCol
                 class="explorer-exclude"
                 title={`Exclude ${field.name}=${value.value}`}
                 aria-label={`Exclude ${value.value}`}
-                onClick={() => onFilter(field.name, value.value, true)}
+                onClick={() => onFilter(field.name, typed(value.value), true)}
               >
                 ⊖
               </Button>

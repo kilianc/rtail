@@ -28,7 +28,12 @@
 
 The server ships as a container image — this is the recommended way to run it.
 
-    $ docker run -d --name rtail -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail
+    $ docker run -d --name rtail -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail:next
+
+`:next` is the newest release candidate, the way `rtail@next` is on npm.
+`latest` only moves on a stable release, so until `2.0.0` is tagged it is
+stuck on an earlier candidate that predates `/data`; once it is, the plain
+`ghcr.io/kilianc/rtail` is right again.
 
 Open <http://localhost:8888> and start piping. There is a
 [`docker-compose.yml`](docker-compose.yml) if you prefer:
@@ -38,26 +43,33 @@ Open <http://localhost:8888> and start piping. There is a
 Options are flags, or `RTAIL_*` environment variables:
 
     $ docker run -d -p 8080:8080 -p 9999:9999/udp \
-        -e RTAIL_WEB_PORT=8080 ghcr.io/kilianc/rtail
+        -e RTAIL_WEB_PORT=8080 ghcr.io/kilianc/rtail:next
 
     $ docker run -d -p 8888:8888 -p 9999:9999/udp \
-        ghcr.io/kilianc/rtail --backlog 500
+        ghcr.io/kilianc/rtail:next --backlog 500
 
 The image is memory-only until you give it somewhere to write. `/data` is
 there for that, owned by the user the server runs as:
 
     $ docker run -d -p 8888:8888 -p 9999:9999/udp \
-        -e RTAIL_DATA=/data -v rtail-data:/data ghcr.io/kilianc/rtail
+        -e RTAIL_DATA=/data -v rtail-data:/data ghcr.io/kilianc/rtail:next
+
+A named volume, as above, takes that owner on its own. A bind mount keeps the
+host directory's, which the server's uid 10001 cannot write to:
+`chown 10001:10001` the directory first, or run it as yourself with
+`--user "$(id -u):$(id -g)"`.
 
 The image binds `0.0.0.0` inside the container, so **the published ports are
-reachable from your whole network**. It has no authentication — keep it on a
-trusted network, or put a reverse proxy in front of it.
+reachable from your whole network**. It is open by default;
+`-e RTAIL_AUTH_TOKEN="$(openssl rand -hex 32)"` closes it — see
+[Authentication](#authentication). Without a token, keep it on a trusted
+network or put a reverse proxy in front of it.
 
 ## Releases
 
 Tagged releases carry a binary for each platform and a container image.
 
-    $ docker run -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail
+    $ docker run -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail:next
 
 Or take the binary for your platform from the
 [releases page](https://github.com/kilianc/rtail/releases) — `linux_amd64`,
@@ -89,9 +101,9 @@ of any kind:
     $ npm install -g rtail@next
 
 **While 2.0 is a release candidate, two of those four need telling.** GitHub's
-"latest release" skips prereleases, and npm's `latest` tag still points at
-`0.2.1` — the v1 Node client — so the plain forms quietly hand you something
-older:
+"latest release" skips prereleases, so the plain `install.sh` stops and asks
+for `RTAIL_PRERELEASE=1`; and npm's `latest` tag still points at `0.2.1` — the
+v1 Node client — so a plain `npm install -g rtail` quietly hands you that:
 
     $ curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/main/install.sh | RTAIL_PRERELEASE=1 sh
     $ npm install -g rtail@next
@@ -172,8 +184,9 @@ indistinguishable once stored, whichever door it came through.
     $ node server.js 2>&1 | rtail --id api.example.com
 
 **HTTP**, for anything that would mind losing a line. UDP is at-most-once and
-capped at one datagram; this acknowledges, so a 200 means every line is in the
-write-ahead log:
+capped at one datagram; this acknowledges. With `--data`, a 200 means every
+line has been fsynced to the write-ahead log. Without it the server keeps only
+its in-memory ring, and a 200 means the lines were received, not stored:
 
     $ curl -XPOST 'localhost:8888/v1/ingest?stream=api' --data-binary @- <<'JSON'
     {"level":"error","msg":"upstream timeout","service":"api","latency_ms":30004}
@@ -197,14 +210,20 @@ with a config line and no code change:
         logs_endpoint: http://rtail:8888/v1/logs
 
 `service.name` becomes the stream, log and resource attributes become fields,
-and `trace_id`/`span_id` are promoted so correlation actually works.
+and `trace_id`/`span_id` are promoted so correlation actually works. A 200
+here promises what it does on `/v1/ingest`.
 
 **Syslog**, RFC5424 and RFC3164, UDP and TCP on the same port:
 
-    $ rtail-server --data ./logs --syslog-port 5140
+    $ rtail-server --data ./logs --syslog-host 0.0.0.0 --syslog-port 5140
 
     # rsyslog.conf
     *.* @@rtail-host:5140;RSYSLOG_SyslogProtocol23Format
+
+`--syslog-host` defaults to `--udp-host` — loopback, unless you moved it — so
+a remote rsyslog needs the `0.0.0.0`. Syslog carries no token: `--auth-token`
+covers HTTP only, and nothing refuses this bind without one, so off loopback
+you are trusting your network.
 
 APP-NAME becomes the stream, the priority becomes a real severity — so
 `level>=ERROR` works on syslog without anyone writing a parser — and RFC5424
@@ -665,11 +684,15 @@ Before you push, run what CI runs:
     $ make ci
 
 That is the same [`tools/ci.sh`](tools/ci.sh) the workflow calls, so a green
-run here is a green run there — `go vet`, `gofmt`, `go test -race ./...`, the
-webapp typecheck and production build, the npm packaging smoke-tested through
-real tarballs, and the container image. The two things it cannot cover are the
-macOS server build and the Node 20 webapp build, because both need a second
-machine.
+run here is a green run there — `go vet`, `gofmt`, `go test -race ./...`,
+shellcheck on `install.sh`, the webapp typecheck and production build, the npm
+packaging smoke-tested through real tarballs, and the container image. The two
+things it cannot cover are the macOS server build and the Node 20 webapp
+build, because both need a second machine.
+
+`make` builds the toolchain image only when there is none, so after a change
+to [`tools/Dockerfile`](tools/Dockerfile), `docker build -t rtail-tools tools/`
+brings yours level with CI's.
 
 Add tests with each new feature, and keep the webapp type-clean — `make
 typecheck` on its own is the quick version. CI builds the webapp on Node 20

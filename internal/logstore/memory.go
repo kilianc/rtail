@@ -136,6 +136,9 @@ func (m *Memory) Subscribe(stream string, buffer int) *Subscription {
 	return m.fanout.Subscribe(stream, buffer)
 }
 
+// Sync has nothing to do: the memory store promises nothing past a restart.
+func (m *Memory) Sync(context.Context) error { return nil }
+
 func (m *Memory) Close() error {
 	m.fanout.Close()
 	return nil

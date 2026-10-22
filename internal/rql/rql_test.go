@@ -1,9 +1,12 @@
 package rql_test
 
 import (
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/kilianc/rtail/v2/internal/model"
 	"github.com/kilianc/rtail/v2/internal/rql"
 )
 
@@ -562,4 +565,115 @@ type timestampResolver struct{}
 
 func (timestampResolver) Resolve(string) (string, rql.FieldKind, bool) {
 	return "ts", rql.FieldTimestamp, true
+}
+
+// A phrase with a backslash in it renders as one the lexer reads back the
+// same. Only its quotes used to be escaped, so a trailing backslash escaped
+// the closing quote instead.
+func TestPhrasesWithBackslashesRoundTrip(t *testing.T) {
+	for _, input := range []string{
+		`"a b\\"`, `"C:\\temp dir"`, `-"a\\b c"`, `msg:"a\\b c"`, `"x\\"`, `"say \"hi\" \\ bye"`,
+	} {
+		first := parse(t, input)
+		rendered := rql.String(first)
+
+		second, err := rql.Parse(rendered)
+		if nil != err {
+			t.Errorf("%s rendered as %s, which does not parse: %v", input, rendered, err)
+			continue
+		}
+		if !reflect.DeepEqual(first, second) {
+			t.Errorf("%s rendered as %s, which parses to something else", input, rendered)
+		}
+	}
+}
+
+// A bare number is a level on pino's scale, which is how ingest stored it; a
+// quoted one, or one off the scale, is the text it says.
+func TestNumericLevelsArePinosScale(t *testing.T) {
+	for query, want := range map[string]any{
+		`level=50`:   "ERROR",
+		`level=40`:   "WARN",
+		`level=10`:   "TRACE",
+		`level=60`:   "FATAL",
+		`level="50"`: "50",
+		`level=45`:   "45",
+		`level>=40`:  rql.Rank("WARN"),
+		`level<50`:   rql.Rank("ERROR"),
+	} {
+		compiled, err := rql.ToSQL(parse(t, query), fakeResolver{})
+		if nil != err {
+			t.Fatal(err)
+		}
+		if want != compiled.Args[0] {
+			t.Errorf("%s bound %v, want %v", query, compiled.Args[0], want)
+		}
+	}
+
+	for query, matches := range map[string]map[string]bool{
+		`level=50`:  {"ERROR": true, "50": false},
+		`level>=40`: {"WARN": true, "ERROR": true, "INFO": false, "40": false},
+	} {
+		predicate, err := rql.ToPredicate(parse(t, query))
+		if nil != err {
+			t.Fatal(err)
+		}
+		for level, want := range matches {
+			if got := predicate(&model.Record{Level: level}); want != got {
+				t.Errorf("%s on level %s = %v, want %v", query, level, got, want)
+			}
+		}
+	}
+}
+
+// Text written as a number reads the way DuckDB's try_cast reads it, so the
+// tail answers as search does.
+func TestTextReadsAsANumberTheWayDuckDBDoes(t *testing.T) {
+	for _, tc := range []struct {
+		value, query string
+		want         bool
+	}{
+		// Go's hex floats are not numbers to DuckDB.
+		{"0x1p4", `v=16`, false},
+		{"0X1P4", `v>0`, false},
+		// Past the largest double is infinity to DuckDB, not an error.
+		{"1e400", `v>1e300`, true},
+		{"-1e400", `v<-1e300`, true},
+		{" 12 ", `v=12`, true},
+	} {
+		predicate, err := rql.ToPredicate(parse(t, tc.query))
+		if nil != err {
+			t.Fatal(err)
+		}
+
+		rec := &model.Record{Fields: map[string]model.Value{"v": model.Str(tc.value)}}
+		if got := predicate(rec); tc.want != got {
+			t.Errorf("%s on %q = %v, want %v", tc.query, tc.value, got, tc.want)
+		}
+	}
+}
+
+// ts as text is DuckDB's rendering of a UTC TIMESTAMPTZ: trailing zeros
+// trimmed and the offset written, which is also a form Timestamp reads back.
+func TestTimestampTextIsDuckDBs(t *testing.T) {
+	rec := &model.Record{Ts: time.Date(2024, 1, 2, 3, 4, 5, 120_000_000, time.UTC)}
+
+	for query, want := range map[string]bool{
+		`ts:"2024-01-02 03:04:05.12+00"`: true,
+		`ts:~"05[.]12[+]00$"`:            true,
+		`ts:"05.120"`:                    false,
+	} {
+		predicate, err := rql.ToPredicate(parse(t, query))
+		if nil != err {
+			t.Fatal(err)
+		}
+		if got := predicate(rec); want != got {
+			t.Errorf("%s = %v, want %v", query, got, want)
+		}
+	}
+
+	at, err := rql.Timestamp(rql.Literal{Str: "2024-01-02 03:04:05.12+00"})
+	if nil != err || !at.Equal(rec.Ts) {
+		t.Errorf("Timestamp of DuckDB's own text = %s, %v", at, err)
+	}
 }

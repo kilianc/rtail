@@ -129,6 +129,57 @@ func TestMalformedEnvironmentIsAnError(t *testing.T) {
 	}
 }
 
+// A variable the flag overrides is never read, so it cannot stop a start —
+// whichever spelling of the flag was given.
+func TestAFlagExcusesItsMalformedVariable(t *testing.T) {
+	for _, args := range [][]string{
+		{"--web-port", "9090", "--retention", "30d", "--insecure=false", "--backlog", "7"},
+		{"--wp", "9090", "--retention", "30d", "--insecure=false", "-b", "7"},
+	} {
+		t.Setenv("RTAIL_WEB_PORT", "80a")
+		t.Setenv("RTAIL_RETENTION", "30 days")
+		t.Setenv("RTAIL_INSECURE", "yes please")
+		t.Setenv("RTAIL_BACKLOG", "lots")
+
+		cfg := parse(t, args...)
+		if 9090 != cfg.WebPort || 30*24*time.Hour != cfg.Retention || 7 != cfg.Backlog {
+			t.Errorf("%v: web-port %d, retention %s, backlog %d", args, cfg.WebPort, cfg.Retention, cfg.Backlog)
+		}
+	}
+
+	// Only the overridden one: the next malformed variable still stops it.
+	t.Setenv("RTAIL_UDP_PORT", "99a")
+	if _, err := Parse([]string{"--web-port", "9090", "--retention", "30d", "--insecure=false", "-b", "7"}, "test", io.Discard); nil == err || !strings.Contains(err.Error(), "RTAIL_UDP_PORT") {
+		t.Errorf("RTAIL_UDP_PORT=99a was accepted beside other flags: %v", err)
+	}
+}
+
+/*!
+ * Kubernetes writes <SERVICE>_PORT=tcp://ip:port into every pod for every
+ * Service in the namespace, so a Service named rtail-web sets
+ * RTAIL_WEB_PORT. That is not configuration, and must not stop the server,
+ * flag or no flag.
+ */
+func TestKubernetesServiceLinksAreIgnored(t *testing.T) {
+	t.Setenv("RTAIL_WEB_PORT", "tcp://10.96.0.12:8888")
+	t.Setenv("RTAIL_UDP_PORT", "udp://10.96.0.13:9999")
+	t.Setenv("RTAIL_SYSLOG_PORT", "tcp://10.96.0.14:514")
+
+	if cfg := parse(t); 8888 != cfg.WebPort || 9999 != cfg.UDPPort || 0 != cfg.SyslogPort {
+		t.Errorf("ports = web %d, udp %d, syslog %d; want the defaults", cfg.WebPort, cfg.UDPPort, cfg.SyslogPort)
+	}
+
+	if cfg := parse(t, "--web-port", "8080"); 8080 != cfg.WebPort {
+		t.Errorf("web-port = %d, want the flag's 8080", cfg.WebPort)
+	}
+
+	// Only a port, and only a URL: anything else is still a mistake.
+	t.Setenv("RTAIL_BACKLOG", "tcp://10.96.0.15:100")
+	if _, err := Parse(nil, "test", io.Discard); nil == err {
+		t.Error("RTAIL_BACKLOG=tcp://... was accepted")
+	}
+}
+
 /*!
  * Durations that would do the opposite of what was meant.
  *

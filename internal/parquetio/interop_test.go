@@ -14,12 +14,14 @@
 package parquetio_test
 
 import (
+	"context"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/kilianc/rtail/v2/internal/model"
+	"github.com/kilianc/rtail/v2/internal/parquetio"
 	"github.com/kilianc/rtail/v2/internal/storage"
 )
 
@@ -119,5 +121,40 @@ func TestHeterogeneousFilesUnionByName(t *testing.T) {
 
 	if "1|-\n2|abc" != got {
 		t.Errorf("union = %q, want the older file's missing column to read as null", got)
+	}
+}
+
+/*!
+ * DuckDB folds identifier case, quoted or not. Two keys that differ only in
+ * case used to become a_User and a_user — one column to DuckDB — so a filter
+ * on one key read the other's values.
+ */
+func TestKeysDifferingOnlyInCaseStayApartInDuckDB(t *testing.T) {
+	dir := t.TempDir()
+	backend, err := storage.NewLocal(dir)
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	schema, _, err := parquetio.Write(context.Background(), backend, "L0-case.parquet", []*model.Record{
+		record(t, 1, `{"User":"bob"}`),
+		record(t, 2, `{"user":"alice"}`),
+	}, parquetio.WriteOptions{KeepRaw: true})
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	columns := map[string]string{}
+	for _, column := range schema.Columns() {
+		columns[column.SourceKey] = column.Name
+	}
+
+	path := filepath.Join(dir, "L0-case.parquet")
+
+	for key, want := range map[string]string{"User": "1|bob", "user": "2|alice"} {
+		got := duckdb(t, `SELECT seq, "`+columns[key]+`" FROM '`+path+`' WHERE "`+columns[key]+`" IS NOT NULL`)
+		if want != got {
+			t.Errorf("key %q (column %s) reads %q, want %q", key, columns[key], got, want)
+		}
 	}
 }

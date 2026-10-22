@@ -30,7 +30,8 @@
 # This replaces docker.yml, which published the image on the same tags. Two
 # workflows racing to push the same tag is a bug waiting for a slow day; the
 # image is a step of the release now, and it is gated on the binaries having
-# built and answered /healthz first.
+# built and answered /healthz first — and on the image itself answering it,
+# on amd64 and on arm64, before a single layer is pushed.
 
 name: release
 
@@ -172,13 +173,17 @@ jobs:
           name: webapp
           path: web/dist
 
+      # Off a tag, the version is made up from the commit. The `g` is there
+      # for the reason `git describe` writes one: a short SHA can come out all
+      # digits, and a numeric prerelease identifier with a leading zero —
+      # 0.0.0-0123456 — is not semver, so npm refuses the whole rehearsal.
       - name: Version from the tag
         id: version
         shell: bash
         run: |
           ref="${GITHUB_REF#refs/tags/}"
           if [ "$ref" = "$GITHUB_REF" ]; then
-            ref="0.0.0-$(git rev-parse --short HEAD)"
+            ref="0.0.0-g$(git rev-parse --short HEAD)"
           fi
           echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
 
@@ -286,7 +291,7 @@ jobs:
         run: |
           ref="${GITHUB_REF#refs/tags/}"
           if [ "$ref" = "$GITHUB_REF" ]; then
-            ref="0.0.0-$(git rev-parse --short HEAD)"
+            ref="0.0.0-g$(git rev-parse --short HEAD)"
           fi
           echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
 
@@ -300,9 +305,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # `latest` is the newest *release*, not the newest tag. docker-compose.yml
-      # and the README both pull it, so an rc gets its own version tag and
-      # leaves `latest` where it was.
+      # `latest` is the newest *release*, not the newest tag, so an rc gets its
+      # own version tag and leaves `latest` where it was. `next` is the newest
+      # prerelease — npm's `next`, under the same name and for the same reason
+      # — and it is what the README and docker-compose.yml point at while 2.0
+      # is a release candidate. Without it nothing moved during a release
+      # candidate: `latest` stayed on the rc cut before this rule, and every
+      # fix since was reachable only by its exact version.
       - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         id: meta
         with:
@@ -311,6 +320,55 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') }}
+            type=raw,value=next,enable=${{ startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, '-') }}
+
+      # ** The image is started before it is pushed, on both architectures. **
+      #
+      # Every binary above was run and asked for /healthz on its own runner
+      # before anything was published; the image was not. ci.yml smoke-tests
+      # amd64 on pull requests and on main, which a tag is neither, and arm64
+      # was never started anywhere until somebody pulled it. So each platform
+      # is built on its own first, loaded into the daemon, and put through the
+      # same `tools/ci.sh image` CI uses. The multi-arch build after them is a
+      # cache hit for both: the builder keeps the layers it has just made, so
+      # what this adds is two exports into the daemon and two smoke tests, not
+      # two more builds.
+      #
+      # Same build-args as the push, or the layer that bakes in the version
+      # would miss the cache and the image pushed would not be the one tested.
+      - name: Build amd64, to test
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: rtail:ci
+          build-args: VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha
+
+      - name: Smoke-test amd64
+        run: RTAIL_CI_IMAGE_PREBUILT=1 sh tools/ci.sh image
+
+      - name: Build arm64, to test
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          platforms: linux/arm64
+          load: true
+          tags: rtail:ci
+          build-args: VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha
+
+      # Run under the QEMU registered above. Emulation makes the server slow
+      # to start rather than broken, so it gets three minutes to answer
+      # instead of thirty seconds — a timeout here should mean it is not
+      # coming up, not that it was being translated one instruction at a time.
+      - name: Smoke-test arm64, emulated
+        env:
+          RTAIL_CI_IMAGE_PREBUILT: '1'
+          RTAIL_CI_PLATFORM: linux/arm64
+          RTAIL_CI_HEALTH_WAIT: '180'
+        run: sh tools/ci.sh image
 
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
@@ -367,7 +425,7 @@ jobs:
         run: |
           ref="${GITHUB_REF#refs/tags/}"
           if [ "$ref" = "$GITHUB_REF" ]; then
-            ref="0.0.0-$(git rev-parse --short HEAD)"
+            ref="0.0.0-g$(git rev-parse --short HEAD)"
           fi
           echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
 

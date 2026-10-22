@@ -19,6 +19,8 @@ package storage
 
 import (
 	"context"
+	"fmt"
+	"hash/fnv"
 	"io"
 	"time"
 )
@@ -91,4 +93,55 @@ type Backend interface {
 
 	// Close releases any resources held by the backend.
 	Close() error
+}
+
+// maxSegment bounds one segment of an object name, well under the 255 bytes
+// nearly every filesystem allows a name.
+const maxSegment = 128
+
+/*!
+ * SafeSegment turns an arbitrary string into one path segment every backend
+ * accepts. Stream ids are the reason: they come from `rtail --id` and from a
+ * query string, which is to say from anywhere at all.
+ *
+ * Anything outside [A-Za-z0-9._-] becomes an underscore, and a name made of
+ * dots gains one in front so it cannot climb the tree. A name longer than
+ * maxSegment keeps its beginning and ends in a hash of the whole of it.
+ * Without the cap, a 300-character id failed every write with "file name too
+ * long": its segment never flushed, the segment holding it was retried on
+ * every cycle, and a restart refused to boot. The hash keeps two long ids that
+ * share a prefix in different directories.
+ *
+ * The flush and the compactor both name objects through it, so a stream's
+ * files share one directory whichever of them wrote the file.
+ */
+func SafeSegment(name string) string {
+	if "" == name {
+		return "_unnamed"
+	}
+
+	out := []rune(name)
+	for i, r := range out {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			'-' == r, '_' == r, '.' == r:
+		default:
+			out[i] = '_'
+		}
+	}
+
+	// A name of dots would escape the directory tree.
+	if "." == string(out) || ".." == string(out) {
+		return "_" + string(out)
+	}
+
+	// Every rune is ASCII by now, so this counts bytes.
+	if len(out) > maxSegment {
+		hash := fnv.New32a()
+		hash.Write([]byte(name))
+
+		return fmt.Sprintf("%s-%08x", string(out[:maxSegment-9]), hash.Sum32())
+	}
+
+	return string(out)
 }

@@ -208,16 +208,17 @@ func BuildSchema(records []*model.Record) *Schema {
 		ColRaw:      parquet.Optional(parquet.String()),
 	}
 
+	// Keyed by lower case; see columnName.
 	taken := map[string]bool{}
 	for name := range group {
-		taken[name] = true
+		taken[strings.ToLower(name)] = true
 	}
 
 	columns := make([]Column, 0, len(candidates))
 
 	for _, c := range candidates {
 		name := columnName(c.key, taken)
-		taken[name] = true
+		taken[strings.ToLower(name)] = true
 
 		group[name] = parquet.Optional(leafFor(c.kind))
 		columns = append(columns, Column{
@@ -304,10 +305,18 @@ func columnName(key string, taken map[string]bool) string {
 		base = FieldPrefix + "field"
 	}
 
-	// Two different keys can mangle to the same name ("a.b" and "a-b"). The
-	// loser gets a numeric suffix rather than silently overwriting.
+	/*!
+	 * Two different keys can mangle to the same name ("a.b" and "a-b"). The
+	 * loser gets a numeric suffix rather than silently overwriting.
+	 *
+	 * The same goes for names that differ only in case, which is why taken is
+	 * keyed by lower case. DuckDB resolves identifiers case-insensitively,
+	 * quoted or not, so a_User and a_user in one file are one column to it: a
+	 * filter on either key read whichever it found first, and reading the
+	 * record back smeared one key's values across both.
+	 */
 	name := base
-	for i := 2; taken[name]; i++ {
+	for i := 2; taken[strings.ToLower(name)]; i++ {
 		name = base + "_" + strconv.Itoa(i)
 	}
 

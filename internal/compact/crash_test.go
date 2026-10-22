@@ -148,6 +148,56 @@ func TestCrashBetweenWriteAndPublishLosesNothing(t *testing.T) {
 	}
 }
 
+/*!
+ * The output of an interrupted merge is declared before it is written, which
+ * is what lets garbage collection delete it if no retry ever registers it —
+ * the group may have changed by the next pass, and the name with it. A merge
+ * that publishes drops the declaration.
+ */
+func TestAnInterruptedMergeLeavesItsOutputDeclared(t *testing.T) {
+	ctx := context.Background()
+
+	h := newHarness(t, logstore.DurableOptions{KeepRaw: true})
+	base := hourBase()
+
+	for batch := range 3 {
+		h.flush(t, "api", base.Add(time.Duration(batch)*time.Minute), lines("b", 3))
+	}
+
+	registered := map[string]bool{}
+	for _, file := range h.live(t) {
+		registered[filepath.Join(h.dir, filepath.FromSlash(file.Path))] = true
+	}
+
+	crashed := compactor(h, compact.Options{KeepRaw: true, L1MinFiles: 2})
+	crashed.StopBeforePublishForTest(func() error { return errors.New("boom") })
+	crashed.RunOnce(ctx)
+
+	var orphans []string
+	for _, path := range objectsOnDisk(t, h.dir) {
+		if !registered[path] {
+			orphans = append(orphans, path)
+		}
+	}
+
+	declared, err := h.cat.Abandoned(ctx, time.Now().Add(time.Hour))
+	if nil != err {
+		t.Fatal(err)
+	}
+	if 1 != len(orphans) || 1 != len(declared) ||
+		orphans[0] != filepath.Join(h.dir, filepath.FromSlash(declared[0])) {
+		t.Fatalf("orphans %v, declared %v; want the one orphan, declared", orphans, declared)
+	}
+
+	if _, err := compactor(h, compact.Options{KeepRaw: true, L1MinFiles: 2}).RunOnce(ctx); nil != err {
+		t.Fatal(err)
+	}
+
+	if declared, err = h.cat.Abandoned(ctx, time.Now().Add(time.Hour)); nil != err || 0 != len(declared) {
+		t.Errorf("after publishing, declared = %v (err %v), want none", declared, err)
+	}
+}
+
 // Every catalog row must point at a file that is really there.
 func TestCatalogNeverPointsAtAMissingFile(t *testing.T) {
 	ctx := context.Background()

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 
@@ -37,11 +38,15 @@ func encodeContent(raw string) json.RawMessage {
 	if "" != trimmed {
 		var value any
 		if err := json5.Unmarshal([]byte(trimmed), &value); nil == err {
-			// Marshal can still fail here: JSON5 has NaN and Infinity and
+			// Encoding can still fail here: JSON5 has NaN and Infinity and
 			// JSON does not. Falling through to the string form keeps the
-			// line rather than dropping it.
-			if encoded, err := json.Marshal(value); nil == err {
-				return encoded
+			// line rather than dropping it. HTML escaping is off for the
+			// reason encodeDatagram gives: an & printed is an & stored.
+			var encoded bytes.Buffer
+			encoder := json.NewEncoder(&encoded)
+			encoder.SetEscapeHTML(false)
+			if err := encoder.Encode(value); nil == err {
+				return bytes.TrimSuffix(encoded.Bytes(), []byte("\n"))
 			}
 		}
 	}
