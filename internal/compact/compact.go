@@ -27,9 +27,10 @@ package compact
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
+	"strings"
 	"time"
 
 	"github.com/kilianc/rtail/v2/internal/catalog"
@@ -163,27 +164,47 @@ type Result struct {
 }
 
 /*!
- * RunOnce performs one full pass: expire, then merge L0→L1, then L1→L2.
+ * RunOnce performs one full pass: expire, then merge L0→L1, then L1→L2, then
+ * apply retention to L2 files no merge will read again.
  *
  * Expiry runs first so that a merge never spends effort on data that is about
  * to be deleted anyway.
+ *
+ * A step that fails does not stop the ones after it, and the errors are
+ * returned together. The work is independent — one stream's damaged file says
+ * nothing about another stream's hour — and stopping at the first failure
+ * meant a single file that could not be read was met first on every pass, in
+ * the same deterministic order, and nothing behind it was ever compacted.
  */
 func (c *Compactor) RunOnce(ctx context.Context) (Result, error) {
-	var result Result
+	var (
+		result Result
+		errs   []error
+	)
 
 	expired, err := c.expire(ctx)
 	if nil != err {
-		return result, fmt.Errorf("expiring: %w", err)
+		errs = append(errs, fmt.Errorf("expiring: %w", err))
 	}
 	result.Expired = expired
 
 	for _, level := range []int{catalog.LevelL0, catalog.LevelL1} {
+		if nil != ctx.Err() {
+			return result, ctx.Err()
+		}
 		if err := c.mergeLevel(ctx, level, &result); nil != err {
-			return result, fmt.Errorf("merging L%d: %w", level, err)
+			errs = append(errs, fmt.Errorf("merging L%d: %w", level, err))
 		}
 	}
 
-	return result, nil
+	if nil != ctx.Err() {
+		return result, ctx.Err()
+	}
+	if err := c.rewriteLevel(ctx, catalog.LevelL2, &result); nil != err {
+		errs = append(errs, fmt.Errorf("applying retention to L2: %w", err))
+	}
+
+	return result, errors.Join(errs...)
 }
 
 /*!
@@ -217,6 +238,8 @@ func (c *Compactor) expire(ctx context.Context) (int, error) {
 		return 0, nil
 	}
 
+	// Tombstone takes the files' rows and bytes off their streams' rollups,
+	// exactly as a compaction retiring its inputs does.
 	if err := c.cat.Tombstone(ctx, doomed...); nil != err {
 		return 0, err
 	}
@@ -243,17 +266,87 @@ func (c *Compactor) mergeLevel(ctx context.Context, level int, result *Result) e
 		return err
 	}
 
+	var errs []error
+
 	for _, group := range c.bucketize(files, level) {
 		if !c.eligible(group, level) {
 			continue
 		}
 
 		if err := c.merge(ctx, group, level+1, result); nil != err {
-			return err
+			if nil != ctx.Err() {
+				return ctx.Err()
+			}
+			errs = append(errs, fmt.Errorf("%s at %s: %w", group.stream, group.key.Format(time.RFC3339), err))
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
+}
+
+/*!
+ * rewriteLevel applies retention to the files at the last level.
+ *
+ * Retention runs inside merges, and a file is never merged again once it
+ * reaches L2 — so a horizon longer than the time data takes to get there, a
+ * day and a half by default, was never applied at all: raw kept forever, debug
+ * lines kept forever. Here each L2 file a policy has caught up with is
+ * rewritten on its own.
+ */
+func (c *Compactor) rewriteLevel(ctx context.Context, level int, result *Result) error {
+	files, err := c.cat.Prune(ctx, catalog.Query{Levels: []int{level}})
+	if nil != err {
+		return err
+	}
+
+	var errs []error
+
+	for _, file := range files {
+		if !c.due(file) {
+			continue
+		}
+
+		group := bucket{stream: file.Stream, key: file.MinTs.UTC(), files: []catalog.File{file}}
+
+		if err := c.merge(ctx, group, level, result); nil != err {
+			if nil != ctx.Err() {
+				return ctx.Err()
+			}
+			errs = append(errs, fmt.Errorf("%s: %w", file.Path, err))
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
+/*!
+ * due reports whether a retention policy has caught up with a whole file.
+ *
+ * Whole files, for the reason expiry works on whole files: rewriting as each
+ * record crossed the horizon would rewrite a day-long file on every pass for
+ * the day it spends straddling the line. And each condition is one the
+ * rewrite clears — the output keeps no raw, or promises the level floor — so
+ * a file is rewritten once rather than on every pass after.
+ */
+func (c *Compactor) due(file catalog.File) bool {
+	now := time.Now().UTC()
+	policy := c.opts.Retention
+
+	if file.HasRaw && 0 != policy.DropRawAfter && file.MaxTs.Before(now.Add(-policy.DropRawAfter)) {
+		return true
+	}
+
+	if 0 == policy.DownsampleAfter || "" == policy.MinLevelAfter {
+		return false
+	}
+	if !file.MaxTs.Before(now.Add(-policy.DownsampleAfter)) {
+		return false
+	}
+
+	// A floor at least as strict as the policy's means there is nothing below
+	// it left to discard. A file written before floors were recorded promises
+	// nothing, and is rewritten once to find out.
+	return "" == file.LevelFloor || rql.Rank(file.LevelFloor) < rql.Rank(policy.MinLevelAfter)
 }
 
 /*!
@@ -352,7 +445,21 @@ func (c *Compactor) merge(ctx context.Context, group bucket, level int, result *
 			break
 		}
 
-		batch, err := parquetio.Read(ctx, c.backend, file.Path, 0)
+		/*!
+		 * The catalog's columns, not the file's own names, say which key each
+		 * column holds. A file on its own spells "http.status" a_http_status;
+		 * reading it that way wrote the mangled name back out as if it were
+		 * the key, and every query for http.status over a compacted range
+		 * found nothing.
+		 */
+		columns, err := c.cat.Columns(ctx, file.ID)
+		if nil != err {
+			return fmt.Errorf("reading the columns of %s: %w", file.Path, err)
+		}
+
+		batch, err := parquetio.ReadWith(ctx, c.backend, file.Path, parquetio.ReadOptions{
+			Columns: sourceColumns(columns),
+		})
 		if nil != err {
 			return fmt.Errorf("reading %s: %w", file.Path, err)
 		}
@@ -372,7 +479,7 @@ func (c *Compactor) merge(ctx context.Context, group bucket, level int, result *
 	 * them. Replacing with no outputs is a legitimate operation — it is how
 	 * downsampling a file to zero rows is expressed — and Replace handles it.
 	 */
-	kept := c.applyRetention(records, group)
+	kept, floor := c.applyRetention(records)
 	dropped := int64(len(records) - len(kept))
 
 	if 0 == len(kept) {
@@ -388,15 +495,32 @@ func (c *Compactor) merge(ctx context.Context, group bucket, level int, result *
 		return nil
 	}
 
-	sortRecords(kept, level, c.opts.ClusterBy)
-
-	name := outputName(group.stream, level, kept[0])
 	keepRaw := c.keepRaw(kept)
 
-	schema, stats, err := parquetio.Write(ctx, c.backend, name, kept, parquetio.WriteOptions{
+	options := parquetio.WriteOptions{
 		KeepRaw: keepRaw,
 		SortBy:  sortColumns(level, c.opts.ClusterBy),
-	})
+	}
+
+	// The name comes from the first record, so put the records in the order
+	// the writer will store them before picking it.
+	parquetio.Order(kept, options)
+
+	name := outputName(group.stream, level, kept[0])
+
+	/*!
+	 * A retention rewrite is one file in and one file out at the same level,
+	 * so whenever the input's first record survives it would get the input's
+	 * own name. Writing that name replaces the live input in place — and then
+	 * Replace finds the path already registered, publishes nothing, and
+	 * tombstones the input: its rows end up in no live file at all. The
+	 * input's id keeps the name distinct, and stable across a retried attempt.
+	 */
+	if 1 == len(ids) && level == inputs[0].Level {
+		name = strings.TrimSuffix(name, ".parquet") + fmt.Sprintf("-r%d.parquet", ids[0])
+	}
+
+	schema, stats, err := parquetio.Write(ctx, c.backend, name, kept, options)
 	if nil != err {
 		return fmt.Errorf("writing %s: %w", name, err)
 	}
@@ -432,6 +556,8 @@ func (c *Compactor) merge(ctx context.Context, group bucket, level int, result *
 			RowCount: stats.Rows,
 			ByteSize: stats.Bytes,
 			HasRaw:   stats.HasRaw,
+
+			LevelFloor: floor,
 		},
 		Columns: columns,
 	}
@@ -470,27 +596,41 @@ func (c *Compactor) merge(ctx context.Context, group bucket, level int, result *
  *
  * Applied at merge time rather than on a schedule of its own, because the file
  * is already being rewritten — doing it separately would mean reading and
- * rewriting the same data twice.
+ * rewriting the same data twice. L2 files, which are never merged, get the
+ * same treatment from rewriteLevel.
+ *
+ * It also returns the level floor the output can promise: the policy's, when
+ * every record was old enough to be filtered, and none otherwise.
  */
-func (c *Compactor) applyRetention(records []*model.Record, group bucket) []*model.Record {
+func (c *Compactor) applyRetention(records []*model.Record) ([]*model.Record, string) {
 	policy := c.opts.Retention
 
 	if 0 == policy.DownsampleAfter || "" == policy.MinLevelAfter {
-		return records
+		return records, ""
 	}
 
 	cutoff := time.Now().UTC().Add(-policy.DownsampleAfter)
 	floor := rql.Rank(policy.MinLevelAfter)
 
 	kept := make([]*model.Record, 0, len(records))
+	whole := true
 
 	for _, rec := range records {
-		if rec.Ts.After(cutoff) || rql.Rank(rec.Level) >= floor {
+		if rec.Ts.After(cutoff) {
+			kept = append(kept, rec)
+			whole = false
+			continue
+		}
+		if rql.Rank(rec.Level) >= floor {
 			kept = append(kept, rec)
 		}
 	}
 
-	return kept
+	if !whole {
+		return kept, ""
+	}
+
+	return kept, policy.MinLevelAfter
 }
 
 // keepRaw decides whether the output keeps the original lines.
@@ -525,7 +665,9 @@ func sortColumns(level int, clusterBy string) []string {
 	return []string{parquetio.ColTs, parquetio.ColSeq}
 }
 
-// columnFor maps a clustering key onto a physical column name.
+// columnFor maps a clustering key onto the name the writer sorts by. A
+// promoted key is FieldPrefix + the key itself; the writer finds the column it
+// was really stored in.
 func columnFor(key string) string {
 	switch key {
 	case "level", "severity":
@@ -539,50 +681,21 @@ func columnFor(key string) string {
 	}
 }
 
-/*!
- * sortRecords orders the merged records to match the file's declared sort.
- *
- * The Parquet writer is told the same order, but it sorts within row groups;
- * ordering the slice first is what makes the *file* sorted, which is what the
- * row-group statistics — and therefore pruning — actually depend on.
- */
-func sortRecords(records []*model.Record, level int, clusterBy string) {
-	byTime := func(i, j int) bool {
-		if !records[i].Ts.Equal(records[j].Ts) {
-			return records[i].Ts.Before(records[j].Ts)
-		}
-		return records[i].Seq < records[j].Seq
+// sourceColumns turns the catalog's record of a file's columns into what the
+// reader needs to map them back.
+func sourceColumns(columns []catalog.Column) []parquetio.Column {
+	out := make([]parquetio.Column, 0, len(columns))
+
+	for _, column := range columns {
+		out = append(out, parquetio.Column{
+			Name:        column.Name,
+			SourceKey:   column.SourceKey,
+			Kind:        parquetio.ParseKind(column.Kind),
+			Polymorphic: column.Polymorphic,
+		})
 	}
 
-	if catalog.LevelL2 != level || "" == clusterBy {
-		sort.SliceStable(records, byTime)
-		return
-	}
-
-	sort.SliceStable(records, func(i, j int) bool {
-		a, b := clusterValue(records[i], clusterBy), clusterValue(records[j], clusterBy)
-		if a != b {
-			return a < b
-		}
-		return byTime(i, j)
-	})
-}
-
-func clusterValue(rec *model.Record, key string) string {
-	switch key {
-	case "level", "severity":
-		return rec.Level
-	case "stream":
-		return rec.Stream
-	case "host":
-		return rec.Host
-	}
-
-	if value, ok := rec.Fields[key]; ok {
-		return value.Text()
-	}
-
-	return ""
+	return out
 }
 
 /*!
@@ -650,13 +763,14 @@ func (c *Compactor) Run(ctx context.Context, interval time.Duration) {
 			return
 
 		case <-ticker.C:
+			// A pass that failed somewhere still did the rest of its work, so
+			// both are reported.
 			result, err := c.RunOnce(ctx)
 			if nil != err {
 				if nil != ctx.Err() {
 					return
 				}
 				c.opts.Log.Error("compaction pass failed", "err", err)
-				continue
 			}
 
 			if result.Merged > 0 || result.Expired > 0 {

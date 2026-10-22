@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -30,15 +31,55 @@ import (
 type leafInfo struct {
 	name string
 	kind parquet.Kind
+
+	// key and declared are the source key and kind the column was written
+	// from, when the caller supplied them; known says whether it did.
+	key      string
+	declared model.Kind
+	known    bool
+}
+
+// ReadOptions tune ReadWith.
+type ReadOptions struct {
+	/*!
+	 * Columns are the file's promoted columns as the catalog recorded them
+	 * when the file was written: physical name, source key, kind.
+	 *
+	 * A file on its own cannot say either. Column names are mangled — the key
+	 * "http.status" is stored as a_http_status, and "a.b" and "a-b" collide
+	 * and are told apart only by a suffix that depends on what else the file
+	 * held — and nested values are plain text, with no annotation saying they
+	 * were JSON. Reading without these guesses both, and anything that writes
+	 * what it read back out — compaction — would turn the guess into the
+	 * truth. A column not listed here falls back to guessing.
+	 */
+	Columns []Column
+
+	// Limit keeps only the Limit records with the highest seq, returned in seq
+	// order, without holding more than about twice that many in memory. Zero
+	// returns every record, in file order.
+	Limit int
 }
 
 /*!
  * Read returns records from an object, newest last.
  *
  * limit caps the number returned, keeping the most recent — 0 means all of
- * them. Rows are read in file order, which for an L0 file is seq order.
+ * them. See ReadWith, which this is with no catalog columns to go on.
  */
 func Read(ctx context.Context, backend storage.Backend, name string, limit int) ([]*model.Record, error) {
+	return ReadWith(ctx, backend, name, ReadOptions{Limit: limit})
+}
+
+/*!
+ * ReadWith returns records from an object.
+ *
+ * Rows are read in file order, which is seq order for an L0 file and not for
+ * a compacted one — an L2 file clustered by level holds its newest record
+ * wherever its level sorts. So "the most recent" is decided by seq rather than
+ * by position, which is the order the live tail shows them in.
+ */
+func ReadWith(ctx context.Context, backend storage.Backend, name string, opts ReadOptions) ([]*model.Record, error) {
 	reader, err := backend.Open(ctx, name)
 	if nil != err {
 		return nil, fmt.Errorf("opening %s: %w", name, err)
@@ -57,6 +98,11 @@ func Read(ctx context.Context, backend storage.Backend, name string, limit int) 
 
 	schema := file.Schema()
 
+	declared := make(map[string]Column, len(opts.Columns))
+	for _, column := range opts.Columns {
+		declared[column.Name] = column
+	}
+
 	leaves := make(map[int]leafInfo)
 	for _, path := range schema.Columns() {
 		column, ok := schema.Lookup(path...)
@@ -64,13 +110,27 @@ func Read(ctx context.Context, backend storage.Backend, name string, limit int) 
 			continue
 		}
 
-		leaves[column.ColumnIndex] = leafInfo{
+		leaf := leafInfo{
 			name: path[0],
 			kind: column.Node.Type().Kind(),
 		}
+		if source, ok := declared[path[0]]; ok {
+			leaf.key, leaf.declared, leaf.known = source.SourceKey, source.Kind, true
+		}
+
+		leaves[column.ColumnIndex] = leaf
 	}
 
 	var records []*model.Record
+
+	// Keeping the newest N of a file read front to back: collect, and every
+	// time the pile reaches twice the limit, keep only the top half.
+	trim := func() {
+		sort.Slice(records, func(i, j int) bool { return records[i].Seq < records[j].Seq })
+		if len(records) > opts.Limit {
+			records = append(records[:0:0], records[len(records)-opts.Limit:]...)
+		}
+	}
 
 	for _, group := range file.RowGroups() {
 		rows := group.Rows()
@@ -81,6 +141,10 @@ func Read(ctx context.Context, backend storage.Backend, name string, limit int) 
 
 			for i := range n {
 				records = append(records, decodeRow(buffer[i], leaves))
+			}
+
+			if opts.Limit > 0 && len(records) >= 2*opts.Limit {
+				trim()
 			}
 
 			if nil != err {
@@ -94,8 +158,8 @@ func Read(ctx context.Context, backend storage.Backend, name string, limit int) 
 		rows.Close()
 	}
 
-	if limit > 0 && len(records) > limit {
-		records = records[len(records)-limit:]
+	if opts.Limit > 0 {
+		trim()
 	}
 
 	return records, nil
@@ -106,9 +170,10 @@ func Read(ctx context.Context, backend storage.Backend, name string, limit int) 
  *
  * The writer stores nested values as plain UTF8 rather than annotating them
  * with the JSON logical type — see leafFor in schema.go for why — so there is
- * no annotation to read back. The catalog knows each key's real kind, but this
- * reader deliberately works without one: it is also what lets a bare directory
- * of Parquet files be read by anything.
+ * no annotation to read back. The catalog knows each key's real kind, and
+ * ReadWith uses it when given it; this is the fallback for a reader without
+ * one, which is also what lets a bare directory of Parquet files be read by
+ * anything.
  *
  * The check is cheap and conservative. A log field whose value is the literal
  * text "{}" is indistinguishable from an empty object, and treating it as the
@@ -168,6 +233,10 @@ func decodeRow(row parquet.Row, leaves map[int]leafInfo) *model.Record {
 			}
 
 		default:
+			if leaf.known {
+				rec.Fields[leaf.key] = decodeValue(value, leaf)
+				continue
+			}
 			if !strings.HasPrefix(leaf.name, FieldPrefix) {
 				continue
 			}
@@ -192,6 +261,18 @@ func decodeRow(row parquet.Row, leaves map[int]leafInfo) *model.Record {
 }
 
 func decodeValue(value parquet.Value, leaf leafInfo) model.Value {
+	// The kind the writer declared is the answer when there is one. Guessing
+	// from the text would read a string field whose value happened to be "{}"
+	// as an object, and compaction would then write it back as one.
+	if leaf.known {
+		switch {
+		case model.KindString == leaf.declared && parquet.ByteArray == leaf.kind:
+			return model.Str(string(value.ByteArray()))
+		case model.KindJSON == leaf.declared && parquet.ByteArray == leaf.kind:
+			return model.JSON(string(value.ByteArray()))
+		}
+	}
+
 	switch leaf.kind {
 	case parquet.Boolean:
 		return model.Bool(value.Boolean())
@@ -219,4 +300,19 @@ func decodeValue(value parquet.Value, leaf leafInfo) model.Value {
  */
 func SourceKey(column string) string {
 	return strings.TrimPrefix(column, FieldPrefix)
+}
+
+// ParseKind is the inverse of model.Kind's String, for kinds read back from the
+// catalog. Anything unrecognised is a string, which is what the writer widens
+// a disagreement to.
+func ParseKind(name string) model.Kind {
+	for _, kind := range []model.Kind{
+		model.KindBool, model.KindInt, model.KindFloat, model.KindString, model.KindJSON,
+	} {
+		if kind.String() == name {
+			return kind
+		}
+	}
+
+	return model.KindString
 }

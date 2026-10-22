@@ -297,3 +297,45 @@ func TestConcurrentAppendAndSubscribe(t *testing.T) {
 		t.Errorf("streams = %v, want 4", streams)
 	}
 }
+
+/*!
+ * The live tail sends the backlog, then skips any line at or below the last
+ * seq it held — so lines must be published in seq order. Numbering a record
+ * before taking the lock let two appends be numbered 5 and 6 and published
+ * 6, 5, and the tail never showed 5.
+ */
+func TestPublishOrderIsSeqOrder(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemory(100)
+	defer store.Close()
+
+	const writers, per = 8, 2000
+
+	sub := store.Subscribe("", writers*per+writers)
+	defer sub.Close()
+
+	var wg sync.WaitGroup
+	for w := range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range per {
+				store.Append(ctx, record(fmt.Sprintf("s%d", w), fmt.Sprintf("line-%d", i)))
+			}
+		}()
+	}
+	wg.Wait()
+
+	var last uint64
+	for seen := 0; seen < writers*per; {
+		event := <-sub.C
+		if EventLine != event.Kind {
+			continue
+		}
+		if event.Record.Seq <= last {
+			t.Fatalf("seq %d was published after %d", event.Record.Seq, last)
+		}
+		last = event.Record.Seq
+		seen++
+	}
+}

@@ -27,6 +27,10 @@ type Memory struct {
 	fanout Fanout
 	seq    atomic.Uint64
 
+	// ingest makes seq order, ring order and publish order one order. See
+	// Append.
+	ingest sync.Mutex
+
 	mu      sync.RWMutex
 	size    int
 	order   []string
@@ -44,7 +48,18 @@ func NewMemory(size int) *Memory {
 	return &Memory{size: size, streams: make(map[string]*ring)}
 }
 
+/*!
+ * Append records one event.
+ *
+ * The sequence number is taken inside the same lock as the push and the
+ * publish. Taken outside it, two concurrent appends could be numbered 5 and 6
+ * and then pushed and published as 6, 5 — and the live tail, which skips any
+ * line at or below the last seq its backlog held, would never show 5.
+ */
 func (m *Memory) Append(_ context.Context, rec *model.Record) error {
+	m.ingest.Lock()
+	defer m.ingest.Unlock()
+
 	rec.Seq = m.seq.Add(1)
 
 	m.mu.Lock()
@@ -57,7 +72,8 @@ func (m *Memory) Append(_ context.Context, rec *model.Record) error {
 	buffer.push(rec)
 
 	// Snapshot the list while still holding the lock; publishing happens after
-	// it is released so a slow subscriber cannot stall the next Append.
+	// it is released so readers of the ring are not held up by the fanout.
+	// Publishing cannot stall the next Append either way: sends never block.
 	var streams []string
 	if !known {
 		streams = append([]string(nil), m.order...)

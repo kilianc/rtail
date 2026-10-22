@@ -16,6 +16,8 @@ package parquetio
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/kilianc/rtail/v2/internal/model"
@@ -65,6 +67,11 @@ type WriteOptions struct {
 	 * makes time-range pruning exact at row-group granularity instead of
 	 * merely likely; adding a low-cardinality leading column (level, service)
 	 * turns the most common filter into a row-group skip rather than a scan.
+	 *
+	 * Envelope columns are named as themselves. A promoted key is named
+	 * FieldPrefix + its source key — "a_service.name" — and Write finds the
+	 * column it was actually stored in, which mangling and collisions make
+	 * impossible to spell from outside.
 	 */
 	SortBy []string
 }
@@ -88,6 +95,18 @@ func Write(
 
 	schema := BuildSchema(records)
 
+	/*!
+	 * The writer is told the order, and the rows are put in it here, because
+	 * telling is all parquet-go's writer does: it records sorting_columns in
+	 * the footer and writes rows exactly as it is given them. A reader that
+	 * trusts the footer — to merge, to stop a scan early — would otherwise be
+	 * trusting whatever order the caller happened to pass.
+	 */
+	keys := resolveSort(schema, opts)
+
+	records = append([]*model.Record(nil), records...)
+	sortRecords(records, keys)
+
 	object, err := backend.Create(ctx, name)
 	if nil != err {
 		return nil, nil, fmt.Errorf("creating %s: %w", name, err)
@@ -96,23 +115,17 @@ func Write(
 
 	counter := &countingWriter{inner: object}
 
-	sortBy := opts.SortBy
-	if 0 == len(sortBy) {
-		// Records arrive in seq order, so this costs nothing and makes the
-		// file's ordering explicit to any reader.
-		sortBy = []string{ColSeq}
+	options := []parquet.WriterOption{schema.Parquet(), parquet.Compression(&parquet.Zstd)}
+
+	if 0 != len(keys) {
+		sorting := make([]parquet.SortingColumn, 0, len(keys))
+		for _, key := range keys {
+			sorting = append(sorting, parquet.Ascending(key.column))
+		}
+		options = append(options, parquet.SortingWriterConfig(parquet.SortingColumns(sorting...)))
 	}
 
-	sorting := make([]parquet.SortingColumn, 0, len(sortBy))
-	for _, column := range sortBy {
-		sorting = append(sorting, parquet.Ascending(column))
-	}
-
-	writer := parquet.NewGenericWriter[any](counter,
-		schema.Parquet(),
-		parquet.Compression(&parquet.Zstd),
-		parquet.SortingWriterConfig(parquet.SortingColumns(sorting...)),
-	)
+	writer := parquet.NewGenericWriter[any](counter, options...)
 
 	stats := &Stats{
 		MinSeq:   records[0].Seq,
@@ -197,6 +210,176 @@ func Write(
 	}
 
 	return schema, stats, nil
+}
+
+/*!
+ * Order sorts records in place into the order Write would store them in.
+ *
+ * For callers that derive something from the first record of a file before
+ * writing it — compaction names its output that way — so that the record they
+ * pick is the one the file actually starts with.
+ */
+func Order(records []*model.Record, opts WriteOptions) {
+	if 0 == len(records) {
+		return
+	}
+
+	sortRecords(records, resolveSort(BuildSchema(records), opts))
+}
+
+/*!
+ * sortKey is one column of a file's declared order, resolved against the
+ * schema the file really has.
+ */
+type sortKey struct {
+	// column is the physical name, which is what sorting_columns refers to.
+	column string
+	// kind compares values the way the column stores them: an INT64 column
+	// orders 9 before 10, which comparing their text would not.
+	kind parquet.Type
+	// value is what the record holds in this column, or a null Value.
+	value func(*model.Record) parquet.Value
+}
+
+/*!
+ * resolveSort maps SortBy onto the file's columns.
+ *
+ * A name with no column in this file — a key that never had a value in the
+ * batch, or was dropped past MaxColumns — is left out of the order rather
+ * than declared. parquet-go would otherwise record it against column 0, which
+ * is a claim that the file is sorted by ts when it is not.
+ */
+func resolveSort(schema *Schema, opts WriteOptions) []sortKey {
+	sortBy := opts.SortBy
+	if 0 == len(sortBy) {
+		sortBy = []string{ColSeq}
+	}
+
+	text := func(field func(*model.Record) string) func(*model.Record) parquet.Value {
+		return func(rec *model.Record) parquet.Value {
+			if v := field(rec); "" != v {
+				return parquet.ByteArrayValue([]byte(v))
+			}
+			return parquet.Value{}
+		}
+	}
+
+	keys := make([]sortKey, 0, len(sortBy))
+
+	for _, name := range sortBy {
+		var key sortKey
+
+		switch name {
+		case ColTs:
+			key.value = func(rec *model.Record) parquet.Value { return parquet.Int64Value(rec.Ts.UnixMicro()) }
+		case ColIngestTs:
+			key.value = func(rec *model.Record) parquet.Value { return parquet.Int64Value(rec.IngestTs.UnixMicro()) }
+		case ColSeq:
+			key.value = func(rec *model.Record) parquet.Value { return parquet.Int64Value(int64(rec.Seq)) }
+		case ColIsJSON:
+			key.value = func(rec *model.Record) parquet.Value { return parquet.BooleanValue(rec.IsObject()) }
+		case ColStream:
+			key.value = func(rec *model.Record) parquet.Value { return parquet.ByteArrayValue([]byte(rec.Stream)) }
+		case ColLevel:
+			key.value = text(func(rec *model.Record) string { return rec.Level })
+		case ColMsg:
+			key.value = text(func(rec *model.Record) string { return rec.Msg })
+		case ColHost:
+			key.value = text(func(rec *model.Record) string { return rec.Host })
+		case ColRaw:
+			if !opts.KeepRaw {
+				continue
+			}
+			key.value = text(func(rec *model.Record) string { return rec.Raw })
+
+		default:
+			if !strings.HasPrefix(name, FieldPrefix) {
+				continue
+			}
+
+			source := strings.TrimPrefix(name, FieldPrefix)
+
+			found := false
+			for _, column := range schema.Columns() {
+				if column.SourceKey != source {
+					continue
+				}
+
+				name, found = column.Name, true
+				key.value = func(rec *model.Record) parquet.Value {
+					value, present := rec.Fields[column.SourceKey]
+					if !present || model.KindNull == value.Kind {
+						return parquet.Value{}
+					}
+					if converted, ok := valueFor(column.Kind, value); ok {
+						return converted
+					}
+					return parquet.Value{}
+				}
+				break
+			}
+			if !found {
+				continue
+			}
+		}
+
+		leaf, ok := schema.parquet.Lookup(name)
+		if !ok {
+			continue
+		}
+
+		key.column, key.kind = name, leaf.Node.Type()
+		keys = append(keys, key)
+	}
+
+	return keys
+}
+
+// sortRecords orders records by keys: ascending, nulls last — which is what
+// parquet.Ascending declares — and stable, so equal keys keep their order.
+func sortRecords(records []*model.Record, keys []sortKey) {
+	if 0 == len(keys) || len(records) < 2 {
+		return
+	}
+
+	type entry struct {
+		rec    *model.Record
+		values []parquet.Value
+	}
+
+	entries := make([]entry, len(records))
+	for i, rec := range records {
+		values := make([]parquet.Value, len(keys))
+		for k, key := range keys {
+			values[k] = key.value(rec)
+		}
+		entries[i] = entry{rec: rec, values: values}
+	}
+
+	sort.SliceStable(entries, func(i, j int) bool {
+		a, b := entries[i].values, entries[j].values
+
+		for k, key := range keys {
+			switch aNull, bNull := a[k].IsNull(), b[k].IsNull(); {
+			case aNull && bNull:
+				continue
+			case aNull:
+				return false
+			case bNull:
+				return true
+			}
+
+			if order := key.kind.Compare(a[k], b[k]); 0 != order {
+				return order < 0
+			}
+		}
+
+		return false
+	})
+
+	for i := range entries {
+		records[i] = entries[i].rec
+	}
 }
 
 // appendEnvelope writes the fixed columns for one record.

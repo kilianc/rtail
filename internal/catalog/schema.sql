@@ -24,7 +24,11 @@ CREATE TABLE IF NOT EXISTS files (
   has_raw       INTEGER NOT NULL,
   state         TEXT    NOT NULL DEFAULT 'live',   -- live | compacting | tombstoned
   created_at    INTEGER NOT NULL,
-  tombstoned_at INTEGER
+  tombstoned_at INTEGER,
+  -- A severity every record in the file meets, because downsampling was
+  -- applied to all of it; NULL when nothing is promised. Catalogs created
+  -- before this column existed gain it in catalog.migrate.
+  level_floor   TEXT
 );
 
 -- The pruning index. Column order matters: equality on stream and state first,

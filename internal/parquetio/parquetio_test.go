@@ -12,6 +12,7 @@ import (
 	"github.com/kilianc/rtail/v2/internal/normalize"
 	"github.com/kilianc/rtail/v2/internal/parquetio"
 	"github.com/kilianc/rtail/v2/internal/storage"
+	"github.com/parquet-go/parquet-go"
 )
 
 func newBackend(t *testing.T) *storage.Local {
@@ -478,5 +479,222 @@ func TestTimestampPrecisionSurvives(t *testing.T) {
 
 	if !back[0].Ts.Equal(rec.Ts) {
 		t.Errorf("ts = %s, want %s (microsecond precision)", back[0].Ts, rec.Ts)
+	}
+}
+
+// declaredOrder reads the sorting_columns a file's first row group declares.
+func declaredOrder(t *testing.T, backend storage.Backend, name string) []string {
+	t.Helper()
+
+	ctx := context.Background()
+
+	reader, err := backend.Open(ctx, name)
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+
+	info, err := backend.Stat(ctx, name)
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	file, err := parquet.OpenFile(reader, info.Size)
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	var out []string
+	for _, column := range file.RowGroups()[0].SortingColumns() {
+		out = append(out, strings.Join(column.Path(), "."))
+	}
+
+	return out
+}
+
+/*!
+ * sorting_columns is a promise to every reader of the file, and parquet-go's
+ * writer only records it — rows go out in whatever order they came in. Write
+ * has to keep the promise itself.
+ */
+func TestDeclaredSortOrderIsTrue(t *testing.T) {
+	ctx := context.Background()
+	backend := newBackend(t)
+
+	base := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
+
+	var records []*model.Record
+	for i, offset := range []int{5, 1, 4, 2, 3} {
+		rec := record(t, uint64(i+1), fmt.Sprintf(`{"i":%d}`, i))
+		rec.Ts = base.Add(time.Duration(offset) * time.Second)
+		records = append(records, rec)
+	}
+
+	if _, _, err := parquetio.Write(ctx, backend, "L1-order.parquet", records, parquetio.WriteOptions{
+		KeepRaw: true,
+		SortBy:  []string{parquetio.ColTs, parquetio.ColSeq},
+	}); nil != err {
+		t.Fatal(err)
+	}
+
+	if got := declaredOrder(t, backend, "L1-order.parquet"); "ts,seq" != strings.Join(got, ",") {
+		t.Errorf("declared order = %v, want [ts seq]", got)
+	}
+
+	back, err := parquetio.Read(ctx, backend, "L1-order.parquet", 0)
+	if nil != err {
+		t.Fatal(err)
+	}
+	for i := 1; i < len(back); i++ {
+		if back[i].Ts.Before(back[i-1].Ts) {
+			t.Fatalf("row %d (ts %s) precedes row %d (ts %s) in a file declared sorted by ts",
+				i, back[i].Ts, i-1, back[i-1].Ts)
+		}
+	}
+}
+
+/*!
+ * Clustering by a promoted key has to name the column the key was stored in,
+ * not FieldPrefix + key — "service.name" lives in a_service_name — and has to
+ * order by the stored type, since an INT64 column declared ascending holds 9
+ * before 10 where their text would not.
+ */
+func TestSortByAPromotedKeyUsesItsColumnAndType(t *testing.T) {
+	ctx := context.Background()
+	backend := newBackend(t)
+
+	var records []*model.Record
+	for i, n := range []int{10, 9, 100, 2} {
+		records = append(records, record(t, uint64(i+1), fmt.Sprintf(`{"service.name":"api","n":%d}`, n)))
+	}
+
+	if _, _, err := parquetio.Write(ctx, backend, "L2-n.parquet", records, parquetio.WriteOptions{
+		SortBy: []string{parquetio.FieldPrefix + "n", parquetio.ColTs, parquetio.ColSeq},
+	}); nil != err {
+		t.Fatal(err)
+	}
+
+	if got := declaredOrder(t, backend, "L2-n.parquet"); "a_n,ts,seq" != strings.Join(got, ",") {
+		t.Errorf("declared order = %v, want [a_n ts seq]", got)
+	}
+
+	back, err := parquetio.Read(ctx, backend, "L2-n.parquet", 0)
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	var got []int64
+	for _, rec := range back {
+		got = append(got, rec.Fields["n"].Int)
+	}
+	if "[2 9 10 100]" != fmt.Sprint(got) {
+		t.Errorf("rows ordered %v, want numeric order [2 9 10 100]", got)
+	}
+
+	if _, _, err := parquetio.Write(ctx, backend, "L2-svc.parquet", records, parquetio.WriteOptions{
+		SortBy: []string{parquetio.FieldPrefix + "service.name", parquetio.ColTs, parquetio.ColSeq},
+	}); nil != err {
+		t.Fatal(err)
+	}
+
+	if got := declaredOrder(t, backend, "L2-svc.parquet"); "a_service_name,ts,seq" != strings.Join(got, ",") {
+		t.Errorf("declared order = %v, want [a_service_name ts seq]", got)
+	}
+}
+
+// A sort column the file has no column for cannot be declared. parquet-go
+// would record it against column 0 — a claim about a column it never sorted.
+func TestAbsentSortColumnIsNotDeclared(t *testing.T) {
+	ctx := context.Background()
+	backend := newBackend(t)
+
+	records := []*model.Record{record(t, 1, `{"a":1}`), record(t, 2, `{"a":2}`)}
+
+	if _, _, err := parquetio.Write(ctx, backend, "L2-absent.parquet", records, parquetio.WriteOptions{
+		SortBy: []string{parquetio.FieldPrefix + "nowhere", parquetio.ColTs, parquetio.ColSeq},
+	}); nil != err {
+		t.Fatal(err)
+	}
+
+	if got := declaredOrder(t, backend, "L2-absent.parquet"); "ts,seq" != strings.Join(got, ",") {
+		t.Errorf("declared order = %v, want [ts seq]", got)
+	}
+}
+
+/*!
+ * A file cannot say which key a mangled column came from, or that a string
+ * column holding "{}" was a string. The catalog can, and anything that writes
+ * what it read back out — compaction — must use it: guessing renamed
+ * "http.status" to "http_status", merged "a.b" with "a-b", and turned a
+ * string that looked like JSON into an object.
+ */
+func TestReadWithCatalogColumnsRestoresKeysAndKinds(t *testing.T) {
+	ctx := context.Background()
+	backend := newBackend(t)
+
+	records := []*model.Record{
+		record(t, 1, `{"http.status":200,"a.b":"dot","a-b":"dash","text":"{}"}`),
+		record(t, 2, `{"http.status":500,"a.b":"dot2","a-b":"dash2","text":"[1]"}`),
+	}
+
+	schema, _, err := parquetio.Write(ctx, backend, "L0-keys.parquet", records, parquetio.WriteOptions{KeepRaw: true})
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	back, err := parquetio.ReadWith(ctx, backend, "L0-keys.parquet", parquetio.ReadOptions{Columns: schema.Columns()})
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	for i, rec := range back {
+		for _, key := range []string{"http.status", "a.b", "a-b", "text"} {
+			want, got := records[i].Fields[key], rec.Fields[key]
+			if want.Kind != got.Kind || want.Text() != got.Text() {
+				t.Errorf("record %d key %q = %+v, want %+v", i, key, got, want)
+			}
+		}
+		if 4 != len(rec.Fields) {
+			t.Errorf("record %d has fields %v, want exactly the four written", i, rec.Fields)
+		}
+	}
+}
+
+/*!
+ * "Most recent" means highest seq, not last in the file: a compacted file is
+ * sorted by ts or by a clustering key, and its newest record can sit anywhere
+ * in it.
+ */
+func TestReadLimitKeepsTheHighestSeqWhateverTheFileOrder(t *testing.T) {
+	ctx := context.Background()
+	backend := newBackend(t)
+
+	base := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
+
+	// The later the seq, the earlier the ts, so ts order is reverse seq order.
+	var records []*model.Record
+	for i := range 1000 {
+		rec := record(t, uint64(i+1), fmt.Sprintf(`{"i":%d}`, i))
+		rec.Ts = base.Add(-time.Duration(i) * time.Second)
+		records = append(records, rec)
+	}
+
+	if _, _, err := parquetio.Write(ctx, backend, "L1-late.parquet", records, parquetio.WriteOptions{
+		SortBy: []string{parquetio.ColTs, parquetio.ColSeq},
+	}); nil != err {
+		t.Fatal(err)
+	}
+
+	back, err := parquetio.Read(ctx, backend, "L1-late.parquet", 3)
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	if 3 != len(back) || 998 != back[0].Seq || 1000 != back[2].Seq {
+		var seqs []uint64
+		for _, rec := range back {
+			seqs = append(seqs, rec.Seq)
+		}
+		t.Errorf("seqs = %v, want [998 999 1000]", seqs)
 	}
 }
