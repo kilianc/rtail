@@ -1,27 +1,73 @@
 name: CI
 
-# Every change reaches main through a pull request, so a PR run and a post-merge
-# run on main are the only two that matter.
+# Every job here is a thin wrapper around `tools/ci.sh <job>`, which is also
+# what `make ci` runs. The checks used to live in this file as `run:` blocks,
+# which meant the only way to find out whether they passed was to push — and
+# that the Makefile and this file were two descriptions of the same thing,
+# free to disagree. The script is the description; this file only supplies the
+# machines.
+
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
 
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
-  build:
+  # The server. v2 moved it from Node to Go; the webapp is embedded into the
+  # binary, so the Go build needs the assets built first.
+  #
+  # P2 embeds DuckDB, which is cgo — so this is a per-platform build now, not
+  # one static binary. The matrix is what stops "works on my machine" from
+  # becoming the release process, and it is the half of CI a laptop cannot
+  # stand in for.
+  server:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: go.mod
+
+      # The interop tests assert that our Parquet files are readable by a
+      # completely unrelated implementation. That claim is the product's core
+      # promise, so it is checked rather than asserted — and the tests skip
+      # themselves when duckdb is absent, which is why it is installed here
+      # and why tools/ci.sh refuses to run without it.
+      - name: Install duckdb (linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl -fsSL -o /tmp/duckdb.zip \
+            https://github.com/duckdb/duckdb/releases/download/v1.4.1/duckdb_cli-linux-amd64.zip
+          sudo unzip -q /tmp/duckdb.zip -d /usr/local/bin
+
+      - name: Install duckdb (macos)
+        if: runner.os == 'macOS'
+        run: brew install duckdb
+
+      - run: sh tools/ci.sh server
+
+  # The webapp. Node builds it and is not in the product: the server embeds
+  # the bundle and the client is a Go binary, so the only thing a Node version
+  # can break here is the build itself.
+  webapp:
     runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
       matrix:
-        # Lower bound is the `engines` floor — the first release that strips
-        # TypeScript types without a flag, which is what lets the CLI ship as
-        # .ts with no build step. Upper bound is current LTS.
-        node: ['22.18', '24']
+        # Lower bound is the launcher's `engines` floor — the one piece of
+        # JavaScript that still runs on a user's machine. Upper bound is
+        # current LTS. The local image pins one Node, so this matrix is the
+        # other half of CI a laptop cannot stand in for.
+        node: ['20', '22']
 
     steps:
       - uses: actions/checkout@v4
@@ -31,50 +77,48 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
 
-      - run: npm ci
+      - run: sh tools/ci.sh webapp
 
-      - name: Type-check
-        run: npm run typecheck
-
-      - name: Build the webapp
-        run: npm run build
-
-      - name: Build the distributable webapp
-        run: npm run dist
-
-      # Serves dist/, so this has to come after the build above.
-      - name: Test
-        run: npm test
-
-  e2e:
+  # The npm packages, laid out and exercised but never published here.
+  #
+  # This is the step that would have caught a launcher that cannot find its
+  # binary, which is the one failure the install layout can have and the one
+  # that only shows up after `npm publish`.
+  npm:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: go.mod
+
       - uses: actions/setup-node@v4
         with:
-          node-version: '22.18'
-          cache: npm
+          node-version: '20'
 
-      - run: npm ci
+      - run: sh tools/ci.sh npm
 
-      - name: Build the distributable webapp
-        run: npm run dist
+  # The whole thing, exactly as it ships.
+  image:
+    runs-on: ubuntu-latest
 
-      # The version is pinned exactly in package.json; installing by that name
-      # keeps the browser build and the driver in step.
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: End-to-end smoke tests
-        run: npm run test:e2e
+      - uses: docker/setup-buildx-action@v3
 
-      - if: failure()
-        uses: actions/upload-artifact@v4
+      # Built here rather than in the script so the layer cache GitHub hosts
+      # is actually used; the script then only smoke-tests what came out.
+      - uses: docker/build-push-action@v6
         with:
-          name: playwright-report
-          path: |
-            playwright-report/
-            test-results/
-          retention-days: 7
+          context: .
+          push: false
+          load: true
+          tags: rtail:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - run: RTAIL_CI_IMAGE_PREBUILT=1 sh tools/ci.sh image

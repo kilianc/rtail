@@ -1,30 +1,159 @@
 /*!
- * socket.io wiring.
+ * Server-sent events wiring.
+ *
+ * v2 replaced socket.io with SSE. The traffic was only ever one-directional —
+ * everything the client tells the server is a subscription, and that is a URL —
+ * so a websocket upgrade and a 40KB client bought nothing. EventSource
+ * reconnects on its own, which is most of what socket.io was there for.
+ *
+ * The subscription carries the filter as well as the stream, so a filtered live
+ * tail is the server evaluating the same rQL the search bar sends to
+ * /v1/search, against the ingest stream, rather than the browser discarding
+ * most of what it was sent.
  */
 
-import { io, type Socket } from 'socket.io-client'
-import type { WireLine } from './types.ts'
+import type { WireLine } from './types.js'
 
 interface ServerEvents {
+  connect: () => void
   streams: (streams: string[]) => void
   backlog: (lines: WireLine[] | null) => void
   line: (line: WireLine) => void
+  error: (message: string, position?: number) => void
 }
 
-interface ClientEvents {
-  'select stream': (stream: string | null) => void
+type Handlers = { [K in keyof ServerEvents]: ServerEvents[K][] }
+
+export interface Connection {
+  on<K extends keyof ServerEvents>(event: K, handler: ServerEvents[K]): void
+  /** Points the feed at a stream and filter. Re-subscribing to the same pair is a no-op. */
+  subscribe(stream: string | null, query: string): void
+  /** Re-opens the current subscription, pulling a fresh backlog. */
+  reconnect(): void
+  close(): void
 }
 
-export type Connection = Socket<ServerEvents, ClientEvents>
-
-/**
- * Connects back to the origin that served the app.
- *
- * The server mounts socket.io under the app's own path in development, so the
- * path is derived from the document location rather than hardcoded.
- */
 export function connect(): Connection {
-  return io(window.location.origin, {
-    path: window.location.pathname.replace(/\/?$/, '/') + 'socket.io'
-  })
+  const handlers: Handlers = { connect: [], streams: [], backlog: [], line: [], error: [] }
+
+  let source: EventSource | null = null
+  /*!
+   * The subscription currently open, as two fields rather than one string.
+   *
+   * It used to be packed into `<stream>\0<query>` and taken apart again by
+   * `reconnect`, which split on a space — so it got back the whole packed
+   * string, NUL and all, and re-subscribed to a stream named
+   * `api-gateway\u0000`. The server has no stream by that name, so it
+   * answered with an empty backlog and every line on screen vanished.
+   * Nothing needs the packed form except the no-op guard in `subscribe`,
+   * and that can compare the two fields directly.
+   */
+  let current: { stream: string | null; query: string } | null = null
+  let closed = false
+
+  const dispatch = <K extends keyof ServerEvents>(
+    event: K,
+    ...args: Parameters<ServerEvents[K]>
+  ) => {
+    for (const handler of handlers[event]) {
+      ;(handler as (...a: unknown[]) => void)(...args)
+    }
+  }
+
+  // A malformed frame must not take the connection down with it.
+  const parse = <T>(data: string): T | null => {
+    try {
+      return JSON.parse(data) as T
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Opens (or re-opens) the feed.
+   *
+   * The subscription *is* the URL, so changing it means a new connection. That
+   * is also why the guard in `subscribe` matters: EventSource re-opens by
+   * itself after a drop and App re-subscribes on 'connect', and without the
+   * guard those two would chase each other forever.
+   */
+  function open(stream: string | null, query: string): void {
+    source?.close()
+
+    if (closed) return
+
+    current = { stream, query }
+
+    const url = new URL('/v1/tail', window.location.origin)
+    if (stream) url.searchParams.set('stream', stream)
+    if (query) url.searchParams.set('q', query)
+
+    source = new EventSource(url)
+
+    source.addEventListener('open', () => dispatch('connect'))
+
+    source.addEventListener('streams', (event) => {
+      const streams = parse<string[]>(event.data)
+      if (streams) dispatch('streams', streams)
+    })
+
+    source.addEventListener('backlog', (event) => {
+      dispatch('backlog', parse<WireLine[]>(event.data) ?? [])
+    })
+
+    source.addEventListener('line', (event) => {
+      const line = parse<WireLine>(event.data)
+      if (line) dispatch('line', line)
+    })
+
+    /*!
+     * An SSE error carries no detail — the spec gives the page a bare event —
+     * so a rejected filter cannot be reported through it. Rather than guess,
+     * the request is replayed with fetch, which does return the reason, and
+     * only a genuine 4xx is surfaced. A dropped connection stays silent
+     * because EventSource is already retrying it.
+     */
+    source.addEventListener('error', () => {
+      if (closed) return
+
+      fetch(url, { headers: { accept: 'application/json' } })
+        .then(async (response) => {
+          if (response.ok || response.status < 400) return
+          const body = await response.json().catch(() => ({}))
+          // The position is what lets the command bar underline the offending
+          // character, so it has to survive this detour.
+          dispatch('error', body.message ?? body.error ?? 'the live feed was rejected', body.position)
+        })
+        .catch(() => {})
+    })
+  }
+
+  return {
+    on(event, handler) {
+      handlers[event].push(handler)
+    },
+
+    subscribe(stream, query) {
+      if (source && current && current.stream === stream && current.query === query) return
+      open(stream, query)
+    },
+
+    /*!
+     * Re-opens the current subscription.
+     *
+     * Used when resuming a held feed. Whatever arrived while it was held was
+     * counted rather than kept — keeping it would mean an unbounded buffer for
+     * a tab somebody left open over lunch — so resuming pulls the server's
+     * backlog and lands on the same bounded window a fresh tab would get.
+     */
+    reconnect() {
+      if (current) open(current.stream, current.query)
+    },
+
+    close() {
+      closed = true
+      source?.close()
+      source = null
+    }
+  }
 }

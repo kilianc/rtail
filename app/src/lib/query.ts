@@ -1,297 +1,487 @@
+import { formatCount } from './format.js'
+import type { WireLine } from './types.js'
+
 /*!
- * The filter box's query language.
+ * Editing rQL from the UI.
  *
- * It used to be a bare regexp over the rendered text, which is the wrong tool
- * the moment the lines are JSON: `level.*error` happily matches a payload
- * whose `level` is `info` and whose message three keys away says "error". So
- * the box now parses a small language — terms ANDed together, each one
- * negatable, and field terms that address the parsed payload instead of its
- * text.
+ * Most queries are built by clicking, not typing: expand a row, click a value,
+ * get "filter to this" and "exclude this". That only works if adding a term to
+ * an existing query is a real operation rather than string concatenation — the
+ * bar has to keep showing something the user could have typed themselves, and
+ * clicking the same value twice must not produce `a=1 a=1`.
  *
- *   payment failed     both words, anywhere in the line
- *   "payment failed"   that phrase
- *   -healthcheck       lines without it
- *   /GET \/1\/users/   an explicit regexp
- *   level:error        the JSON field contains "error"
- *   user.id=42         the field is exactly that
- *   duration>250       numeric comparison
- *   trace_id:*         the field is there at all
- *
- * Matching is case-insensitive until a term contains an uppercase letter (the
- * smart-case convention from ag and ripgrep), so the common case needs no
- * flags and a deliberate `Error` still means `Error`.
- *
- * A field term never matches a line without that field — including `!=`. That
- * makes `status!=200` mean "a status, and not 200"; for "not 200, whether or
- * not there is a status" the negated form `-status:200` is the one to reach
- * for.
+ * This is deliberately a lexer over top-level terms rather than a full parser.
+ * The server owns the grammar; the client only needs to add, remove and
+ * recognise terms, and a query with parentheses in it is left alone rather
+ * than rearranged behind the user's back.
  */
 
-import { getPath, parsePath, stringify, type Path } from './json.ts'
-
-/** Longest first, so `>=` is never read as `>` followed by a value of `=1`. */
-const OPERATORS = ['!=', '>=', '<=', ':', '=', '>', '<'] as const
-
-type Operator = (typeof OPERATORS)[number]
-
-/** A path that can be typed: the same shape the suggestions offer. */
-const PATH = /^[A-Za-z_$][\w$-]*(?:\.[\w$-]+|\[\d+\])*$/
-
-/** Flags worth honouring. `g` and `y` carry state between calls; drop them. */
-const FLAGS = /[^imsu]/g
-
-export type Needle =
-  | { type: 'literal'; value: string; caseSensitive: boolean }
-  | { type: 'regexp'; re: RegExp }
-
-interface TextTerm {
-  kind: 'text'
+/** One top-level term of a query. */
+export interface Term {
+  /** The exact source text, so re-rendering is lossless. */
+  text: string
+  /** Present for `field op value` terms; absent for free text and groups. */
+  field?: string
+  op?: string
+  value?: string
   negated: boolean
-  needle: Needle
 }
 
-interface FieldTerm {
-  kind: 'field'
-  negated: boolean
-  path: Path
-  op: Operator
-  /** null for `field:*`, which asks only whether the field is there. */
-  needle: Needle | null
-  /** The right-hand side as a number, parsed once for the comparisons. */
-  number: number
-}
+const OPERATORS = [':~', '>=', '<=', '=', ':', '>', '<']
 
-export type Term = TextTerm | FieldTerm
+/**
+ * Splits a query into top-level terms.
+ *
+ * Quoted strings and parenthesised groups stay whole, so a term is never cut
+ * in half by a space that happens to be inside one.
+ */
+export function terms(query: string): Term[] {
+  const out: Term[] = []
 
-export interface Query {
-  /** Every term has to match. No terms means every line matches. */
-  terms: Term[]
-  /** What to mark in the matching lines: the positive terms' needles. */
-  needles: Needle[]
-  /** Set when part of the input did not parse. The rest still filters. */
-  error: string | null
-  isEmpty: boolean
-}
+  let depth = 0
+  let quote = ''
+  let current = ''
 
-const EMPTY: Query = { terms: [], needles: [], error: null, isEmpty: true }
+  const flush = () => {
+    const text = current.trim()
+    current = ''
+    if (text) out.push(parseTerm(text))
+  }
 
-export function parseQuery(input: string): Query {
-  if (!input.trim()) return EMPTY
+  for (let i = 0; i < query.length; i++) {
+    const char = query[i]
 
-  const terms: Term[] = []
-  let error: string | null = null
+    if (quote) {
+      current += char
+      if (char === quote && '\\' !== query[i - 1]) quote = ''
+      continue
+    }
 
-  for (const token of tokenize(input)) {
-    try {
-      const term = parseToken(token)
-      if (term) terms.push(term)
-    } catch (err) {
-      // A half-typed regexp is the normal state of a box being typed into.
-      // The terms that did parse keep filtering, and the box says why.
-      error ??= (err as Error).message
+    switch (char) {
+      case '"':
+      case "'":
+        quote = char
+        current += char
+        break
+
+      case '(':
+        depth++
+        current += char
+        break
+
+      case ')':
+        depth = Math.max(0, depth - 1)
+        current += char
+        break
+
+      case ' ':
+      case '\t':
+        if (0 === depth) flush()
+        else current += char
+        break
+
+      default:
+        current += char
     }
   }
 
-  // Only the terms whose value is text the line actually contains. The bound
-  // in `duration>250` is not something to mark: the payloads that match it are
-  // precisely the ones that do not say 250.
-  const needles = terms
-    .filter((term) => !term.negated && ('text' === term.kind || ':' === term.op || '=' === term.op))
-    .map((term) => term.needle)
-    .filter((needle): needle is Needle => null !== needle)
+  flush()
 
-  return { terms, needles, error, isEmpty: 0 === terms.length }
+  return out
 }
 
-export function matchesQuery(query: Query, line: { text: string; content: unknown }): boolean {
-  for (const term of query.terms) {
-    const hit =
-      'text' === term.kind
-        ? matchNeedle(term.needle, line.text)
-        : matchField(term, line.content)
+function parseTerm(text: string): Term {
+  let body = text
+  let negated = false
 
-    if (hit === term.negated) return false
+  if (body.startsWith('-') && body.length > 1) {
+    negated = true
+    body = body.slice(1)
   }
 
-  return true
-}
+  // A group or a bare keyword is not a comparison.
+  if (body.startsWith('(') || /^(AND|OR|NOT)$/i.test(body)) {
+    return { text, negated }
+  }
 
-export function matchNeedle(needle: Needle, text: string): boolean {
-  if ('regexp' === needle.type) return needle.re.test(text)
-  if (needle.caseSensitive) return text.includes(needle.value)
+  let best = -1
+  let bestOp = ''
 
-  return text.toLowerCase().includes(needle.value.toLowerCase())
-}
-
-function matchField(term: FieldTerm, content: unknown): boolean {
-  const value = getPath(content, term.path)
-  if (undefined === value) return false
-  if (null === term.needle) return true
-
-  switch (term.op) {
-    case ':':
-      return matchNeedle(term.needle, stringify(value))
-    case '=':
-      return equals(term.needle, value)
-    case '!=':
-      return !equals(term.needle, value)
-    default: {
-      const left = toNumber(value)
-      if (Number.isNaN(left) || Number.isNaN(term.number)) return false
-
-      if ('>' === term.op) return left > term.number
-      if ('>=' === term.op) return left >= term.number
-      if ('<' === term.op) return left < term.number
-      return left <= term.number
+  for (const op of OPERATORS) {
+    const at = body.indexOf(op)
+    if (at < 0) continue
+    if (best < 0 || at < best || (at === best && op.length > bestOp.length)) {
+      best = at
+      bestOp = op
     }
   }
+
+  if (best <= 0) return { text, negated }
+
+  return {
+    text,
+    negated,
+    field: body.slice(0, best),
+    op: bestOp,
+    value: unquote(body.slice(best + bestOp.length))
+  }
 }
 
-function equals(needle: Needle, value: unknown): boolean {
-  const text = stringify(value)
-  if ('regexp' === needle.type) return needle.re.test(text)
-  if (needle.caseSensitive) return text === needle.value
-
-  return text.toLowerCase() === needle.value.toLowerCase()
-}
-
-function toNumber(value: unknown): number {
-  if ('number' === typeof value) return value
-  if ('string' === typeof value && value.trim()) return Number(value)
-
-  return Number.NaN
+function unquote(value: string): string {
+  if (value.length >= 2 && ('"' === value[0] || "'" === value[0]) && value[value.length - 1] === value[0]) {
+    return value.slice(1, -1).replace(/\\(.)/g, '$1')
+  }
+  return value
 }
 
 /**
- * Splits on whitespace, except inside quotes and regexps — the two places a
- * space is part of the term rather than the end of it.
+ * Quotes a value if it would not survive being written bare.
+ *
+ * Deliberately matches the server's own rule, so a query built by clicking and
+ * one typed by hand render identically.
  */
-function tokenize(input: string): string[] {
-  const tokens: string[] = []
-  let token = ''
-  let quote: string | null = null
-  let inRegexp = false
+export function quote(value: string): string {
+  if ('' === value) return '""'
+  if (/[\s"'()<>=:-]/.test(value)) {
+    return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  }
+  return value
+}
 
-  for (let index = 0; index < input.length; index++) {
-    const char = input[index]
+function render(terms: Term[]): string {
+  return terms.map((term) => term.text).join(' ').trim()
+}
 
-    if ('\\' === char && (quote || inRegexp) && index + 1 < input.length) {
-      token += char + input[++index]
-      continue
-    }
+function termText(field: string, op: string, value: string, negated: boolean): string {
+  return `${negated ? '-' : ''}${field}${op}${quote(value)}`
+}
 
-    if (quote) {
-      if (char === quote) quote = null
-      token += char
-      continue
-    }
+/**
+ * Adds `field op value`, replacing any existing term for the same field and
+ * operator — clicking two values of one field means "show me that one", not
+ * "show me rows that are somehow both".
+ */
+export function withTerm(
+  query: string,
+  field: string,
+  op: string,
+  value: string,
+  negated = false
+): string {
+  const kept = terms(query).filter(
+    (term) => !(term.field === field && term.op === op && term.negated === negated)
+  )
 
-    if (inRegexp) {
-      if ('/' === char) inRegexp = false
-      token += char
-      continue
-    }
+  kept.push({ text: termText(field, op, value, negated), field, op, value, negated })
 
-    if ('"' === char || "'" === char) {
-      quote = char
-      token += char
-      continue
-    }
+  return render(kept)
+}
 
-    // A slash opens a regexp only where a value can start; anywhere else it is
-    // part of a path being searched for, as in `GET /1/users`.
-    if ('/' === char && startsValue(token)) {
-      inRegexp = true
-      token += char
-      continue
-    }
+/** Removes every term for a field, whatever its operator. */
+export function withoutField(query: string, field: string): string {
+  return render(terms(query).filter((term) => term.field !== field))
+}
 
-    if (/\s/.test(char)) {
-      if (token) tokens.push(token)
-      token = ''
-      continue
-    }
+/** Removes one exact term. */
+export function withoutTerm(query: string, text: string): string {
+  return render(terms(query).filter((term) => term.text !== text))
+}
 
-    token += char
+/** Reports whether a query already asserts exactly this. */
+export function hasTerm(
+  query: string,
+  field: string,
+  op: string,
+  value: string,
+  negated = false
+): boolean {
+  return terms(query).some(
+    (term) =>
+      term.field === field &&
+      term.op === op &&
+      term.value === value &&
+      term.negated === negated
+  )
+}
+
+/**
+ * Toggles a filter: clicking the value you already filtered by removes it.
+ *
+ * Without this, "filter to this" is a one-way door and the only way back is
+ * editing the text by hand.
+ */
+export function toggleTerm(
+  query: string,
+  field: string,
+  op: string,
+  value: string,
+  negated = false
+): string {
+  if (hasTerm(query, field, op, value, negated)) {
+    return withoutTerm(query, termText(field, op, value, negated))
+  }
+  return withTerm(query, field, op, value, negated)
+}
+
+/** The fields a query mentions, for highlighting them in the explorer. */
+export function fieldsUsed(query: string): string[] {
+  const seen = new Set<string>()
+
+  for (const term of terms(query)) {
+    if (term.field) seen.add(term.field)
   }
 
-  if (token) tokens.push(token)
-  return tokens
+  return [...seen]
 }
 
-function startsValue(token: string): boolean {
-  return /^[-!]?$/.test(token) || OPERATORS.some((op) => token.endsWith(op))
+/*!
+ * Completion.
+ */
+export interface Completion {
+  /** What gets inserted. */
+  value: string
+  /** What is shown. */
+  label: string
+  kind: string
+  detail?: string
 }
 
-function parseToken(token: string): Term | null {
-  const negated = token.startsWith('-') || token.startsWith('!')
-  const rest = negated ? token.slice(1) : token
-  if (!rest) return null
+/**
+ * Suggests completions for the token the cursor is inside.
+ *
+ * Field names come from the catalog — every key that has actually appeared on
+ * this stream — which is what makes the completion real rather than a guess at
+ * what a log line might contain.
+ */
+export function complete(
+  query: string,
+  cursor: number,
+  fields: { name: string; kind: string; occurrences?: number }[]
+): { from: number; to: number; items: Completion[] } {
+  const before = query.slice(0, cursor)
+  const start = Math.max(before.lastIndexOf(' '), before.lastIndexOf('(')) + 1
+  const token = query.slice(start, cursor)
 
-  const field = splitField(rest)
-  if (!field) return { kind: 'text', negated, needle: parseNeedle(rest) }
-
-  const wildcard = ':' === field.op && '*' === field.value
-  const needle = wildcard ? null : parseNeedle(field.value)
-
-  return {
-    kind: 'field',
-    negated,
-    path: field.path,
-    op: field.op,
-    needle,
-    number: needle && 'literal' === needle.type ? Number(needle.value) : Number.NaN
-  }
-}
-
-function splitField(token: string): { path: Path; op: Operator; value: string } | null {
-  let found: { index: number; op: Operator } | null = null
-
+  // Past an operator the user is typing a value, and we have nothing better to
+  // offer than what they already know.
   for (const op of OPERATORS) {
-    const index = token.indexOf(op)
-    if (-1 === index) continue
-    if (!found || index < found.index) found = { index, op }
+    if (token.includes(op)) return { from: start, to: cursor, items: [] }
   }
 
-  if (!found || 0 === found.index) return null
+  const prefix = token.replace(/^-/, '').toLowerCase()
+  const negated = token.startsWith('-')
 
-  const head = token.slice(0, found.index)
-  const value = token.slice(found.index + found.op.length)
+  const items = fields
+    .filter((field) => field.name.toLowerCase().startsWith(prefix))
+    .sort((a, b) => (b.occurrences ?? 0) - (a.occurrences ?? 0) || a.name.localeCompare(b.name))
+    .slice(0, 12)
+    .map((field) => ({
+      value: `${negated ? '-' : ''}${field.name}${'envelope' === field.kind ? '' : '='}`,
+      label: field.name,
+      kind: field.kind,
+      // The compact form the explorer and the board both use. This was
+      // `17,611×`, which is the same fact at twice the width and in a
+      // different notation from the count for the same field three
+      // inches to the left.
+      detail: field.occurrences ? formatCount(field.occurrences) : undefined
+    }))
 
-  if (!PATH.test(head)) return null
-
-  // `https://example.com` is a URL someone is looking for, not a query about a
-  // field called `https`.
-  if (':' === found.op && value.startsWith('//')) return null
-
-  const path = parsePath(head)
-  return path ? { path, op: found.op, value } : null
+  return { from: start, to: cursor, items }
 }
 
-function parseNeedle(raw: string): Needle {
-  const regexp = /^\/(.+)\/([a-z]*)$/.exec(raw)
+/*!
+ * The substrings a query is looking for, for highlighting in the results.
+ *
+ * Free text and `k:substring` terms only. An `=` is an exact match on a whole
+ * field and marking it inside a message would highlight a coincidence rather
+ * than the reason the row matched; a negated term is why a row is *not* here,
+ * so marking it would be actively misleading.
+ */
+export function highlightTerms(query: string): string[] {
+  const out: string[] = []
 
-  if (regexp) {
-    const [, source, given] = regexp
-    let flags = given.replace(FLAGS, '')
+  for (const term of terms(query)) {
+    if (term.negated) continue
 
-    // Smart case, the regexp spelling of it.
-    if (!flags.includes('i') && !/[A-Z]/.test(source)) flags += 'i'
+    if (undefined === term.field) {
+      const text = unquote(term.text)
+      if (text && !/^(AND|OR|NOT)$/i.test(text) && !text.startsWith('(')) out.push(text)
+      continue
+    }
 
+    if (':' === term.op && term.value) out.push(term.value)
+  }
+
+  return out.filter((term) => term.length > 1)
+}
+
+const HTML_ESCAPE = /[&<>"]/
+
+/*!
+ * Wraps matches in <mark>, without touching markup.
+ *
+ * The row body is already HTML — ANSI colouring produces spans — so a naive
+ * replace would happily rewrite the inside of a tag and corrupt it. This walks
+ * the string and only substitutes in the runs between tags.
+ *
+ * Matching is over the escaped text, so a term containing one of & < > " will
+ * not match the entity it became. That is rare in a search box and the failure
+ * is a missing highlight rather than broken markup, which is the right way
+ * round.
+ */
+export function highlight(html: string, needles: string[]): string {
+  if (0 === needles.length) return html
+
+  const usable = needles.filter((needle) => !HTML_ESCAPE.test(needle))
+  if (0 === usable.length) return html
+
+  const pattern = new RegExp(
+    usable.map((needle) => needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
+    'gi'
+  )
+
+  const mark = (text: string) => text.replace(pattern, '<mark>$&</mark>')
+
+  let out = ''
+  let at = 0
+
+  while (at < html.length) {
+    const open = html.indexOf('<', at)
+
+    if (open < 0) {
+      out += mark(html.slice(at))
+      break
+    }
+
+    out += mark(html.slice(at, open))
+
+    const close = html.indexOf('>', open)
+    if (close < 0) {
+      out += html.slice(open)
+      break
+    }
+
+    out += html.slice(open, close + 1)
+    at = close + 1
+  }
+
+  return out
+}
+
+/*!
+ * Reads a field off a record for display in a column.
+ *
+ * Envelope first, then promoted root keys, then a dotted path into a nested
+ * one — the same precedence the server's resolver and its live predicate use,
+ * so a column shows the value the query would have matched on rather than a
+ * different one that happens to share a name.
+ */
+export function columnValue(line: WireLine, field: string): string {
+  switch (field) {
+    case 'level':
+    case 'severity':
+      return line.level ?? ''
+    case 'msg':
+    case 'message':
+      return line.msg ?? ''
+    case 'stream':
+      return line.streamid
+    case 'host':
+      return line.host
+    case 'seq':
+      return String(line.seq)
+  }
+
+  const fields = line.fields ?? {}
+
+  if (field in fields) return scalar(fields[field])
+
+  const [head, ...rest] = field.split('.')
+  if (0 === rest.length || !(head in fields)) return ''
+
+  let current: unknown = fields[head]
+
+  // A promoted nested object arrives as JSON text, not as an object.
+  if ('string' === typeof current) {
     try {
-      return { type: 'regexp', re: new RegExp(source, flags) }
-    } catch (err) {
-      throw new Error((err as Error).message)
+      current = JSON.parse(current)
+    } catch {
+      return ''
     }
   }
 
-  const value = unquote(raw)
-  return { type: 'literal', value, caseSensitive: /[A-Z]/.test(value) }
+  for (const segment of rest) {
+    if (null === current || 'object' !== typeof current) return ''
+    current = (current as Record<string, unknown>)[segment]
+  }
+
+  return scalar(current)
 }
 
-function unquote(raw: string): string {
-  const quoted = /^"(.*)"$/.exec(raw) ?? /^'(.*)'$/.exec(raw)
-  if (!quoted) return raw
+function scalar(value: unknown): string {
+  if (null === value || undefined === value) return ''
+  if ('object' === typeof value) return JSON.stringify(value)
+  return String(value)
+}
 
-  return quoted[1].replace(/\\(["'\\])/g, '$1')
+/** One run of query text, classified for colour. */
+export interface Token {
+  kind: 'field' | 'op' | 'value' | 'string' | 'plain'
+  text: string
+  /** Offset of this run in the query, so a parse error can be pointed at. */
+  at: number
+}
+
+/*!
+ * Splits a query into coloured runs.
+ *
+ * A textarea cannot colour its own contents, so the pane draws this list
+ * underneath one whose text is transparent. That means the tokeniser's only
+ * hard requirement is that it emits every character exactly once, in order —
+ * drop one and the ink slides out from under the caret. It is deliberately
+ * not the rQL parser: this runs on every keystroke, including on text that is
+ * half-typed and does not parse, and "what colour is this word" survives being
+ * wrong in a way "what does this query mean" does not.
+ */
+export function tokenize(query: string): Token[] {
+  const pattern = /("(?:[^"\\]|\\.)*"?)|(>=|<=|!=|=|>|<|:)|(\s+)|([^\s"<>=!:]+)/g
+  const tokens: Token[] = []
+
+  // What the last word meant, so the word after an operator reads as a value
+  // and the word after a value reads as the next field.
+  let afterOp = false
+
+  for (const match of query.matchAll(pattern)) {
+    const [text, string, op, space, word] = match
+
+    if (undefined !== string) {
+      tokens.push({ kind: 'string', text, at: match.index })
+      afterOp = false
+      continue
+    }
+
+    if (undefined !== op) {
+      tokens.push({ kind: 'op', text, at: match.index })
+      afterOp = true
+      continue
+    }
+
+    if (undefined !== space) {
+      tokens.push({ kind: 'plain', text, at: match.index })
+      continue
+    }
+
+    // Boolean glue is punctuation wearing letters, and reads as the operator
+    // it is rather than as a field nobody has.
+    if (/^(AND|OR|NOT)$/i.test(word)) {
+      tokens.push({ kind: 'op', text, at: match.index })
+      afterOp = false
+      continue
+    }
+
+    tokens.push({ kind: afterOp ? 'value' : 'field', text, at: match.index })
+    afterOp = false
+  }
+
+  return tokens
 }

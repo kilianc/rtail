@@ -1,91 +1,130 @@
+/*!
+ * The explorer.
+ *
+ * One filter drives everything. Typed into the command bar it narrows the live
+ * tail as you type — the server compiles the same rQL to a predicate over the
+ * ingest stream — and pressing Enter with a time range that is not "now" runs
+ * it as a historical search instead. Same query, same semantics, two sources,
+ * because rql has two compilers behind one AST.
+ *
+ * Everything that changes what you are looking at is in the URL, so any view
+ * is a link.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { Sidebar } from './components/Sidebar.tsx'
-import { StreamView } from './components/StreamView.tsx'
-import { TopBar } from './components/TopBar.tsx'
-import { connect, type Connection } from './lib/connection.ts'
-import { formatLine } from './lib/format.ts'
-import { collectPaths } from './lib/json.ts'
-import { loadActiveStream, loadPrefs, savePrefs, saveActiveStream } from './lib/prefs.ts'
-import { matchesQuery, parseQuery } from './lib/query.ts'
-import { onRouteChange, readStream, writeStream } from './lib/router.ts'
-import type { Line, Prefs } from './lib/types.ts'
+import { CommandBar } from './components/CommandBar.js'
+import { FieldExplorer } from './components/FieldExplorer.js'
+import { Histogram } from './components/Histogram.js'
+import { Results } from './components/Results.js'
+import { StreamPicker } from './components/StreamPicker.js'
+import { TimeRange } from './components/TimeRange.js'
+import { TopBar } from './components/TopBar.js'
+import { api, PAGE, QueryError, type Bucket, type Field, type Params, type Scanned, type Store } from './lib/api.js'
+import { connect, type Connection } from './lib/connection.js'
+import { formatLine } from './lib/format.js'
+import { loadPrefs, savePrefs } from './lib/prefs.js'
+import { fieldsUsed, highlightTerms, toggleTerm } from './lib/query.js'
+import { absolute, isRelative, resolve, type Range } from './lib/timerange.js'
+import type { Line, Prefs } from './lib/types.js'
+import { onChange, read, write, type ViewState } from './lib/urlstate.js'
 
-/** Matches the server-side backlog cap. */
-const BUFFER_SIZE = 100
+/** How many live lines to keep before dropping the oldest. */
+const LIVE_BUFFER = 2000
 
-/** Shared, so a stream with no extracted fields keeps the same array identity. */
-const NO_FIELDS: string[] = []
+/** One page of history. */
 
 export function App() {
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs)
+  const [view, setView] = useState<ViewState>(read)
+  const [draft, setDraft] = useState(view.query)
+
   const [streams, setStreams] = useState<string[]>([])
-  const [activeStream, setActiveStream] = useState<string | null>(
-    () => readStream() ?? loadActiveStream()
-  )
+  const [fields, setFields] = useState<Field[]>([])
+
   const [lines, setLines] = useState<Line[]>([])
-  const [paused, setPaused] = useState(false)
-  const [filter, setFilter] = useState('')
+  const [buckets, setBuckets] = useState<Bucket[]>([])
+  const [interval, setInterval] = useState(60_000)
 
-  const socketRef = useRef<Connection | null>(null)
-  const activeStreamRef = useRef(activeStream)
-  const pausedRef = useRef(false)
-
-  activeStreamRef.current = activeStream
+  const [cursor, setCursor] = useState<string | undefined>()
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<{ message: string; position?: number } | null>(null)
+  const [scanned, setScanned] = useState<Scanned | null>(null)
+  const [store, setStore] = useState<Store | null>(null)
 
   /*!
-   * connection — established once for the lifetime of the app
+   * Holding the feed.
+   *
+   * Records keep arriving over the socket while held — dropping the
+   * subscription would leave a gap nothing could fill afterwards — but they
+   * are counted instead of rendered, so the list under a reader's eyes stops
+   * moving. The ref shadows the state because the socket handler is created
+   * once and would otherwise close over the initial value forever.
    */
-  useEffect(() => {
-    const socket = connect()
-    socketRef.current = socket
+  const [held, setHeld] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
+  const heldRef = useRef(false)
 
-    socket.on('connect', () => {
-      // Re-subscribe after a reconnect, unless the user has paused.
-      if (activeStreamRef.current && !pausedRef.current) {
-        socket.emit('select stream', activeStreamRef.current)
-      }
-    })
+  const socket = useRef<Connection | null>(null)
+  const pending = useRef<AbortController | null>(null)
 
-    socket.on('streams', setStreams)
+  const params: Params = useMemo(
+    () => ({
+      q: view.query,
+      lang: view.lang,
+      stream: view.stream,
+      from: view.range.from,
+      to: view.range.to,
+      limit: PAGE
+    }),
+    [view.query, view.lang, view.stream, view.range.from, view.range.to]
+  )
 
-    socket.on('backlog', (backlog) => {
-      setLines((backlog ?? []).map(formatLine))
-    })
+  // Both read rQL. Against a SQL expression they would be guessing, so they
+  // stand down rather than highlight the wrong thing.
+  const active = useMemo(
+    () => ('sql' === view.lang ? [] : fieldsUsed(view.query)),
+    [view.query, view.lang]
+  )
+  const needles = useMemo(
+    () => ('sql' === view.lang ? [] : highlightTerms(view.query)),
+    [view.query, view.lang]
+  )
 
-    socket.on('line', (wire) => {
-      setLines((current) => {
-        const next = current.length >= BUFFER_SIZE ? current.slice(1) : current.slice()
-        next.push(formatLine(wire))
-        return next
-      })
-    })
-
-    return () => {
-      socket.close()
-      socketRef.current = null
-    }
+  /*!
+   * Promoting a field to a column.
+   *
+   * Toggling rather than adding: the same control that put a column there
+   * takes it away, so there is no hunting for a second affordance. Order is
+   * insertion order, which is the only order the user chose.
+   */
+  const toggleColumn = useCallback((field: string) => {
+    setView((current) => ({
+      ...current,
+      columns: current.columns.includes(field)
+        ? current.columns.filter((name) => name !== field)
+        : [...current.columns, field]
+    }))
   }, [])
+  const resolved = useMemo(() => resolve(view.range), [view.range])
+
+  useEffect(() => write(view), [view])
 
   /*!
-   * stream selection
+   * Back, forward, and hand-edited URLs.
+   *
+   * The draft has to follow, or navigating to a shared link leaves the command
+   * bar showing whatever was typed last while the results show the link's
+   * query. Our own writes use replaceState, which fires no hashchange, so this
+   * cannot fight the user mid-keystroke.
    */
-  useEffect(() => {
-    setLines([])
-    setPaused(false)
-    pausedRef.current = false
-
-    socketRef.current?.emit('select stream', activeStream)
-    saveActiveStream(activeStream)
-    writeStream(activeStream)
-
-    document.title = activeStream ? `rtail : ${activeStream}` : 'rtail'
-  }, [activeStream])
-
-  useEffect(() => onRouteChange((stream) => stream && setActiveStream(stream)), [])
-
-  /*!
-   * preferences
-   */
+  useEffect(
+    () =>
+      onChange((next) => {
+        setView(next)
+        setDraft(next.query)
+      }),
+    []
+  )
   useEffect(() => savePrefs(prefs), [prefs])
 
   useEffect(() => {
@@ -93,129 +132,393 @@ export function App() {
       `${prefs.theme} font-family-${prefs.fontFamily} font-size-${prefs.fontSize}`
   }, [prefs.theme, prefs.fontFamily, prefs.fontSize])
 
-  // The top bar's brand cell and the sidebar both read --sidebar-w, so the
-  // vertical hairline between them stays a single unbroken line while dragging.
   useEffect(() => {
-    document.documentElement.style.setProperty('--sidebar-w', `${prefs.sidebarWidth}px`)
-  }, [prefs.sidebarWidth])
+    document.title = view.stream ? `rTail : ${view.stream}` : 'rTail'
+  }, [view.stream])
 
-  const updatePrefs = useCallback((patch: Partial<Prefs>) => {
-    setPrefs((current) => ({ ...current, ...patch }))
+  /*!
+   * The live connection.
+   *
+   * Reopened whenever the stream or the committed filter changes, because both
+   * are part of the subscription URL. The draft is deliberately not — narrowing
+   * a live tail on every keystroke would reconnect on every keystroke.
+   */
+  useEffect(() => {
+    if (!view.live) {
+      socket.current?.close()
+      socket.current = null
+      return
+    }
+
+    const connection = connect()
+    socket.current = connection
+
+    connection.on('streams', setStreams)
+
+    connection.on('backlog', (backlog) => {
+      setLines((backlog ?? []).map(formatLine))
+    })
+
+    connection.on('line', (wire) => {
+      if (heldRef.current) {
+        setPendingCount((n) => n + 1)
+        return
+      }
+
+      setLines((current) => {
+        const next = current.length >= LIVE_BUFFER ? current.slice(1) : current.slice()
+        next.push(formatLine(wire))
+        return next
+      })
+    })
+
+    connection.on('error', (message, position) => setError({ message, position }))
+
+    heldRef.current = false
+    setHeld(false)
+    setPendingCount(0)
+
+    connection.subscribe(view.stream, view.query)
+
+    return () => {
+      connection.close()
+      socket.current = null
+    }
+  }, [view.live, view.stream, view.query])
+
+  /*!
+   * How much log there is, on a slow timer.
+   *
+   * It is the one number that is about the install rather than the query, so
+   * it sits in the top bar and refreshes on its own — a minute is often
+   * enough, because the answer changes by compaction and ingest, not by
+   * anything the person is doing.
+   */
+  useEffect(() => {
+    const controller = new AbortController()
+
+    const load = () =>
+      api.health(controller.signal).then((response) => setStore(response.store ?? null)).catch(() => {})
+
+    load()
+    const timer = window.setInterval(load, 60_000)
+
+    return () => {
+      controller.abort()
+      window.clearInterval(timer)
+    }
   }, [])
 
-  const toggleIn = useCallback((key: 'favorites' | 'hiddenTimestamps', value: string) => {
-    setPrefs((current) => {
-      const list = current[key]
+  // The stream list still has to arrive when the tail is not running.
+  useEffect(() => {
+    if (view.live) return
+
+    const controller = new AbortController()
+    api.streams(controller.signal).then((response) => setStreams(response.streams)).catch(() => {})
+
+    return () => controller.abort()
+  }, [view.live])
+
+  /*!
+   * Autocomplete needs the key inventory, which is per stream — and the
+   * explorer needs each key's count *within the current query*, which is why
+   * this re-runs on the query and the window too and not only on the stream.
+   */
+  useEffect(() => {
+    const controller = new AbortController()
+
+    api
+      .schema(params, controller.signal)
+      .then((response) => setFields(response.fields))
+      .catch(() => setFields([]))
+
+    return () => controller.abort()
+  }, [params.q, params.lang, params.stream, params.from, params.to])
+
+  /*!
+   * Which pinned columns hold numbers.
+   *
+   * Read from the catalog's own kinds rather than guessed from the values on
+   * screen: a column that happens to be all digits on this page and words on
+   * the next would change alignment as you scroll, which is worse than being
+   * left-aligned throughout.
+   */
+  const numeric = useMemo(
+    () =>
+      fields
+        .filter((field) => ['int', 'float', 'number', 'bigint', 'double'].includes(field.kind))
+        .map((field) => field.name),
+    [fields]
+  )
+
+  /*!
+   * runSearch replaces the result list with a page of history.
+   */
+  const runSearch = useCallback(
+    async (append = false) => {
+      pending.current?.abort()
+
+      const controller = new AbortController()
+      pending.current = controller
+
+      setLoading(true)
+      setError(null)
+
+      try {
+        const response = await api.search(
+          { ...params, cursor: append ? cursor : undefined },
+          controller.signal
+        )
+
+        const page = response.records.map(formatLine)
+
+        setLines((current) => (append ? [...current, ...page] : page))
+        setCursor(response.cursor)
+        setScanned(response.scanned)
+      } catch (err) {
+        if (controller.signal.aborted) return
+
+        if (err instanceof QueryError) {
+          setError({ message: err.message, position: err.position })
+        } else {
+          setError({ message: String(err) })
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    },
+    [params, cursor]
+  )
+
+  // The histogram follows the committed query, in live mode too — it is the
+  // only view of what is outside the buffer.
+  useEffect(() => {
+    const controller = new AbortController()
+
+    api
+      .histogram({ ...params, buckets: 80 }, controller.signal)
+      .then((response) => {
+        setBuckets(response.buckets)
+        setInterval(response.interval_ms)
+      })
+      .catch(() => setBuckets([]))
+
+    return () => controller.abort()
+  }, [params.q, params.lang, params.stream, params.from, params.to])
+
+  // In history mode the query runs whenever the committed state changes.
+  useEffect(() => {
+    if (view.live) return
+    setCursor(undefined)
+    runSearch(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.live, params.q, params.lang, params.stream, params.from, params.to])
+
+  /*!
+   * Switching language.
+   *
+   * SQL forces history: the live path compiles the query to a Go predicate and
+   * evaluates it per record, and there is no in-process SQL engine to do that
+   * with. Streaming a SQL filter would mean either ignoring it or shipping
+   * every record to DuckDB one at a time, and both are worse than saying so.
+   */
+  const setLang = useCallback((lang: 'rql' | 'sql') => {
+    setView((current) => ({
+      ...current,
+      lang,
+      live: 'sql' === lang ? false : current.live
+    }))
+  }, [])
+
+  /*!
+   * commit promotes the draft to the committed query.
+   *
+   * Pressing Enter on a relative range keeps streaming with the new filter;
+   * on a pinned range there is nothing to stream, so it searches.
+   */
+  const commit = useCallback(() => {
+    setView((current) => ({ ...current, query: draft }))
+  }, [draft])
+
+  /*!
+   * Editing clears the parse error.
+   *
+   * It describes a character at an offset in text that no longer exists the
+   * moment anything is typed, and it was outliving it — a query retyped from
+   * scratch still carried the last one's red border, its message, and the
+   * underline under whatever run now happened to sit at that offset. It also
+   * took a line, which pushed the completion menu off the pane and onto the
+   * chart.
+   */
+  const edit = useCallback((next: string) => {
+    setDraft(next)
+    setError(null)
+  }, [])
+
+  const setRange = useCallback((range: Range) => {
+    setView((current) => ({
+      ...current,
+      range,
+      // Dragging on the histogram means "look at then", which is not a thing
+      // a live tail can do.
+      live: current.live && isRelative(range)
+    }))
+  }, [])
+
+  const applyFilter = useCallback(
+    (field: string, op: string, value: string, negated: boolean) => {
+      setView((current) => {
+        const query = toggleTerm(current.query, field, op, value, negated)
+        setDraft(query)
+        return { ...current, query }
+      })
+    },
+    []
+  )
+
+  /*!
+   * showContext drops the filter and pins a window around one line.
+   *
+   * The feature people actually debug with: what happened *around* this, not
+   * what else matched. Most tools bury it.
+   */
+  const showContext = useCallback((line: Line) => {
+    const at = new Date(line.timestamp)
+
+    setDraft('')
+    setView((current) => ({
+      ...current,
+      query: '',
+      live: false,
+      range: absolute(new Date(at.getTime() - 30_000), new Date(at.getTime() + 30_000))
+    }))
+  }, [])
+
+  const hold = useCallback(() => {
+    heldRef.current = true
+    setHeld(true)
+  }, [])
+
+  /*!
+   * Resuming reconnects rather than draining a buffer.
+   *
+   * Whatever arrived while held was counted, not kept — keeping it would mean
+   * an unbounded buffer for a tab somebody left open over lunch. Re-opening
+   * the feed replays the server's backlog, which is the same bounded window a
+   * fresh tab would get.
+   */
+  const resume = useCallback(() => {
+    heldRef.current = false
+    setHeld(false)
+    setPendingCount(0)
+    socket.current?.reconnect()
+  }, [])
+
+  const toggleLive = useCallback(() => {
+    setView((current) => {
+      const live = !current.live
+
       return {
         ...current,
-        [key]: list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
+        live,
+        // Resuming the tail from a pinned window has to unpin it, or the tail
+        // would stream into a range that has already ended.
+        range: live && !isRelative(current.range) ? { from: '-1h', to: '' } : current.range
       }
     })
   }, [])
-
-  /*!
-   * pause / resume
-   *
-   * Pausing unsubscribes server-side rather than merely hiding updates, so a
-   * paused tab costs nothing. Resuming re-subscribes and pulls a fresh backlog.
-   */
-  const pause = useCallback(() => {
-    if (pausedRef.current) return
-    pausedRef.current = true
-    setPaused(true)
-    socketRef.current?.emit('select stream', null)
-  }, [])
-
-  const resume = useCallback(() => {
-    if (!pausedRef.current) return
-    pausedRef.current = false
-    setPaused(false)
-    socketRef.current?.emit('select stream', activeStreamRef.current)
-  }, [])
-
-  /*!
-   * filtering
-   *
-   * Parsed once per keystroke rather than once per line, and applied here
-   * rather than in StreamView: the bar shows how many lines survived, and the
-   * viewport should not be the only place that knows.
-   */
-  const query = useMemo(() => parseQuery(filter), [filter])
-
-  // Lines arrive in order, so insertion order is the source of truth. An older
-  // implementation re-sorted by timestamp on every digest, which reordered
-  // lines that shared a millisecond.
-  const visible = useMemo(() => {
-    const matching = query.isEmpty ? lines : lines.filter((line) => matchesQuery(query, line))
-    return prefs.ascending ? matching : matching.slice().reverse()
-  }, [lines, query, prefs.ascending])
-
-  // The field census for the picker — rtail has no schema for a stream, so the
-  // only source of field names is the lines already in the buffer.
-  const availableFields = useMemo(
-    () => collectPaths(lines.filter((line) => 'object' === line.type).map((line) => line.content)),
-    [lines]
-  )
-
-  const fields = (activeStream && prefs.fields[activeStream]) || NO_FIELDS
-
-  const setFields = useCallback(
-    (next: string[]) => {
-      if (!activeStream) return
-
-      setPrefs((current) => {
-        const all = { ...current.fields }
-        if (next.length) all[activeStream] = next
-        else delete all[activeStream]
-
-        return { ...current, fields: all }
-      })
-    },
-    [activeStream]
-  )
-
-  const isFavorite = !!activeStream && prefs.favorites.includes(activeStream)
 
   return (
     <>
       <TopBar
         prefs={prefs}
-        activeStream={activeStream}
-        isFavorite={isFavorite}
-        paused={paused}
-        filter={filter}
-        filterError={query.error}
-        matched={visible.length}
-        total={lines.length}
-        fields={fields}
-        availableFields={availableFields}
-        onChangePrefs={updatePrefs}
-        onToggleFavorite={() => activeStream && toggleIn('favorites', activeStream)}
-        onFilter={setFilter}
-        onFields={setFields}
+        live={view.live}
+        timeline={view.timeline}
+        store={store}
+        onChangePrefs={(patch) => setPrefs((current) => ({ ...current, ...patch }))}
+        onToggleLive={toggleLive}
+        onToggleTimeline={() => setView((current) => ({ ...current, timeline: !current.timeline }))}
+      >
+        <StreamPicker
+          streams={streams}
+          active={view.stream}
+          favorites={prefs.favorites}
+          onSelect={(stream) => setView((current) => ({ ...current, stream }))}
+          onToggleFavorite={(stream) =>
+            setPrefs((current) => ({
+              ...current,
+              favorites: current.favorites.includes(stream)
+                ? current.favorites.filter((name) => name !== stream)
+                : [...current.favorites, stream]
+            }))
+          }
+        />
+      </TopBar>
+
+      {/*
+        The time range is passed *into* the editor rather than placed beside
+        it. It is part of the question being asked — it is the partition
+        pruner, and it is always applied — so it belongs with the query text
+        rather than in a separate row of controls.
+      */}
+      <div class="query-row">
+        <CommandBar
+          value={draft}
+          lang={view.lang}
+          onChangeLang={setLang}
+          fields={fields}
+          error={error}
+          busy={loading}
+          onChange={edit}
+          onSubmit={commit}
+        >
+          <TimeRange range={view.range} onChange={setRange} />
+        </CommandBar>
+      </div>
+
+      <Histogram
+        collapsed={!view.timeline}
+        buckets={buckets}
+        intervalMs={interval}
+        range={resolved}
+        loading={loading}
+        onSelect={setRange}
       />
 
-      <div class="split-pane">
-        <Sidebar
-          streams={streams}
-          favorites={prefs.favorites}
-          activeStream={activeStream}
-          onSelect={setActiveStream}
-          onResize={(sidebarWidth) => updatePrefs({ sidebarWidth })}
+      <div class="explorer-split">
+        <FieldExplorer
+          fields={fields}
+          params={params}
+          active={active}
+          columns={view.columns}
+          onFilter={(field, value, negated) => applyFilter(field, '=', value, negated)}
+          onToggleColumn={toggleColumn}
         />
 
-        <StreamView
-          activeStream={activeStream}
-          lines={visible}
-          needles={query.needles}
-          fields={fields}
-          jsonView={prefs.jsonView}
-          ascending={prefs.ascending}
-          timestampsHidden={!!activeStream && prefs.hiddenTimestamps.includes(activeStream)}
-          paused={paused}
-          onToggleTimestamps={() => activeStream && toggleIn('hiddenTimestamps', activeStream)}
-          onPause={pause}
+        <Results
+          lines={lines}
+          numeric={numeric}
+          live={view.live}
+          loading={loading}
+          scanned={scanned}
+          store={store}
+          active={active}
+          needles={needles}
+          columns={view.columns}
+          hasMore={!!cursor}
+          paused={held}
+          pending={pendingCount}
+          emptyHint={
+            view.live
+              ? 'Waiting for events — pipe something into rtail'
+              : 'No events matched in this time range'
+          }
+          onFilter={(action) => applyFilter(action.field, action.op, action.value, action.negated)}
+          onLoadMore={() => runSearch(true)}
+          onContext={showContext}
+          onPause={hold}
           onResume={resume}
+          onDropColumn={toggleColumn}
         />
       </div>
     </>

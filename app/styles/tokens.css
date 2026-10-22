@@ -1,0 +1,315 @@
+/*
+ * design system
+ *
+ * The reference is Google Cloud's Logs Explorer, and this follows it closely:
+ * a dark, dense, Material-flavoured console. Four rules:
+ *
+ * 1. Dark by default, because that is how the reference is actually run —
+ * checked against a real Logs Explorer rather than assumed from its
+ * screenshots. Light is a supported override.
+ * 2. One blue does all the interactive work — selection, links, focus, the
+ * histogram. Severity gets red and amber. Nothing else is coloured.
+ * 3. Density over air. Rows are 28px and separated by hairlines, because the
+ * job is reading thousands of lines rather than admiring twelve.
+ * 4. Every length is a token, from the 4px scale or the fixed sizes below.
+ *
+ * Names follow shadcn's convention (background/foreground, card, muted,
+ * popover, primary, border, input, ring) so the palette swaps from one block.
+ *
+ * Dark lives on :root so the app paints correctly on the first frame, before
+ * the bundle runs and stamps the persisted theme onto <body>. `.light` is a
+ * pure override layer.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* ** radius — Material's, which is tighter than a marketing site's ** */
+  --radius: 8px;        /* cards, panels, popovers */
+  --radius-md: 4px;     /* inputs, buttons */
+  --radius-sm: 4px;     /* rows, chips */
+  --radius-xs: 2px;     /* bar caps, tiny marks */
+
+  /* ** spacing — 4px scale ** */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /*
+   * ** sizes **
+   *
+   * Tightened a second time against the reference. A console is judged on how
+   * many lines fit on the screen, and every one of these was a few pixels
+   * looser than the thing it was copied from.
+   */
+  --bar-h: 32px;        /* the top bar */
+  /*
+   * The chrome strips: the explorer's title, the results' cost readout, the
+   * keyset footer. They name or measure the thing under them and nothing
+   * else, so they are six pixels shorter than the bar that holds controls.
+   */
+  --strip-h: 26px;
+  --head-h: 22px;       /* the column header, which also holds the caret column */
+  --row-h: 20px;        /* list rows in panels */
+  --control-h: 22px;    /* buttons, small inputs */
+  --command-h: 26px;    /* the query box, and everything beside it */
+  --hit: 22px;          /* icon button hit area */
+  --icon: 15px;
+  --icon-sm: 12px;
+  --dot: 6px;
+  --line-h: 19px;       /* one log row */
+  --chart-h: 72px;
+  --gutter-w: 136px;    /* timestamp column, wide enough for a full date */
+  --sev-w: 44px;        /* severity column — one badge, and the word "Sev" */
+  --caret-w: 20px;      /* disclosure column */
+  /*
+   * A pinned column: a service name or a four-digit latency, and no wider.
+   * Fixed, not elastic — the summary takes every pixel these do not, and a
+   * column that grows to its content makes the line you are reading move.
+   */
+  --col-w: 72px;
+  --sidebar-w: 264px;
+  --marker-w: 3px;
+  --hairline: 1px;
+
+  /*!
+   * ** type — monospace, throughout **
+   *
+   * The chrome was set in a sans on the reasoning that an all-mono interface
+   * reads as a terminal emulator rather than a product. That is true of a
+   * marketing page and wrong here: everything on this screen is an identifier —
+   * field names, stream names, severities, counts, timestamps — and a
+   * proportional face makes columns of them ragged. Mono also makes every
+   * digit the same width for free, which a table of counts and durations
+   * wants anyway.
+   *
+   * --sans is kept for the rare label that is a sentence rather than a token.
+   */
+  --mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+
+  /*!
+   * One step down, everywhere.
+   *
+   * The scale was a point too large for a console: at 12px the log lines fill
+   * their 19px rhythm edge to edge and the screen reads as text rather than as
+   * a table. Dropping to 11px leaves air inside the row without changing the
+   * row — every fixed height below stays exactly as it was, so nothing in the
+   * grid moves. 9.5px is the floor: below it the uppercase column labels blur
+   * and the letter-spacing stops rescuing them.
+   */
+  --text-xs: 9.5px;
+  /*
+   * The system board's "10.5 / dense controls" tier. It was 11px, a copy
+   * of --text-md, so the scale had four names and three sizes.
+   */
+  --text-sm: 10.5px;
+  --text-md: 11px;
+  --text-lg: 12.5px;
+  --mono-size: 11px;
+
+  --tracking-tight: 0;
+  --tracking-wide: 0.06em;
+
+  /* ** surfaces — Google's own dark console greys ** */
+  --background: #1f1f1f;
+  --card: #1f1f1f;
+  /*
+   * One step up from the page: the column header and the query pane, which
+   * are the two surfaces that have to read as sitting *on* the log rather
+   * than as more of it.
+   */
+  --surface: #202124;
+  --elevated: #2d2e30;
+  --foreground: #e8eaed;
+
+  --popover: var(--elevated);
+  --popover-foreground: var(--foreground);
+
+  --muted: #292a2d;
+  --muted-foreground: #9aa0a6;
+  --faint-foreground: #80868b;
+
+  --subtle: #292a2d;
+  --subtle-strong: #35363a;
+  /*
+   * A translucent lift, for states that must stack on top of a colour the row
+   * already has rather than replace it.
+   */
+  --raise: rgba(232, 234, 237, 0.04);
+
+  /* ** hairlines ** */
+  --border: #3c4043;
+  --border-strong: #5f6368;
+  --input: #5f6368;
+
+  /* ** elevation ** */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 4px 8px 3px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.3);
+
+  /*
+   * ** severity **
+   *
+   * Cloud Logging's dark palette: these are the colours its severity icons
+   * actually use, not a guess at them.
+   */
+  --level-error: #f28b82;
+  --level-error-bg: #3f2a28;
+  --level-error-wash: rgba(242, 139, 130, 0.05);
+  --level-warn: #fdd663;
+  --level-warn-bg: #3d3423;
+  --level-info: #8ab4f8;
+  --level-info-bg: #283142;
+  --level-debug: #9aa0a6;
+  --level-debug-bg: #35363a;
+
+  /* ** the one accent — Google blue, dark-mode variant ** */
+  --primary: #8ab4f8;
+  --primary-hover: #aecbfa;
+  --primary-foreground: #202124;
+  --primary-subtle: #283142;
+  --primary-glow: rgba(138, 180, 248, 0.24);
+  /*
+   * The focus ring: a third of the glow's strength, because it sits around a
+   * pane the width of the window rather than around a 6px dot.
+   */
+  --primary-ring: rgba(138, 180, 248, 0.14);
+  /*
+   * Selection, at the same strength as --level-error-wash, so a selected
+   * error row reads as both rather than as one overwriting the other.
+   */
+  --primary-wash: rgba(138, 180, 248, 0.05);
+  --ring: rgba(138, 180, 248, 0.5);
+
+  /* ** live ** */
+  --live: #81c995;
+  --live-glow: rgba(129, 201, 149, 0.4);
+  /*
+   * The ring around the live dot — a halo, not a glow: it has to read at 6px
+   * against the bar's own grey without lighting anything else up.
+   */
+  --live-ring: rgba(129, 201, 149, 0.18);
+
+  /* ** the histogram ** */
+  --chart-bar: #4a6da8;
+  --chart-bar-hover: #5c84c4;
+  --chart-grid: #35363a;
+
+  /* ** ansi palette — the only colour that is not ours ** */
+  --ansi-black: #9aa0a6;
+  --ansi-black-bright: #bdc1c6;
+  --ansi-red: #f28b82;
+  --ansi-red-bright: #f6aea9;
+  --ansi-green: #81c995;
+  --ansi-green-bright: #a8dab5;
+  --ansi-yellow: #fdd663;
+  --ansi-yellow-bright: #fde293;
+  --ansi-blue: #8ab4f8;
+  --ansi-blue-bright: #aecbfa;
+  --ansi-magenta: #d7aefb;
+  --ansi-magenta-bright: #e9d2fd;
+  --ansi-cyan: #78d9ec;
+  --ansi-cyan-bright: #a1e4f2;
+  --ansi-white: #e8eaed;
+  --ansi-white-bright: #f8f9fa;
+}
+
+.light {
+  color-scheme: light;
+
+  --background: #ffffff;
+  --card: #ffffff;
+  --surface: #f8f9fa;
+  --elevated: #ffffff;
+  --foreground: #202124;
+
+  --popover: var(--elevated);
+  --popover-foreground: var(--foreground);
+
+  --muted: #f1f3f4;
+  --muted-foreground: #5f6368;
+  --faint-foreground: #80868b;
+
+  --subtle: #f8f9fa;
+  --subtle-strong: #f1f3f4;
+  --raise: rgba(32, 33, 36, 0.04);
+
+  --border: #dadce0;
+  --border-strong: #bdc1c6;
+  --input: #dadce0;
+
+  --shadow-sm: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  --shadow-md: 0 1px 2px rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
+  --shadow-lg: 0 4px 8px 3px rgba(60, 64, 67, 0.15), 0 1px 3px rgba(60, 64, 67, 0.3);
+
+  /*!
+   * Severity, desaturated for white.
+   *
+   * These were the dark theme's hues taken to their Material 500/700 values —
+   * #d93025, #b06000, #1a73e8 — which on a white pane read as alert colours
+   * rather than as a column of labels: a page of INFO was a page of saturated
+   * blue, and the ERR that mattered had nothing left to be louder than. At
+   * roughly 40% saturation they stay as far apart from each other as before
+   * while sitting back into the surface, and they are *more* legible for it —
+   * each clears 5.8:1 against white where the saturated set barely cleared
+   * 4.5:1.
+   */
+  --level-error: #9c4740;
+  --level-error-bg: #f5ebea;
+  --level-error-wash: rgba(156, 71, 64, 0.05);
+  /*
+   * A stop darker than Google's own #e37400. Severity is drawn as text now
+   * rather than as a filled badge, and #e37400 on white is 3.3:1 — readable
+   * as a 14px label, not as an 11px one in a column of thousands.
+   */
+  --level-warn: #825d35;
+  --level-warn-bg: #f4ede6;
+  --level-info: #426794;
+  --level-info-bg: #ebeff5;
+  --level-debug: #5f6368;
+  --level-debug-bg: #f4f5f6;
+
+  --primary: #1a73e8;
+  --primary-hover: #1765cc;
+  --primary-foreground: #ffffff;
+  --primary-subtle: #e8f0fe;
+  --primary-glow: rgba(26, 115, 232, 0.24);
+  --primary-ring: rgba(26, 115, 232, 0.14);
+  --primary-wash: rgba(26, 115, 232, 0.05);
+  --ring: rgba(26, 115, 232, 0.5);
+
+  --live: #1e8e3e;
+  --live-glow: rgba(30, 142, 62, 0.4);
+  --live-ring: rgba(30, 142, 62, 0.18);
+
+  /*
+   * Routine traffic, a shade back from --level-info rather than the dark
+   * theme's accent blue reused on white. At #8ab4f8 the INFO band was the
+   * brightest thing in a chart whose whole point is that the error band is.
+   */
+  --chart-bar: #93a9c4;
+  --chart-bar-hover: #7e97b6;
+  --chart-grid: #f1f3f4;
+
+  --ansi-black: #5f6368;
+  --ansi-black-bright: #3c4043;
+  --ansi-red: #d93025;
+  --ansi-red-bright: #a50e0e;
+  --ansi-green: #188038;
+  --ansi-green-bright: #0d652d;
+  --ansi-yellow: #b06000;
+  --ansi-yellow-bright: #8a4600;
+  --ansi-blue: #1967d2;
+  --ansi-blue-bright: #174ea6;
+  --ansi-magenta: #a142f4;
+  --ansi-magenta-bright: #8430ce;
+  --ansi-cyan: #007b83;
+  --ansi-cyan-bright: #00565c;
+  --ansi-white: #5f6368;
+  --ansi-white-bright: #202124;
+}

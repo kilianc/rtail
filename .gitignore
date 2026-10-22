@@ -1,9 +1,27 @@
 node_modules
-dist
 app/css
 app/bundle.js
 app/bundle.js.map
-playwright-report
-test-results
-site/dist
-.vercel
+
+# The Go server binary and the toolchain caches (kept in-tree so the container
+# writes them as the invoking user — see tools/Dockerfile).
+#
+# Anchored: an unanchored `bin` also matches npm/rtail/bin, which is a source
+# directory, and a file that is silently ignored is a file that is silently
+# missing from the package.
+/bin
+/.gocache
+/.gomodcache
+
+# The npm packages laid out by tools/npm-pack.sh: cross-compiled binaries and
+# generated package.jsons, rebuilt from source on every release.
+/dist
+
+# The built webapp, which the Go binary embeds. The directory itself must stay
+# in git or `go:embed all:dist` fails to compile on a fresh clone.
+web/dist/*
+!web/dist/.gitkeep
+
+# Durable storage for `make dev`: parquet files and the catalog, rebuilt
+# from the demo streams on every run and never worth keeping.
+.dev-data

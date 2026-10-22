@@ -1,0 +1,54 @@
+/*
+ * monospace stacks for the log viewport
+ *
+ * Index order is persisted in localStorage as `fontFamily` (1-based), so
+ * entries may be appended but never reordered. The same goes for the sizes:
+ * `.font-size-4` is a stored preference, not a description.
+ *
+ * These were two `@each` loops over a Sass list. Written out they are longer
+ * and they are also the whole truth — the index a preference persists is the
+ * line it is on, rather than something you work out by counting a list in
+ * another file.
+ */
+
+/*
+ * .row, not .stream-line: the viewport was rebuilt in v2 and the old selector
+ * matched nothing, so the font preference silently did nothing.
+ */
+.font-family-1 .row,
+.btn-font-1 {
+  font-family: 'Inconsolata', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.font-family-2 .row,
+.btn-font-2 {
+  font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.font-family-3 .row,
+.btn-font-3 {
+  font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.font-family-4 .row,
+.btn-font-4 {
+  font-family: 'Ubuntu Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.font-family-5 .row,
+.btn-font-5 {
+  font-family: 'Droid Sans Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.font-family-6 .row,
+.btn-font-6 {
+  font-family: 'Anonymous Pro', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.font-size-1 .row { font-size: 11px; }
+.font-size-2 .row { font-size: 12px; }
+.font-size-3 .row { font-size: 13px; }
+.font-size-4 .row { font-size: 14px; }
+.font-size-5 .row { font-size: 15px; }
+.font-size-6 .row { font-size: 16px; }
+.font-size-7 .row { font-size: 17px; }
