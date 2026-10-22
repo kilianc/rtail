@@ -4,18 +4,12 @@
  * Each line is formatted exactly once, on arrival, and the result is cached on
  * the line object — rendering a 100-line viewport should never re-run the ANSI
  * parser or the syntax highlighter.
- *
- * Object lines are rendered twice, both times up front: expanded, and on one
- * line. Which of the two a row shows is a display decision that changes with a
- * preference or a click, and re-highlighting a payload on every such change
- * would put the syntax highlighter back in the interaction path.
  */
 
 import { AnsiUp } from 'ansi_up'
 import hljs from 'highlight.js/lib/core'
 import json from 'highlight.js/lib/languages/json'
-import { getPath, isPlainObject, parsePath, stringify } from './json.ts'
-import type { JsonView, Line, WireLine } from './types.ts'
+import type { Line, WireLine } from './types.js'
 
 hljs.registerLanguage('json', json)
 
@@ -29,137 +23,138 @@ ansi.use_classes = true
 // controlled (they are whatever a piped process printed).
 ansi.escape_html = true
 
-/**
- * Rows of expanded JSON above which `auto` collapses a payload.
- *
- * Small objects are the ones worth reading in full — a `{ level, msg, ms }`
- * costs three rows and saves a click. Past that a payload stops being a log
- * line and starts being a document, and it pushes everything else off screen.
- */
-const AUTO_EXPAND_ROWS = 6
-
-const timestampFormat = new Intl.DateTimeFormat(undefined, {
-  year: '2-digit',
-  month: '2-digit',
-  day: '2-digit',
+const clockFormat = new Intl.DateTimeFormat(undefined, {
   hour: '2-digit',
   minute: '2-digit',
   second: '2-digit',
   hour12: false
 })
 
+const dateFormat = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: '2-digit'
+})
+
 let nextKey = 0
 
-/** Formats a line for display, computing its HTML and filter text once. */
+/*!
+ * Formats a line for display, computing its HTML and filter text once.
+ *
+ * A structured record renders as its extracted message rather than as pretty
+ * JSON: the row is one line tall, the full payload is a click away in the
+ * expanded view, and twenty lines of indented JSON per event makes a result
+ * list unreadable. Plain-text lines keep their ANSI colours, which is the
+ * whole reason anyone points rtail at a terminal.
+ */
 export function formatLine(wire: WireLine): Line {
-  const base = { ...wire, htmlCompact: null, bulky: false, key: nextKey++ }
+  let html: string
+  let text: string
 
   if (null === wire.content || undefined === wire.content || '' === wire.content) {
-    return { ...base, html: '', text: '' }
+    html = ''
+    text = ''
+  } else if ('object' === wire.type) {
+    text = wire.msg || JSON.stringify(wire.content)
+
+    html = wire.msg
+      ? escapeHtml(wire.msg)
+      : '<span class="row-raw">' +
+        hljs.highlight(JSON.stringify(wire.content), { language: 'json' }).value +
+        '</span>'
+  } else {
+    text = String(wire.content)
+    html = ansi.ansi_to_html(text)
   }
 
-  if ('object' === wire.type) {
-    const text = JSON.stringify(wire.content, null, '  ')
-
-    return {
-      ...base,
-      text,
-      html: `<pre>${highlightJson(text)}</pre>`,
-      htmlCompact: `<pre>${highlightJson(JSON.stringify(wire.content))}</pre>`,
-      bulky: rows(text) > AUTO_EXPAND_ROWS
-    }
-  }
-
-  const text = String(wire.content)
-  return { ...base, text, html: ansi.ansi_to_html(text) }
+  return { ...wire, html, text, key: nextKey++ }
 }
 
-/** Whether an object line starts out expanded, before anyone clicks a caret. */
-export function defaultExpanded(view: JsonView, line: Line): boolean {
-  if ('expanded' === view) return true
-  if ('collapsed' === view) return false
-
-  return !line.bulky
-}
-
-/**
- * Renders a payload as just the fields that were asked for.
+/*!
+ * escapeHtml exists because a message is attacker-controlled text.
  *
- * `logfmt` shape rather than JSON: at one field per column the braces and
- * quotes are most of the row. Fields the line does not carry are dropped
- * instead of rendered empty — a stream is rarely uniform, and a row of
- * placeholders reads as data.
- *
- * Returns null when the line carries none of them, so the caller can fall back
- * to showing the payload rather than an empty row.
+ * The row body is injected as HTML so that ANSI colouring works, which means
+ * everything on that path has to be escaped by whoever produced it. ansi_up
+ * does its own; a plain message needs this.
  */
-export function renderFields(content: unknown, fields: string[]): string | null {
-  if (!isPlainObject(content)) return null
-
-  const pairs: string[] = []
-
-  for (const field of fields) {
-    const path = parsePath(field)
-    if (!path) continue
-
-    const value = getPath(content, path)
-    if (undefined === value) continue
-
-    pairs.push(
-      `<span class="field-pair">` +
-        `<span class="field-key">${escapeHtml(field)}</span>` +
-        `<span class="field-eq">=</span>` +
-        renderValue(value) +
-        `</span>`
-    )
-  }
-
-  return pairs.length ? `<pre>${pairs.join(' ')}</pre>` : null
-}
-
-function renderValue(value: unknown): string {
-  if ('string' === typeof value) {
-    // Quoted only where the quotes earn their place: without them a value with
-    // spaces in it reads as the start of the next pair.
-    const text = /[\s"]/.test(value) ? JSON.stringify(value) : value
-    return `<span class="hljs-string">${escapeHtml(text)}</span>`
-  }
-
-  if ('number' === typeof value) {
-    return `<span class="hljs-number">${escapeHtml(String(value))}</span>`
-  }
-
-  if ('boolean' === typeof value || null === value) {
-    return `<span class="hljs-literal">${escapeHtml(stringify(value))}</span>`
-  }
-
-  // Objects and arrays keep their syntax highlighting; they are still JSON.
-  return highlightJson(stringify(value))
-}
-
-export function formatTimestamp(timestamp: number): string {
-  // Intl joins the date and time parts with a locale separator (", " in most
-  // locales); a log gutter reads better without it.
-  return timestampFormat.format(new Date(timestamp)).replace(',', '')
-}
-
-function highlightJson(text: string): string {
-  return hljs.highlight(text, { language: 'json' }).value
-}
-
-function rows(text: string): number {
-  let count = 1
-  for (let index = text.indexOf('\n'); -1 !== index; index = text.indexOf('\n', index + 1)) {
-    count++
-  }
-
-  return count
-}
-
-function escapeHtml(text: string): string {
-  return text
+function escapeHtml(value: string): string {
+  return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+/*!
+ * Splits a timestamp into the parts the gutter renders separately.
+ *
+ * The date is dropped for today, which is nearly every row nearly always:
+ * forty repetitions of the same `08/13/26` is the loudest thing on screen and
+ * carries no information. Milliseconds come back on their own so they can be
+ * dimmed — they matter when two lines share a second and are noise otherwise.
+ */
+export function formatClock(timestamp: number): { date: string | null; time: string; ms: string } {
+  const at = new Date(timestamp)
+  const now = new Date()
+
+  const sameDay =
+    at.getFullYear() === now.getFullYear() &&
+    at.getMonth() === now.getMonth() &&
+    at.getDate() === now.getDate()
+
+  return {
+    date: sameDay ? null : dateFormat.format(at),
+    time: clockFormat.format(at),
+    ms: String(at.getMilliseconds()).padStart(3, '0')
+  }
+}
+
+/**
+ * Builds a line predicate from the filter box.
+ *
+ * The input is a regexp; while it is being typed it is usually invalid, and a
+ * half-written pattern should not blank the viewport — so anything that fails
+ * to compile matches everything.
+ */
+export function buildFilter(pattern: string): (line: Line) => boolean {
+  if (!pattern) return () => true
+
+  try {
+    const re = new RegExp(pattern)
+    return (line) => re.test(line.text)
+  } catch {
+    return () => true
+  }
+}
+
+/*!
+ * Bytes, as a sentence rather than a number.
+ *
+ * The scan cost is reported so a slow query explains itself, and "41 MB" does
+ * that where "43,008,000" does not — nobody counts digits mid-incident.
+ */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1024
+  let unit = 0
+
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
+}
+
+/*!
+ * A count, abbreviated — 1.2k, 4.1M.
+ *
+ * The explorer's count column is eight characters wide at most, and a field
+ * with four million records has to fit in it beside its name.
+ */
+export function formatCount(value: number): string {
+  if (value < 1000) return String(value)
+  if (value < 1_000_000) return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}k`
+  return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}M`
 }

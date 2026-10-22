@@ -1,22 +1,27 @@
 # rtail — local development.
 #
 # Everything runs inside the pinned toolchain container defined in
-# tools/Dockerfile, so no Node.js or npm is required on the host.
+# tools/Dockerfile, so neither Node.js nor Go is required on the host.
 #
 #   make dev        run the app in the foreground   <- start here
 #   make up         run it in the background
 #   make down       stop the background server
 #   make logs       tail the background server
 #   make url        print this worktree's URL
-#   make build      build the webapp into app/
-#   make dist       build the minified webapp into dist/
-#   make site       build the landing page into site/dist
-#   make site-serve build it and serve it on SITE_PORT
-#   make test       run the unit + integration suite, with coverage
-#   make test-e2e   run the browser smoke suite (heavy: pulls chromium)
+#   make server     build bin/rtail-server
+#   make client     build bin/rtail
+#   make build      build the webapp into app/ (development)
+#   make dist       build the webapp into web/dist (embedded into the binary)
+#   make release    build the fully self-contained server binary
+#   make npm-pack   lay out the npm packages under dist/npm
+#   make ci         run everything CI runs, here, before you push
+#   make test       run the Go test suite
+#   make vet        go vet
 #   make typecheck  type-check the webapp
+#   make fmt        gofmt the Go sources
+#   make image      build the toolchain image
 #   make shell      open a shell in the toolchain container
-#   make clean      remove generated assets and dependencies
+#   make clean      remove generated assets, binaries and dependencies
 #
 # ** Ports are derived from the worktree path. **
 #
@@ -29,18 +34,20 @@
 # gets its own fixed set that does not change between runs. Override with
 # `make dev PORT=9000` if you want a specific one.
 
-IMAGE     := rtail-tools
-E2E_IMAGE := rtail-e2e
+IMAGE := rtail-tools
 
 # 0-499, stable per worktree.
-OFFSET    := $(shell printf '%s' "$(CURDIR)" | cksum | awk '{print $$1 % 500}')
-PORT      ?= $(shell expr 8000 + $(OFFSET))
-UDP_PORT  ?= $(shell expr 9000 + $(OFFSET))
-SITE_PORT ?= $(shell expr 7000 + $(OFFSET))
+OFFSET   := $(shell printf '%s' "$(CURDIR)" | cksum | awk '{print $$1 % 500}')
+PORT     ?= $(shell expr 8000 + $(OFFSET))
+UDP_PORT ?= $(shell expr 9000 + $(OFFSET))
 
 SLUG      := $(shell basename "$(CURDIR)" | tr -cd 'a-zA-Z0-9_.-')
 CONTAINER := rtail-dev-$(SLUG)
 URL       := http://localhost:$(PORT)/
+
+# Read with sed rather than node: the host has no Node.js, by policy.
+VERSION := $(shell sed -n 's/^  "version": "\(.*\)",$$/\1/p' package.json)
+LDFLAGS := -X main.version=$(VERSION)
 
 DOCKER_RUN := docker run --rm \
 	-u "$$(id -u):$$(id -g)" \
@@ -51,16 +58,17 @@ DOCKER_RUN := docker run --rm \
 
 DEV_ENV := -e WEB_PORT=$(PORT) -e UDP_PORT=$(UDP_PORT) -p $(PORT):$(PORT)
 
-.PHONY: dev up down logs url build dist site site-serve test test-e2e typecheck shell clean image image-e2e deps
+.PHONY: dev up down logs url server build dist release client npm-pack ci \
+        test go-test go-test-one vet typecheck fmt shell clean image deps
 
-## Run the app in the foreground: builds and watches assets, serves the webapp,
-## and feeds it three live demo streams. Ctrl-C to stop.
-dev: image deps
+## Run the app in the foreground: builds and watches assets, serves the webapp
+## from disk, and feeds it three live demo streams. Ctrl-C to stop.
+dev: image deps server client
 	@echo "==> $(URL)"
 	$(DOCKER_RUN) -it $(DEV_ENV) $(IMAGE) npm run dev
 
 ## Same, detached. Survives between commands; stop it with `make down`.
-up: image deps down
+up: image deps server client down
 	@docker run -d --name $(CONTAINER) \
 		-u "$$(id -u):$$(id -g)" \
 		-e HOME=/tmp -e npm_config_cache=/tmp/.npm \
@@ -79,30 +87,65 @@ logs:
 url:
 	@echo "$(URL)"
 
+## The server binary, for development: the webapp is served from app/ with
+## --web-root, so this does not need `make dist` first.
+server: image
+	$(DOCKER_RUN) $(IMAGE) go build -ldflags "$(LDFLAGS)" -o bin/rtail-server ./cmd/rtail-server
+
+## The real thing: webapp built and embedded, stripped.
+##
+## Not static any more — DuckDB is cgo, so the binary links against the
+## toolchain image's glibc and has to run somewhere compatible.
+release: image deps dist
+	$(DOCKER_RUN) -e CGO_ENABLED=1 $(IMAGE) \
+		go build -trimpath -ldflags "-s -w $(LDFLAGS)" -o bin/rtail-server ./cmd/rtail-server
+	@echo "==> bin/rtail-server $(VERSION)"
+
+## Build the client for this machine.
+client: image
+	$(DOCKER_RUN) -e CGO_ENABLED=0 $(IMAGE) \
+		go build -trimpath -ldflags "-s -w $(LDFLAGS)" -o bin/rtail ./cmd/rtail
+	@echo "==> bin/rtail $(VERSION)"
+
+## Lay out the npm packages: a Go binary per platform, plus the launcher.
+npm-pack: image
+	$(DOCKER_RUN) $(IMAGE) sh tools/npm-pack.sh $(VERSION)
+
 build: image deps
 	$(DOCKER_RUN) $(IMAGE) npm run build
 
 dist: image deps
 	$(DOCKER_RUN) $(IMAGE) npm run dist
 
-## Build the landing page (rtail.ciuffolo.com) into site/dist. This is what
-## Vercel runs, via the buildCommand in vercel.json.
-site: image deps
-	$(DOCKER_RUN) $(IMAGE) npm run build:site
+## Everything CI runs, before you spend a runner minute finding out.
+##
+## The same tools/ci.sh the workflow calls, so the two cannot drift. Three
+## jobs go inside the toolchain container; `image` needs a Docker daemon and
+## so runs on the host.
+ci: image deps
+	$(DOCKER_RUN) $(IMAGE) sh tools/ci.sh server webapp npm
+	sh tools/ci.sh image
+	@echo
+	@echo "==> not covered here: the macOS server matrix and the Node 20 webapp"
+	@echo "    build. Both need a second machine, and only GitHub has one."
 
-## Build it and serve it locally. Static files only, so the server is python3
-## on the host rather than another container.
-site-serve: site
-	@echo "==> http://localhost:$(SITE_PORT)/"
-	@cd site/dist && python3 -m http.server $(SITE_PORT) --bind 127.0.0.1
+# One suite now. The client moved to Go with the server, so `go test ./...`
+# covers the pipe as well as the store — and covers it in-process rather than
+# by spawning a node per case.
+test: go-test
 
-test: image deps
-	$(DOCKER_RUN) $(IMAGE) npm test
+go-test: image
+	$(DOCKER_RUN) $(IMAGE) go test -race ./...
 
-## Drive the real app in a real browser. Needs dist/, and its own image —
-## Chromium is far too heavy to carry in the everyday toolchain.
-test-e2e: image-e2e deps dist
-	$(DOCKER_RUN) $(E2E_IMAGE) npm run test:e2e
+## Run one package's tests: make go-test-one PKG=./internal/query
+go-test-one: image
+	$(DOCKER_RUN) $(IMAGE) go test -race -v $(PKG)
+
+vet: image
+	$(DOCKER_RUN) $(IMAGE) go vet ./...
+
+fmt: image
+	$(DOCKER_RUN) $(IMAGE) gofmt -w cmd internal web
 
 typecheck: image deps
 	$(DOCKER_RUN) $(IMAGE) npm run typecheck
@@ -117,14 +160,6 @@ image:
 		docker build -t $(IMAGE) tools/; \
 	}
 
-## Same, for the browser image. First build downloads Chromium — several
-## hundred megabytes, and several minutes.
-image-e2e:
-	@docker image inspect $(E2E_IMAGE) >/dev/null 2>&1 || { \
-		echo "==> building $(E2E_IMAGE) (downloads chromium, this takes a while)"; \
-		docker build -t $(E2E_IMAGE) -f tools/Dockerfile.e2e tools/; \
-	}
-
 ## Install dependencies if they are missing.
 deps:
 	@[ -d node_modules ] || { \
@@ -133,4 +168,6 @@ deps:
 	}
 
 clean: down
-	rm -rf node_modules dist app/css app/bundle.js app/bundle.js.map
+	rm -rf node_modules bin app/css app/bundle.js app/bundle.js.map \
+	       .gocache .gomodcache .dev-data
+	rm -rf web/dist && mkdir -p web/dist && touch web/dist/.gitkeep

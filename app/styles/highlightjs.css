@@ -1,0 +1,27 @@
+/* highlight.js colours for JSON payloads */
+
+.stream-line-content pre {
+  color: var(--text-secondary);
+}
+
+.hljs-attr,
+.hljs-attribute {
+  color: var(--ansi-cyan);
+}
+
+.hljs-string {
+  color: var(--ansi-green);
+}
+
+.hljs-number {
+  color: var(--ansi-yellow);
+}
+
+.hljs-literal,
+.hljs-keyword {
+  color: var(--ansi-magenta);
+}
+
+.hljs-punctuation {
+  color: var(--text-faint);
+}

@@ -11,9 +11,19 @@
 #
 # Not to be confused with tools/Dockerfile, which is the development toolchain
 # and mounts your checkout.
+#
+# ** This image is no longer static. **
+#
+# P2 embeds DuckDB, which is cgo. That ends CGO_ENABLED=0, ends the distroless
+# static base, and means the binary is linked against the glibc of the image it
+# was built in — so the build and runtime stages have to agree on their base.
+# The cost is roughly 45MB of DuckDB and a per-platform build; the alternative
+# was no SQL, which was the whole feature.
+
+ARG VERSION=2.0.0-dev
 
 # ---- build the webapp ------------------------------------------------------
-FROM node:22.18.0-bookworm-slim AS build
+FROM node:22.12.0-bookworm-slim AS webapp
 
 WORKDIR /src
 
@@ -21,26 +31,47 @@ WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
-COPY . .
+COPY app ./app
+COPY tools ./tools
 RUN npm run dist
 
+# ---- build the server ------------------------------------------------------
+FROM golang:1.26.3-bookworm AS build
+
+ARG VERSION
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY cmd ./cmd
+COPY internal ./internal
+COPY web ./web
+
+# The webapp is embedded into the binary, so it has to land before the build.
+COPY --from=webapp /src/web/dist ./web/dist
+
+# CGO_ENABLED=1 and no -extldflags '-static': go-duckdb ships a prebuilt static
+# DuckDB per platform, but the Go side still links against the system libc.
+RUN CGO_ENABLED=1 go build \
+      -trimpath \
+      -ldflags "-s -w -X main.version=${VERSION}" \
+      -o /rtail-server ./cmd/rtail-server
+
 # ---- runtime ---------------------------------------------------------------
-FROM node:22.18.0-bookworm-slim AS runtime
+#
+# Debian slim rather than distroless static, because the binary needs glibc and
+# libstdc++. Matching the build stage's Debian release is not optional: a
+# binary linked against bookworm's glibc will not start on an older one.
+FROM debian:bookworm-slim AS runtime
 
-# update-notifier phones npm on startup and prints a banner nobody can act on
-# from inside a container image.
-ENV NODE_ENV=production \
-    NO_UPDATE_NOTIFIER=1 \
-    NPM_CONFIG_UPDATE_NOTIFIER=false
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --uid 10001 --create-home rtail
 
-WORKDIR /app
-
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund \
- && npm cache clean --force
-
-COPY --from=build /src/cli ./cli
-COPY --from=build /src/dist ./dist
+COPY --from=build /rtail-server /usr/local/bin/rtail-server
 
 # A container's loopback is its own; binding 127.0.0.1 would make the published
 # ports unreachable. Set as env rather than in CMD so that `docker run rtail
@@ -50,12 +81,30 @@ ENV RTAIL_WEB_HOST=0.0.0.0 \
     RTAIL_WEB_PORT=8888 \
     RTAIL_UDP_PORT=9999
 
+# ** This image is open unless you give it a token. **
+#
+# The server refuses to bind a non-loopback address without --auth-token,
+# which is the right rule on a host and the wrong question inside a container:
+# 0.0.0.0 here does not mean "public", it means "reachable through whatever
+# you published with -p". So the image answers it once, and the server warns
+# on every start instead.
+#
+# Set RTAIL_AUTH_TOKEN and this goes away:
+#
+#   docker run -e RTAIL_AUTH_TOKEN="$(openssl rand -hex 32)" -p 8888:8888 rtail
+ENV RTAIL_INSECURE=true
+
+# Where --data points by default in the image. Mount a volume here to keep logs
+# across container restarts; without it the server stays memory-only.
+ENV RTAIL_DATA=""
+
 EXPOSE 8888/tcp
 EXPOSE 9999/udp
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.RTAIL_WEB_PORT||8888)+'/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+USER rtail
 
-USER node
+# No HEALTHCHECK: there is no curl in this image and adding one to run a health
+# probe is a poor trade. Point your orchestrator at GET /healthz instead — it
+# reports the version, the stream count and the UDP ingest counters.
 
-ENTRYPOINT ["node", "cli/rtail-server.ts"]
+ENTRYPOINT ["/usr/local/bin/rtail-server"]

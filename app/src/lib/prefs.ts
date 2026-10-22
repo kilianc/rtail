@@ -7,27 +7,43 @@
  * flashing the default while an async store resolves.
  */
 
-import type { JsonView, Prefs, Theme } from './types.ts'
+import type { Prefs, Theme } from './types.js'
 
-const KEY = 'rtail:prefs'
+/*!
+ * The storage key carries a version, and this is the second.
+ *
+ * v2 flipped the default theme from light to dark and rebuilt both palettes
+ * around it. A value persisted under the old key would silently pin an
+ * existing tab to the previous design — which is exactly what happened during
+ * development: the redesign shipped, and the only person looking at it kept
+ * seeing the old one because their browser remembered a preference from an
+ * earlier experiment. Bumping the key is a one-line reset that beats
+ * explaining to every user why nothing changed.
+ */
+const KEY = 'rtail:prefs:v2'
 
 export const FONT_SIZE_MIN = 1
 export const FONT_SIZE_MAX = 7
 export const FONT_FAMILY_COUNT = 6
 
-/** Extracted fields per stream — a hard cap, since they render side by side. */
-export const MAX_FIELDS = 12
+/*!
+ * The size "reset" goes back to.
+ *
+ * Exported rather than written at the button, which held a 4 from when the
+ * interface was set in 14px. The default moved to 11px and the button did
+ * not, so "reset" made the app bigger than it had ever been and only lit up
+ * at a size nothing else called default.
+ */
+export const FONT_SIZE_DEFAULT = 1
 
 const DEFAULTS: Prefs = {
   theme: 'dark',
   fontFamily: 1,
-  fontSize: 4,
-  ascending: true,
-  sidebarWidth: 240,
-  favorites: [],
-  hiddenTimestamps: [],
-  jsonView: 'auto',
-  fields: {}
+  // 11px — the size the whole interface is set in. It used to start at 14px,
+  // which made the log rows the only thing on the screen in a different size
+  // from everything around them.
+  fontSize: FONT_SIZE_DEFAULT,
+  favorites: []
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -51,34 +67,8 @@ export function loadPrefs(): Prefs {
     theme: 'light' === stored.theme ? 'light' : 'dark',
     fontFamily: clamp(Number(stored.fontFamily) || DEFAULTS.fontFamily, 1, FONT_FAMILY_COUNT),
     fontSize: clamp(Number(stored.fontSize) || DEFAULTS.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX),
-    ascending: 'boolean' === typeof stored.ascending ? stored.ascending : DEFAULTS.ascending,
-    sidebarWidth: clamp(Number(stored.sidebarWidth) || DEFAULTS.sidebarWidth, 180, 600),
     favorites: Array.isArray(stored.favorites) ? stored.favorites.filter(isString) : [],
-    hiddenTimestamps: Array.isArray(stored.hiddenTimestamps)
-      ? stored.hiddenTimestamps.filter(isString)
-      : [],
-    jsonView: isJsonView(stored.jsonView) ? stored.jsonView : DEFAULTS.jsonView,
-    fields: readFields(stored.fields)
   }
-}
-
-function readFields(stored: unknown): Record<string, string[]> {
-  if (null === stored || 'object' !== typeof stored) return {}
-
-  const fields: Record<string, string[]> = {}
-
-  for (const [stream, paths] of Object.entries(stored)) {
-    if (!Array.isArray(paths)) continue
-
-    const clean = paths.filter(isString).slice(0, MAX_FIELDS)
-    if (clean.length) fields[stream] = clean
-  }
-
-  return fields
-}
-
-function isJsonView(value: unknown): value is JsonView {
-  return 'auto' === value || 'collapsed' === value || 'expanded' === value
 }
 
 export function savePrefs(prefs: Prefs): void {
@@ -90,23 +80,7 @@ export function savePrefs(prefs: Prefs): void {
   }
 }
 
-/** Remembers which stream was open, so a reload lands back on it. */
-export function loadActiveStream(): string | null {
-  try {
-    return localStorage.getItem('rtail:activeStream')
-  } catch {
-    return null
-  }
-}
 
-export function saveActiveStream(stream: string | null): void {
-  try {
-    if (null === stream) localStorage.removeItem('rtail:activeStream')
-    else localStorage.setItem('rtail:activeStream', stream)
-  } catch {
-    // see savePrefs
-  }
-}
 
 export function isTheme(value: string): value is Theme {
   return 'dark' === value || 'light' === value

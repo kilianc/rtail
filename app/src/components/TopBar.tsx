@@ -1,251 +1,246 @@
+/*!
+ * The top bar.
+ *
+ * Brand, stream, the live toggle, and what the last query cost. Everything
+ * else that used to live here moved: the filter is its own row now because it
+ * is the primary control, and streams collapsed into a picker.
+ *
+ * The cost readout is deliberate. A search interface that hides how much work
+ * it just did teaches nobody why one query is instant and another is not.
+ */
+
+import type { ComponentChildren } from 'preact'
 import { useRef, useState } from 'preact/hooks'
-import type { FieldPath } from '../lib/json.ts'
-import { FONT_FAMILY_COUNT, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../lib/prefs.ts'
-import type { JsonView, Prefs, Theme } from '../lib/types.ts'
-import { Popover } from './Popover.tsx'
-import { FieldsPicker, SearchBar, SearchHelp, type SearchPanel } from './SearchBar.tsx'
+import { FONT_FAMILY_COUNT, FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../lib/prefs.js'
+import type { Store } from '../lib/api.js'
+import { formatBytes, formatCount } from '../lib/format.js'
+import type { Prefs, Theme } from '../lib/types.js'
+import { Button } from './Button.js'
+import { Popover } from './Popover.js'
 
 declare const __VERSION__: string
 
 interface Props {
   prefs: Prefs
-  activeStream: string | null
-  isFavorite: boolean
-  paused: boolean
-  filter: string
-  /** Set when the query did not fully parse. */
-  filterError: string | null
-  matched: number
-  total: number
-  /** Paths extracted from this stream's object lines. */
-  fields: string[]
-  /** Paths seen in the buffer, most common first. */
-  availableFields: FieldPath[]
+  live: boolean
+  /** Whether the timeline is showing. */
+  timeline: boolean
+  /** What is in the store, for the readout. */
+  store: Store | null
+  children?: ComponentChildren
   onChangePrefs: (patch: Partial<Prefs>) => void
-  onToggleFavorite: () => void
-  onFilter: (pattern: string) => void
-  onFields: (fields: string[]) => void
+  onToggleLive: () => void
+  onToggleTimeline: () => void
 }
 
-type OpenPanel = 'info' | 'settings' | SearchPanel | null
+type OpenPanel = 'info' | 'settings' | null
 
-const JSON_VIEWS: Array<[JsonView, string, string]> = [
-  ['auto', 'Auto', 'Expand small payloads, collapse the rest'],
-  ['collapsed', 'One line', 'Every payload on a single line'],
-  ['expanded', 'Pretty', 'Every payload expanded']
-]
-
-/**
- * The single top bar.
- *
- * The brand cell is exactly as wide as the sidebar, so the vertical hairline
- * runs unbroken from the top of the window to the bottom. Both widths come
- * from --sidebar-w, which App keeps in sync while the sidebar is dragged.
- */
-export function TopBar({
-  prefs,
-  activeStream,
-  isFavorite,
-  paused,
-  filter,
-  filterError,
-  matched,
-  total,
-  fields,
-  availableFields,
-  onChangePrefs,
-  onToggleFavorite,
-  onFilter,
-  onFields
-}: Props) {
+export function TopBar({ prefs, live, timeline, store, children, onChangePrefs, onToggleLive, onToggleTimeline }: Props) {
   const [open, setOpen] = useState<OpenPanel>(null)
   const infoRef = useRef<HTMLButtonElement>(null)
   const settingsRef = useRef<HTMLButtonElement>(null)
-  const helpRef = useRef<HTMLButtonElement>(null)
-  const fieldsRef = useRef<HTMLButtonElement>(null)
 
   const toggle = (panel: Exclude<OpenPanel, null>) =>
     setOpen((current) => (current === panel ? null : panel))
 
-  const close = () => setOpen(null)
-
   return (
-    // The popovers are siblings of the bar, not children: bar-scoped styles
-    // cannot reach into them, and — since .topbar-main is a query container,
-    // which makes it the containing block for fixed descendants — a panel
-    // mounted inside would anchor to the bar's box rather than the viewport.
     <>
-    <div class="topbar">
-      <div class="topbar-brand">
-        <div class="rtail-logo" />
-      </div>
+      <div class="topbar">
+        <div class="topbar-brand">
+          <span class="topbar-mark">rtail</span>
+        </div>
 
-      <div class="topbar-main">
-        {activeStream && (
-          <>
-            <button
-              class="stream-title"
-              title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-              onClick={onToggleFavorite}
-            >
-              <i class={`stream-title-favorite ${isFavorite ? 'on' : ''}`} />
-              {activeStream}
-            </button>
+        <div class="topbar-main">
+          {children}
 
-            <span class={`stream-status ${paused ? 'paused' : ''}`}>
-              <i />
-              {paused ? 'Paused' : 'Live'}
-            </span>
+          <span class="topbar-rule" aria-hidden="true" />
 
-            <SearchBar
-              value={filter}
-              error={filterError}
-              matched={matched}
-              total={total}
-              fieldCount={fields.length}
-              open={'help' === open || 'fields' === open ? open : null}
-              helpRef={helpRef}
-              fieldsRef={fieldsRef}
-              onChange={onFilter}
-              onToggle={toggle}
-            />
-          </>
-        )}
-
-        <div class="topbar-actions">
           <button
-            ref={infoRef}
-            class="btn btn-info"
-            aria-label="About rtail"
-            aria-expanded={'info' === open}
-            onClick={() => toggle('info')}
-          />
+            class={`live-toggle ${live ? 'on' : ''}`}
+            title={live ? 'Streaming — click to browse history' : 'Click to stream live'}
+            aria-pressed={live}
+            onClick={onToggleLive}
+          >
+            <i />
+            {live ? 'live' : 'history'}
+          </button>
+
+          {/*
+            The timeline's switch, beside the live switch, because they are
+            the same kind of control: what this window is showing. It used to
+            be a disclosure row above the chart, which spent a line of the
+            window saying the word "Timeline".
+          */}
+          <Button variant="outline" size="sm" on={timeline} onClick={onToggleTimeline}>
+            timeline
+          </Button>
+
+          <span class="topbar-gap" />
+
+          {/*
+            How much log there is. It is the only thing on this bar that is
+            about the install rather than the question being asked, which is
+            why it sits apart from the controls, next to the links out.
+          */}
+          {store && (
+            <span class="topbar-store">
+              {formatCount(store.rows)} lines
+              <span class="topbar-dot" aria-hidden="true">·</span>
+              {formatBytes(store.bytes)}
+              <span class="topbar-dot" aria-hidden="true">·</span>
+              {store.files.toLocaleString()} {1 === store.files ? 'file' : 'files'}
+            </span>
+          )}
+
+          <span class="topbar-rule" aria-hidden="true" />
 
           <a
-            class="btn btn-github"
-            aria-label="rtail on GitHub"
-            href="https://github.com/kilianc/rtail"
+            class="topbar-docs"
+            href="https://github.com/kilianc/rtail#readme"
             target="_blank"
             rel="noreferrer"
-          />
+          >
+            docs
+          </a>
 
-          <button
-            ref={settingsRef}
-            class="btn btn-settings"
-            aria-label="Settings"
-            aria-expanded={'settings' === open}
-            onClick={() => toggle('settings')}
-          />
+          <span class="topbar-rule" aria-hidden="true" />
+
+          <div class="topbar-actions">
+            <Button
+              elementRef={infoRef}
+              variant="icon"
+              icon="info"
+              aria-label="About rtail"
+              aria-expanded={'info' === open}
+              onClick={() => toggle('info')}
+            />
+
+            {/*
+              An anchor, not a button, because it navigates — so it spells the
+              classes out. They are the same contract Button emits, and this is
+              the only place that has to know it.
+            */}
+            <a
+              class="btn btn-icon btn-md btn-icon-github"
+              aria-label="rtail on GitHub"
+              href="https://github.com/kilianc/rtail"
+              target="_blank"
+              rel="noreferrer"
+            />
+
+            <Button
+              elementRef={settingsRef}
+              variant="icon"
+              icon="settings"
+              aria-label="Settings"
+              aria-expanded={'settings' === open}
+              onClick={() => toggle('settings')}
+            />
+          </div>
         </div>
       </div>
-    </div>
-
-    {'help' === open && <SearchHelp anchor={helpRef.current} onClose={close} />}
-
-    {'fields' === open && (
-        <FieldsPicker
-          anchor={fieldsRef.current}
-          fields={fields}
-          available={availableFields}
-          onFields={onFields}
-          onClose={close}
-        />
-      )}
 
       {'info' === open && (
-        <Popover anchor={infoRef.current} class="popover-info" onClose={close}>
-          <div class="rtail-logo" />
-          <div class="version">Version {__VERSION__}</div>
+        <Popover anchor={infoRef.current} class="popover-info" onClose={() => setOpen(null)}>
+          <div class="popover-brand">
+            <span class="topbar-mark">rtail</span>
+            <span class="version">{__VERSION__}</span>
+          </div>
+
+          <div class="shortcuts">
+            <h4>Shortcuts</h4>
+            {/*
+              What the keys actually do. This claimed `return` ran the query,
+              which is the one thing it does not: in the editor it starts a
+              new line, and on the list it opens the selected row. ⌘⏎ runs —
+              the chip on the Run button has said so all along.
+            */}
+            <dl>
+              <dt>/</dt><dd>focus the query</dd>
+              <dt>⌘K</dt><dd>focus the query</dd>
+              <dt>⌘ return</dt><dd>run the query</dd>
+              <dt>return</dt><dd>open the row</dd>
+              <dt>j / k</dt><dd>move between rows</dd>
+              <dt>esc</dt><dd>close everything</dd>
+            </dl>
+          </div>
+
           <a
-            class="btn btn-issue"
+            class="btn btn-outline btn-md btn-block"
             href="https://github.com/kilianc/rtail/issues"
             target="_blank"
             rel="noreferrer"
           >
-            Report issue
-          </a>
-          <a
-            class="btn btn-fork"
-            href="https://github.com/kilianc/rtail/fork"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Fork it
+            report an issue
           </a>
         </Popover>
       )}
 
       {'settings' === open && (
-        <Popover anchor={settingsRef.current} class="popover-settings" onClose={close}>
-          <h4>Font size</h4>
+        <Popover anchor={settingsRef.current} class="popover-settings" onClose={() => setOpen(null)}>
+          <h4>Size</h4>
+          {/*
+            One letter at one size across all three, with the sign as a mark
+            beside it. They used to be three drawn glyphs, and because each
+            was exported on an artboard of its own width the same A was
+            masked to a different size in each button and sat on a different
+            baseline — the row read as three letters that had nothing to do
+            with one another.
+          */}
           <div class="btn-group">
-            <button
-              class="btn btn-font-smaller"
+            <Button
+              variant="icon"
+              class="btn-letter"
               aria-label="Decrease font size"
               disabled={prefs.fontSize <= FONT_SIZE_MIN}
               onClick={() => onChangePrefs({ fontSize: Math.max(FONT_SIZE_MIN, prefs.fontSize - 1) })}
-            />
-            <button
-              class={`btn btn-font-reset ${4 === prefs.fontSize ? 'selected' : ''}`}
+            >
+              A<sup aria-hidden="true">−</sup>
+            </Button>
+            <Button
+              variant="icon"
+              class="btn-letter"
+              on={FONT_SIZE_DEFAULT === prefs.fontSize}
               aria-label="Reset font size"
-              onClick={() => onChangePrefs({ fontSize: 4 })}
-            />
-            <button
-              class="btn btn-font-bigger"
+              onClick={() => onChangePrefs({ fontSize: FONT_SIZE_DEFAULT })}
+            >
+              A
+            </Button>
+            <Button
+              variant="icon"
+              class="btn-letter"
               aria-label="Increase font size"
               disabled={prefs.fontSize >= FONT_SIZE_MAX}
               onClick={() => onChangePrefs({ fontSize: Math.min(FONT_SIZE_MAX, prefs.fontSize + 1) })}
-            />
+            >
+              A<sup aria-hidden="true">+</sup>
+            </Button>
           </div>
 
-          <h4>Font family</h4>
+          <h4>Face</h4>
           <div class="btn-group six-grid">
             {Array.from({ length: FONT_FAMILY_COUNT }, (_, index) => index + 1).map((n) => (
-              <button
+              <Button
                 key={n}
-                class={`btn btn-font-${n} font-family-${n} ${n === prefs.fontFamily ? 'selected' : ''}`}
+                variant="icon"
+                on={n === prefs.fontFamily}
+                class={`btn-swatch font-family-${n}`}
                 aria-label={`Font family ${n}`}
                 onClick={() => onChangePrefs({ fontFamily: n })}
               >
                 Ag
-              </button>
-            ))}
-          </div>
-
-          <h4>Sorting</h4>
-          <div class="btn-group">
-            <button
-              class={`btn btn-sorting-asc ${prefs.ascending ? 'selected' : ''}`}
-              aria-label="Oldest first"
-              onClick={() => onChangePrefs({ ascending: true })}
-            />
-            <button
-              class={`btn btn-sorting-desc ${prefs.ascending ? '' : 'selected'}`}
-              aria-label="Newest first"
-              onClick={() => onChangePrefs({ ascending: false })}
-            />
-          </div>
-
-          <h4>JSON payloads</h4>
-          <div class="btn-group">
-            {JSON_VIEWS.map(([view, label, title]) => (
-              <button
-                key={view}
-                class={`btn btn-text ${view === prefs.jsonView ? 'selected' : ''}`}
-                title={title}
-                onClick={() => onChangePrefs({ jsonView: view })}
-              >
-                {label}
-              </button>
+              </Button>
             ))}
           </div>
 
           <h4>Theme</h4>
           <div class="btn-group">
             {(['dark', 'light'] as Theme[]).map((theme) => (
-              <button
+              <Button
                 key={theme}
-                class={`btn btn-theme-${theme} ${theme === prefs.theme ? 'selected' : ''}`}
+                variant="icon"
+                icon={`theme-${theme}`}
+                on={theme === prefs.theme}
                 aria-label={`${theme} theme`}
                 onClick={() => onChangePrefs({ theme })}
               />
