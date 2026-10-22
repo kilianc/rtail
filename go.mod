@@ -1,8 +1,8 @@
-// rtail v2 — see docs/proposal-logging-system.md.
+// rtail v2.
 //
-// The major-version suffix is deliberate: v2 lives on its own branch, and Go
-// requires the module path to carry /v2 once a v2.x.x tag exists. Declaring it
-// now means the eventual tag needs no import rewrite anywhere.
+// The major-version suffix is deliberate: Go requires the module path to carry
+// /v2 once a v2.x.x tag exists, and it does. Declaring it up front meant the
+// tags needed no import rewrite anywhere.
 //
 // Two direct dependencies, both deliberately pure Go, so the server is still a
 // static binary and the container image is still distroless:

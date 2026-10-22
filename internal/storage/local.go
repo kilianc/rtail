@@ -2,8 +2,8 @@
  * Local-disk implementation of storage.Backend.
  *
  * Object names are slash-separated and map onto a directory tree under root,
- * so the on-disk layout is the one in §3.4 and stays browsable with `ls`. That
- * is a feature, not an accident: handing someone a directory of Parquet files
+ * so the on-disk layout stays browsable with `ls`. That is a feature, not an
+ * accident: handing someone a directory of Parquet files
  * they can open in DuckDB without rtail installed is the whole anti-lock-in
  * argument.
  */

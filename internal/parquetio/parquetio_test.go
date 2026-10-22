@@ -121,7 +121,7 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
-// A file is a plain Parquet file with the columns the proposal describes.
+// A file is a plain Parquet file: the fixed envelope, plus a column per key.
 func TestSchemaShape(t *testing.T) {
 	schema := parquetio.BuildSchema([]*model.Record{
 		record(t, 1, `{"user_id":1,"req":{"a":1}}`),
@@ -152,7 +152,7 @@ func TestSchemaShape(t *testing.T) {
 }
 
 /*!
- * Type inference across a batch, per proposal §3.2.
+ * Type inference across a batch.
  */
 func TestTypeWidening(t *testing.T) {
 	cases := []struct {

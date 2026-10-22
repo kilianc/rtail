@@ -1,8 +1,7 @@
 /*!
  * rQL — the filter bar language.
  *
- * docs/proposal-logging-system.md §6.2. Terse, Stackdriver-shaped, and what
- * 95% of use looks like:
+ * Terse, Stackdriver-shaped, and what 95% of use looks like:
  *
  *     level>=ERROR service="api" user_id=42 "connection timeout"
  *     -path:/health AND (region=us-east-1 OR region=us-west-2)

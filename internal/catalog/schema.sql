@@ -1,4 +1,4 @@
--- The catalog, per docs/proposal-logging-system.md Appendix A.
+-- The catalog.
 --
 -- This is the piece that makes a directory of Parquet files behave like a
 -- table: which files exist, what is in them, and what range of time and

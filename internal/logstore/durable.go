@@ -515,7 +515,7 @@ func (d *Durable) collect(ctx context.Context) error {
 }
 
 /*!
- * objectName builds the on-disk path, per §3.4.
+ * objectName builds the on-disk path.
  *
  * Hive-ish and human-navigable on purpose: handing someone a directory they
  * can open in DuckDB without rtail installed is the anti-lock-in argument, and

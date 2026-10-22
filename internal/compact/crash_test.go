@@ -1,7 +1,7 @@
 /*!
  * Compaction under crash.
  *
- * The proposal calls this out as where storage engines go to die, so these are
+ * Crash during compaction is where storage engines go to die, so these are
  * deterministic rather than hopeful: the compactor is stopped at the one
  * dangerous boundary on purpose, restarted, and the result checked against the
  * only invariant that matters — **no record is ever lost or duplicated, and

@@ -39,8 +39,7 @@ nothing back, and outcompete the authors with their own code.
 
 **There is no business.** rTail is free software, with no hosted service and
 nothing to sell, so the argument AGPL was chosen to win is not being fought.
-§9 of [the design proposal](docs/proposal-logging-system.md) records that path
-and is marked superseded.
+That path is abandoned rather than deferred.
 
 The licence was kept at AGPL for a while on a second argument — that copyleft
 keeps improvements public, and that a tool promising your logs outlive it

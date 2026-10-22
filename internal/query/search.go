@@ -1,7 +1,7 @@
 /*!
  * Search, histogram, and the field explorer.
  *
- * The three queries the interface in §7 is built from. They share a plan, so
+ * The three queries the explorer is built from. They share a plan, so
  * asking for results and asking for the chart above them prunes once, and the
  * histogram touches two columns rather than the whole row.
  */

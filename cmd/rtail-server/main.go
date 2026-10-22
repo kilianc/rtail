@@ -1,10 +1,10 @@
 /*!
  * rtail-server — the v2 server.
  *
- * See docs/proposal-logging-system.md for where this is going. Today it is P0:
- * the v1 server, in Go, at parity. UDP in on the frozen wire format, SSE out,
- * an in-memory backlog, and the existing webapp. Nothing is durable yet — that
- * is P1.
+ * UDP in on the frozen v1 wire format, plus the HTTP, OTLP and syslog
+ * receivers; SSE out to the embedded webapp. With --data every record is also
+ * written to Parquet and becomes searchable; without it this is the v1
+ * in-memory ring and nothing touches disk.
  */
 
 package main

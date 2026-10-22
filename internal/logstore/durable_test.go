@@ -1,9 +1,9 @@
 /*!
  * Durability tests.
  *
- * The proposal calls out compaction correctness under crash as where storage
- * engines go to die, and says to budget deterministic simulation rather than
- * hoping. These are that: the process is not really killed, but every
+ * Compaction correctness under crash is where storage engines go to die, and
+ * it wants deterministic simulation rather than hoping. These are that: the
+ * process is not really killed, but every
  * interesting interleaving of "WAL written / parquet committed / catalog
  * registered / segment removed" is reproduced by hand and asserted on.
  *

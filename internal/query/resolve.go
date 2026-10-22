@@ -1,5 +1,5 @@
 /*!
- * Field resolution — docs/proposal-logging-system.md §3.3.
+ * Field resolution.
  *
  * A user typing `user_id=42` should never have to know whether that key was
  * promoted to a column in every file being read, some of them, or none. The

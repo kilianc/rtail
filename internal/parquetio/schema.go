@@ -1,9 +1,8 @@
 /*!
  * Building a Parquet schema from a batch of records.
  *
- * This is docs/proposal-logging-system.md §3 made real: a fixed envelope that
- * is always present and always the same type, plus one column per root-level
- * key the batch happened to contain.
+ * A fixed envelope that is always present and always the same type, plus one
+ * column per root-level key the batch happened to contain.
  *
  * Schemas are derived per file, not globally. A file is one flush — minutes of
  * data — so its key diversity is bounded and inference converges fast. Two
@@ -104,7 +103,7 @@ func (k *kindSet) add(kind model.Kind) {
 }
 
 /*!
- * resolve picks the column type for a key, per §3.2.
+ * resolve picks the column type for a key.
  *
  * Returns false when the key was only ever null in this batch: there is no
  * type to give it, and a column of nothing but nulls is pure overhead. The

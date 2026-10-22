@@ -5,14 +5,13 @@
  * it, a flush buffer holds up to 30 seconds of everything and a crash takes
  * all of it; with it, the worst case is the sync interval.
  *
- * Shape, and where it diverges from docs/proposal-logging-system.md §4.2: the
- * proposal describes a WAL per stream-shard. This is a single log for every
- * stream, in numbered segments. The reason is truncation — a segment can only
- * be deleted once everything in it is durably in Parquet, so a shared log
- * means a flush cycle has to cover every buffered stream at once. That is a
- * feature rather than a compromise: it makes one fsync serve all streams
- * instead of N, and the tiny-file problem it could cause is the same one §3.4
- * already solves by pooling low-volume streams.
+ * Shape: one log for every stream, in numbered segments, rather than a WAL
+ * per stream-shard. The reason is truncation — a segment can only be deleted
+ * once everything in it is durably in Parquet, so a shared log means a flush
+ * cycle has to cover every buffered stream at once. That is a feature rather
+ * than a compromise: it makes one fsync serve all streams instead of N, and
+ * the tiny-file problem it could cause is the one that pooling low-volume
+ * streams already solves.
  *
  * Durability: appends land in an OS buffer and are fsynced on an interval
  * (default 100ms), not per record. A crash loses at most that interval. Since

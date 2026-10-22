@@ -1,11 +1,11 @@
 /*!
  * The blob storage abstraction.
  *
- * This interface exists in P0, with only a local-disk implementation and no
- * caller yet, on purpose. docs/proposal-logging-system.md §9.1 makes the point:
- * the cloud version of rtail is this same engine with S3 underneath, and that
- * is a six-week job if the seam exists from the start and a six-month one if
- * the compactor is written against os.Open.
+ * This interface exists with only a local-disk implementation behind it, on
+ * purpose. An object store is the one other backend this engine would
+ * plausibly ever want, and swapping local disk for S3 is a small job if the
+ * seam is here from the start and a very large one if the compactor is written
+ * against os.Open.
  *
  * The one non-obvious thing in here is Commit/Abort. Parquet files must appear
  * whole or not at all — a half-written file that the catalog already points at
@@ -74,7 +74,7 @@ type Backend interface {
 	Open(ctx context.Context, name string) (Reader, error)
 
 	// Remove deletes an object. Removing a missing object is not an error —
-	// the GC pass in §5 is expected to be retried.
+	// the compactor's GC pass is expected to be retried.
 	Remove(ctx context.Context, name string) error
 
 	// List returns every object under a prefix, sorted by name.

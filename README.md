@@ -9,11 +9,9 @@
 
 ## Terminal output to the browser in seconds, using UNIX pipes.
 
-> **v2 — release candidate.** rtail is the rewrite described in
-> [`docs/proposal-logging-system.md`](docs/proposal-logging-system.md): a
-> durable, searchable log store backed by Parquet and SQL. The server is a
-> single Go binary with the webapp embedded, and the npm package carries only
-> the client pipe.
+> **v2 — release candidate.** v2 is a rewrite: a durable, searchable log store
+> backed by Parquet and SQL. The server is a single Go binary with the webapp
+> embedded, and the npm package carries only the client pipe.
 >
 > The `cmd | rtail` wire format is frozen and always will be — the client you
 > already have installed works against a v2 server unchanged.

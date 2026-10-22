@@ -1,5 +1,5 @@
 /*!
- * Compaction and retention — docs/proposal-logging-system.md §5.
+ * Compaction and retention.
  *
  * Flushing produces a small file every thirty seconds per stream. Left alone
  * that is thousands of files a day, each with its own footer to open, and a

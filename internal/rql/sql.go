@@ -9,7 +9,7 @@
  *
  * Second, field references go through a Resolver rather than being written
  * literally. Which SQL expression a field becomes depends on which files are
- * being read — §3.3 — and only the planner knows that. See
+ * being read, and only the planner knows that. See
  * internal/query/resolve.go.
  */
 

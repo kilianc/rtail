@@ -2,9 +2,8 @@
  * The v2 record model.
  *
  * A record is a fixed envelope plus a dynamic set of promoted root-level
- * fields — the shape described in docs/proposal-logging-system.md §3. The
- * envelope columns are always present and always the same type; everything
- * else is whatever the log line happened to contain.
+ * fields. The envelope columns are always present and always the same type;
+ * everything else is whatever the log line happened to contain.
  *
  * Value is a compact tagged union rather than `any` on purpose: its Kind maps
  * one-to-one onto the Parquet physical types the P1 writer will emit, so

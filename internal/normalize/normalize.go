@@ -1,9 +1,9 @@
 /*!
  * Turning an incoming line into a model.Record.
  *
- * This is the envelope extraction step from docs/proposal-logging-system.md
- * §3.1–3.2: pull level, message and event time out of whatever the payload
- * happens to call them, promote every root-level key to its own field, and
+ * This is the envelope extraction step: pull level, message and event time
+ * out of whatever the payload happens to call them, promote every root-level
+ * key to its own field, and
  * keep the original around so nothing we guessed wrong about is ever lost.
  *
  * Every receiver funnels through here, so the storage engine and the query
@@ -232,8 +232,8 @@ func pick(fields map[string]Value, lowered map[string]string, candidates []strin
 /*!
  * classify infers a field's type from its JSON text.
  *
- * Per §3.2: scalars become their natural type, objects and arrays are kept as
- * JSON text. Integers are distinguished from floats by the absence of a
+ * Scalars become their natural type; objects and arrays are kept as JSON
+ * text. Integers are distinguished from floats by the absence of a
  * decimal point or exponent, so an id of 4471 stays an integer and does not
  * come back out of a float column as 4471.0.
  */
