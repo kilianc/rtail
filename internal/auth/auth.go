@@ -253,8 +253,8 @@ const signInPage = `<!doctype html>
   :root { color-scheme: dark }
   body {
     align-items: center;
-    background: #1f1f1f;
-    color: #e8eaed;
+    background: #000000;
+    color: #ededed;
     display: flex;
     font: 11px/19px 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     justify-content: center;
@@ -262,30 +262,30 @@ const signInPage = `<!doctype html>
     min-height: 100vh;
   }
   form { display: flex; flex-direction: column; gap: 12px; width: 280px }
-  h1 { font-size: 12.5px; font-weight: 700; letter-spacing: .04em; margin: 0; color: #8ab4f8 }
-  p { color: #9aa0a6; margin: 0 }
-  label { color: #9aa0a6 }
+  h1 { font-size: 12.5px; font-weight: 700; letter-spacing: .04em; margin: 0; color: #52a8ff }
+  p { color: #a1a1a1; margin: 0 }
+  label { color: #a1a1a1 }
   input {
-    background: #202124;
-    border: 1px solid #5f6368;
+    background: #0a0a0a;
+    border: 1px solid #333333;
     border-radius: 4px;
-    color: #e8eaed;
+    color: #ededed;
     font: inherit;
     padding: 5px 8px;
   }
-  input:focus { border-color: #8ab4f8; outline: none }
+  input:focus { border-color: #52a8ff; outline: none }
   button {
-    background: #8ab4f8;
+    background: #52a8ff;
     border: 0;
     border-radius: 4px;
-    color: #202124;
+    color: #000000;
     cursor: pointer;
     font: inherit;
     font-weight: 500;
     height: 22px;
   }
-  button:hover { background: #aecbfa }
-  code { color: #bdc1c6 }
+  button:hover { background: #7cbcff }
+  code { color: #ededed }
 </style>
 </head>
 <body>
