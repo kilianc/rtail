@@ -1,14 +1,15 @@
 /*
  * design system
  *
- * The reference is Google Cloud's Logs Explorer, and this follows it closely:
- * a dark, dense, Material-flavoured console. Four rules:
+ * The reference is Google Cloud's Logs Explorer, and the layout and density
+ * follow it closely. The dark palette does not: Google's greys were made for a
+ * #1f1f1f console, and this one is true black. Four rules:
  *
  * 1. Dark by default, because that is how the reference is actually run —
  * checked against a real Logs Explorer rather than assumed from its
  * screenshots. Light is a supported override.
- * 2. One blue does all the interactive work — selection, links, focus, the
- * histogram. Severity gets red and amber. Nothing else is coloured.
+ * 2. One blue does all the interactive work — selection, links, focus.
+ * Severity gets red and amber. Nothing else is coloured, INFO included.
  * 3. Density over air. Rows are 28px and separated by hairlines, because the
  * job is reading thousands of lines rather than admiring twelve.
  * 4. Every length is a token, from the 4px scale or the fixed sizes below.
@@ -115,108 +116,136 @@
   --tracking-tight: 0;
   --tracking-wide: 0.06em;
 
-  /* ** surfaces — Google's own dark console greys ** */
-  --background: #1f1f1f;
-  --card: #1f1f1f;
+  /*
+   * ** surfaces — true black, neutral greys **
+   *
+   * The log is the page, so both are black. Google's greys carried a little
+   * blue, which on black reads as a tint rather than as grey; these carry
+   * none.
+   */
+  --background: #000000;
+  --card: #000000;
   /*
    * One step up from the page: the column header and the query pane, which
    * are the two surfaces that have to read as sitting *on* the log rather
    * than as more of it.
    */
-  --surface: #202124;
-  --elevated: #2d2e30;
-  --foreground: #e8eaed;
+  --surface: #0a0a0a;
+  --elevated: #161616;
+  --foreground: #ededed;
 
   --popover: var(--elevated);
   --popover-foreground: var(--foreground);
 
-  --muted: #292a2d;
-  --muted-foreground: #9aa0a6;
-  --faint-foreground: #80868b;
+  --muted: #111111;
+  --muted-foreground: #a1a1a1;
+  /*
+   * A stop lighter than Google's #80868b, which was 4.47:1 on its own grey —
+   * a hair under AA for the 9.5px column labels set in it. This is 6.5:1.
+   */
+  --faint-foreground: #8f8f8f;
 
-  --subtle: #292a2d;
-  --subtle-strong: #35363a;
+  --subtle: #0f0f0f;
+  --subtle-strong: #1f1f1f;
   /*
    * A translucent lift, for states that must stack on top of a colour the row
    * already has rather than replace it.
    */
-  --raise: rgba(232, 234, 237, 0.04);
+  --raise: rgba(255, 255, 255, 0.045);
 
   /* ** hairlines ** */
-  --border: #3c4043;
-  --border-strong: #5f6368;
-  --input: #5f6368;
+  --border: #262626;
+  --border-strong: #3d3d3d;
+  --input: #333333;
 
-  /* ** elevation ** */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
-  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
-  --shadow-lg: 0 4px 8px 3px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.3);
+  /*
+   * ** elevation **
+   *
+   * A shadow has nothing to darken on black, so every level carries a
+   * one-pixel light ring and the shadow only separates it from what it covers.
+   */
+  --shadow-sm: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.9);
+  --shadow-md: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 4px 12px rgba(0, 0, 0, 0.9);
+  --shadow-lg: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 12px 32px rgba(0, 0, 0, 0.95);
 
   /*
    * ** severity **
    *
-   * Cloud Logging's dark palette: these are the colours its severity icons
-   * actually use, not a guess at them.
+   * Cloud Logging's pastels were drawn for its grey and turn chalky on black,
+   * so error and warn are saturated instead. They are the only levels with a
+   * hue: INFO and DEBUG are greys, because a column of blue INF chips is a
+   * column of the accent colour on every routine line, and the ERR that
+   * matters had nothing left to be louder than.
    */
-  --level-error: #f28b82;
-  --level-error-bg: #3f2a28;
-  --level-error-wash: rgba(242, 139, 130, 0.05);
-  --level-warn: #fdd663;
-  --level-warn-bg: #3d3423;
-  --level-info: #8ab4f8;
-  --level-info-bg: #283142;
-  --level-debug: #9aa0a6;
-  --level-debug-bg: #35363a;
+  --level-error: #ff6166;
+  --level-error-bg: #2a0f11;
+  --level-error-wash: rgba(255, 97, 102, 0.07);
+  --level-warn: #ffb224;
+  --level-warn-bg: #2a1c04;
+  --level-info: #a1a1a1;
+  --level-info-bg: #1a1a1a;
+  --level-debug: #7a7a7a;
+  --level-debug-bg: #111111;
 
-  /* ** the one accent — Google blue, dark-mode variant ** */
-  --primary: #8ab4f8;
-  --primary-hover: #aecbfa;
-  --primary-foreground: #202124;
-  --primary-subtle: #283142;
-  --primary-glow: rgba(138, 180, 248, 0.24);
+  /* ** the one accent ** */
+  --primary: #52a8ff;
+  --primary-hover: #7cbcff;
+  --primary-foreground: #000000;
+  --primary-subtle: #0a1f3d;
+  --primary-glow: rgba(82, 168, 255, 0.24);
   /*
    * The focus ring: a third of the glow's strength, because it sits around a
    * pane the width of the window rather than around a 6px dot.
    */
-  --primary-ring: rgba(138, 180, 248, 0.14);
+  --primary-ring: rgba(82, 168, 255, 0.14);
   /*
    * Selection, at the same strength as --level-error-wash, so a selected
    * error row reads as both rather than as one overwriting the other.
    */
-  --primary-wash: rgba(138, 180, 248, 0.05);
-  --ring: rgba(138, 180, 248, 0.5);
+  --primary-wash: rgba(82, 168, 255, 0.07);
+  --ring: rgba(82, 168, 255, 0.5);
 
   /* ** live ** */
-  --live: #81c995;
-  --live-glow: rgba(129, 201, 149, 0.4);
+  --live: #3dd68c;
+  --live-glow: rgba(61, 214, 140, 0.4);
   /*
    * The ring around the live dot — a halo, not a glow: it has to read at 6px
-   * against the bar's own grey without lighting anything else up.
+   * against the bar's own black without lighting anything else up.
    */
-  --live-ring: rgba(129, 201, 149, 0.18);
+  --live-ring: rgba(61, 214, 140, 0.2);
 
-  /* ** the histogram ** */
-  --chart-bar: #4a6da8;
-  --chart-bar-hover: #5c84c4;
-  --chart-grid: #35363a;
+  /*
+   * ** the histogram **
+   *
+   * Routine traffic is grey, for the same reason INFO is: the chart exists to
+   * show the error band, and it should be the only colour in it besides warn.
+   */
+  --chart-bar: #3d3d3d;
+  --chart-bar-hover: #525252;
+  --chart-grid: #1f1f1f;
 
-  /* ** ansi palette — the only colour that is not ours ** */
-  --ansi-black: #9aa0a6;
-  --ansi-black-bright: #bdc1c6;
-  --ansi-red: #f28b82;
-  --ansi-red-bright: #f6aea9;
-  --ansi-green: #81c995;
-  --ansi-green-bright: #a8dab5;
-  --ansi-yellow: #fdd663;
-  --ansi-yellow-bright: #fde293;
-  --ansi-blue: #8ab4f8;
-  --ansi-blue-bright: #aecbfa;
-  --ansi-magenta: #d7aefb;
-  --ansi-magenta-bright: #e9d2fd;
-  --ansi-cyan: #78d9ec;
-  --ansi-cyan-bright: #a1e4f2;
-  --ansi-white: #e8eaed;
-  --ansi-white-bright: #f8f9fa;
+  /*
+   * ** ansi palette — the only colour that is not ours **
+   *
+   * Re-cut alongside severity so a red in a program's own output is the same
+   * red as the ERR chip beside it.
+   */
+  --ansi-black: #8f8f8f;
+  --ansi-black-bright: #a1a1a1;
+  --ansi-red: #ff6166;
+  --ansi-red-bright: #ff9592;
+  --ansi-green: #3dd68c;
+  --ansi-green-bright: #7ee6ae;
+  --ansi-yellow: #ffb224;
+  --ansi-yellow-bright: #ffd27a;
+  --ansi-blue: #52a8ff;
+  --ansi-blue-bright: #8cc6ff;
+  --ansi-magenta: #c47bff;
+  --ansi-magenta-bright: #dcaaff;
+  --ansi-cyan: #2fc9d6;
+  --ansi-cyan-bright: #7fe4ec;
+  --ansi-white: #ededed;
+  --ansi-white-bright: #ffffff;
 }
 
 .light {

@@ -222,12 +222,17 @@ section {
 }
 
 /*
- * Alternating ground, one step darker than the page rather than lighter: the
- * surfaces that read as "raised" in this system are the panels, and a band
- * that competes with them flattens the whole page.
+ * Alternating ground, one step lighter than the page. It was a step darker,
+ * so the panels stayed the only raised thing on it, but nothing is darker
+ * than black. So the band takes the surface step and the panels on it drop to
+ * the page's black — inset rather than raised, which keeps the two apart.
  */
 .band {
-  background: #1b1b1b;
+  background: var(--surface);
+
+  .panel {
+    background: var(--background);
+  }
 }
 
 .eyebrow {
@@ -814,7 +819,7 @@ table {
   padding: 4px 10px;
 
   span {
-    color: rgba(32, 33, 36, 0.6);
+    color: rgba(0, 0, 0, 0.6);
   }
 }
 
