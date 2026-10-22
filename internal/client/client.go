@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -180,14 +181,7 @@ func Run(args []string, version string, env Env) int {
 		echo(raw)
 		endLine()
 
-		payload, err := json.Marshal(datagram{
-			ID:        opts.ID,
-			Timestamp: env.Now().UnixMilli(),
-			Content:   encodeContent(raw),
-		})
-		if nil != err {
-			continue
-		}
+		payload := encodeDatagram(opts.ID, env.Now().UnixMilli(), encodeContent(raw))
 
 		/*!
 		 * A datagram larger than IPv4 UDP can carry is dropped here.
@@ -339,10 +333,37 @@ const (
 )
 
 // datagram is the frozen v1 wire format — internal/ingest/udp.go reads it.
+// encodeDatagram writes it.
 type datagram struct {
 	ID        string          `json:"id"`
 	Timestamp int64           `json:"timestamp"`
 	Content   json.RawMessage `json:"content"`
+}
+
+/*!
+ * encodeDatagram writes one datagram, by hand.
+ *
+ * json.Marshal does not pass a RawMessage through: it compacts it, and
+ * escapes <, > and & — and U+2028 and U+2029 — inside its strings. The
+ * server keeps an object's bytes as the record's raw text, so a line that
+ * printed {"url":"/a?x=1&y=2"} was stored with \u0026 in place of the &, and
+ * a search for x=1&y=2 found it over HTTP and never through the pipe. content
+ * is valid JSON already, encodeContent sees to that, and the id is the one
+ * value here that still needs encoding.
+ */
+func encodeDatagram(id string, timestamp int64, content json.RawMessage) []byte {
+	// Marshalling a string cannot fail.
+	encodedID, _ := json.Marshal(id)
+
+	payload := make([]byte, 0, 64+len(encodedID)+len(content))
+	payload = append(payload, `{"id":`...)
+	payload = append(payload, encodedID...)
+	payload = append(payload, `,"timestamp":`...)
+	payload = strconv.AppendInt(payload, timestamp, 10)
+	payload = append(payload, `,"content":`...)
+	payload = append(payload, content...)
+
+	return append(payload, '}')
 }
 
 // DialUDP is the real socket.

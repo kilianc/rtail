@@ -18,6 +18,7 @@ package normalize
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -185,19 +186,49 @@ func Sanitize(rec *model.Record) {
 		rec.JSON = bytes.ToValidUTF8(rec.JSON, []byte(replacement))
 	}
 
+	var renamed []string
+
 	for key, value := range rec.Fields {
-		clean := value
 		if model.KindString == value.Kind || model.KindJSON == value.Kind {
-			clean.Str = validUTF8(value.Str)
+			if clean := validUTF8(value.Str); clean != value.Str {
+				value.Str = clean
+				rec.Fields[key] = value
+			}
 		}
 
 		// Keys become column names, which are strings in the file too.
-		if name := validUTF8(key); name != key {
-			delete(rec.Fields, key)
-			rec.Fields[name] = clean
-		} else if clean.Str != value.Str {
-			rec.Fields[key] = clean
+		if !utf8.ValidString(key) {
+			renamed = append(renamed, key)
 		}
+	}
+
+	/*!
+	 * Two keys that differ only in their bad bytes clean to the same name —
+	 * a syslog device's structured data reaches here with whatever bytes it
+	 * likes — and renamed in map order, whichever came last won, at random.
+	 * So keys are renamed in sorted order, and when the clean name is taken
+	 * the later key gets it with a number after it: "a\uFFFD", then
+	 * "a\uFFFD~2". A key that was valid as it came is never displaced.
+	 * Numbered rather than dropped, because a field gone from a record is a
+	 * filter that silently stops matching it.
+	 */
+	slices.Sort(renamed)
+
+	for _, key := range renamed {
+		value := rec.Fields[key]
+		delete(rec.Fields, key)
+
+		base := validUTF8(key)
+		name := base
+
+		for n := 2; ; n++ {
+			if _, taken := rec.Fields[name]; !taken {
+				break
+			}
+			name = base + "~" + strconv.Itoa(n)
+		}
+
+		rec.Fields[name] = value
 	}
 }
 

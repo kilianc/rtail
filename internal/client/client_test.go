@@ -287,6 +287,40 @@ func TestSendsStrictJSONVerbatim(t *testing.T) {
 	}
 }
 
+/*!
+ * Byte for byte includes the escaping, and the spaces.
+ *
+ * json.Marshal of the datagram compacted the line and escaped & < > and
+ * U+2028 inside it, so the server stored \u0026 for every & the program
+ * printed, and a search for the text found it over HTTP and never through the
+ * pipe. The id goes through the same hand-built datagram, quotes and all.
+ */
+func TestSendsStrictJSONWithoutEscapingIt(t *testing.T) {
+	l := listen(t)
+	line := "{\"url\": \"/a?x=1&y=2\", \"html\": \"<b>\", \"sep\": \"a\u2028b\"}"
+	id := `api & "web"`
+
+	run(t, l, []string{"--id", id}, line+"\n", false)
+
+	message := l.messages(t, 1)[0]
+	if line != string(message.Content) {
+		t.Errorf("content = %s\n           want %s", message.Content, line)
+	}
+	if id != message.ID {
+		t.Errorf("id = %q, want %q", message.ID, id)
+	}
+}
+
+// A JSON5 line is re-serialized, which is no reason to escape it either.
+func TestSendsJSON5WithoutEscapingIt(t *testing.T) {
+	l := listen(t)
+	run(t, l, nil, "{url: '/a?x=1&y=2'}\n", false)
+
+	if got := string(l.messages(t, 1)[0].Content); `{"url":"/a?x=1&y=2"}` != got {
+		t.Errorf("content = %s, want the & as it was printed", got)
+	}
+}
+
 func TestEmitsALineForABlankInputLine(t *testing.T) {
 	l := listen(t)
 	run(t, l, nil, "a\n\nb\n", false)

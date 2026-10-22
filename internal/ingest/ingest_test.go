@@ -11,6 +11,7 @@
 package ingest_test
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -23,8 +24,11 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"runtime"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -166,9 +170,10 @@ func TestIngestAcceptsNDJSONAndPlainLines(t *testing.T) {
 	}
 	json.NewDecoder(response.Body).Decode(&out)
 
-	// The blank line is skipped, not counted or rejected.
-	if 3 != out.Accepted || 0 != out.Rejected {
-		t.Fatalf("accepted %d rejected %d, want 3 and 0", out.Accepted, out.Rejected)
+	// The blank line is accepted with the rest — accepted counts lines, which
+	// is where a shipper resumes — and has nothing in it to store.
+	if 4 != out.Accepted || 0 != out.Rejected {
+		t.Fatalf("accepted %d rejected %d, want 4 and 0", out.Accepted, out.Rejected)
 	}
 
 	records := h.records(t, "api")
@@ -289,25 +294,27 @@ func TestIngestDefaultsTheStream(t *testing.T) {
 }
 
 /*!
- * A 200 means the records are durable, so an empty batch must not claim to
- * have stored anything.
+ * A body of blank lines is accepted line for line, because accepted is how
+ * far into the body a shipper resumes, and stores nothing. An empty body is
+ * no lines at all.
  */
 func TestIngestOfNothingIsSuccessfulAndEmpty(t *testing.T) {
-	h := newHTTPHarness(t)
+	for body, want := range map[string]int{"": 0, "\n\n  \n": 3} {
+		h := newHTTPHarness(t)
 
-	response := h.post(t, "/v1/ingest?stream=empty", "application/x-ndjson", strings.NewReader("\n\n  \n"), nil)
+		response := h.post(t, "/v1/ingest?stream=empty", "application/x-ndjson", strings.NewReader(body), nil)
 
-	if http.StatusOK != response.StatusCode {
-		t.Fatalf("status = %d, want 200", response.StatusCode)
-	}
+		if http.StatusOK != response.StatusCode {
+			t.Fatalf("%q: status = %d, want 200", body, response.StatusCode)
+		}
 
-	var out struct {
-		Accepted int `json:"accepted"`
-	}
-	json.NewDecoder(response.Body).Decode(&out)
+		if out := decodeAnswer(t, response); want != out.Accepted {
+			t.Errorf("%q: accepted = %d, want %d", body, out.Accepted, want)
+		}
 
-	if 0 != out.Accepted {
-		t.Errorf("accepted = %d, want 0", out.Accepted)
+		if stored := len(h.records(t, "empty")); 0 != stored {
+			t.Errorf("%q: stored %d records, want none", body, stored)
+		}
 	}
 }
 
@@ -510,6 +517,91 @@ func TestIngestAnswers503WithWhatWasStored(t *testing.T) {
 	out := decodeAnswer(t, response)
 	if 2 != out.Accepted || 1 != out.Rejected {
 		t.Errorf("accepted %d rejected %d, want 2 and 1", out.Accepted, out.Rejected)
+	}
+}
+
+/*!
+ * A shipper resumes after `accepted` lines of its body, blank ones included.
+ * Counting only the lines stored had it resume short, and send again lines
+ * that were already stored.
+ */
+func TestIngestCountsBlankLinesInWhatItAccepted(t *testing.T) {
+	memory := logstore.NewMemory(10)
+	t.Cleanup(func() { memory.Close() })
+
+	h := newHTTPHarnessWith(t, ingest.HTTPOptions{Store: &failingStore{Memory: memory, left: 2}})
+
+	lines := []string{"one", "", "two", "three", "four"}
+	response := h.post(t, "/v1/ingest?stream=blank", "text/plain", strings.NewReader(strings.Join(lines, "\n")+"\n"), nil)
+
+	if http.StatusServiceUnavailable != response.StatusCode {
+		t.Fatalf("status = %d, want 503", response.StatusCode)
+	}
+
+	// One, the blank line and two; three is where storage refused.
+	out := decodeAnswer(t, response)
+	if 3 != out.Accepted {
+		t.Fatalf("accepted = %d, want 3", out.Accepted)
+	}
+
+	records, _ := memory.Backlog(context.Background(), "blank", 0)
+	if 2 != len(records) || "one" != records[0].Msg || "two" != records[1].Msg {
+		t.Fatalf("stored %v, want one and two", records)
+	}
+
+	if "three" != lines[out.Accepted] {
+		t.Errorf("a shipper would resume at %q, want the first line not stored", lines[out.Accepted])
+	}
+}
+
+/*!
+ * A body that stops arriving is let go of at the body timeout, and answered
+ * with what of it was stored, rather than holding a handler and its
+ * goroutine for as long as the client likes.
+ */
+func TestIngestAnswers408ForABodyThatStalls(t *testing.T) {
+	store := logstore.NewMemory(10)
+	t.Cleanup(func() { store.Close() })
+
+	receiver := ingest.NewHTTP(ingest.HTTPOptions{Store: store, Log: quiet()})
+	ingest.SetBodyTimeoutForTest(receiver, 200*time.Millisecond)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/ingest", receiver.Lines)
+	mux.HandleFunc("POST /v1/logs", receiver.OTLP)
+
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	for path, want := range map[string]int{"/v1/ingest?stream=stalled": 2, "/v1/logs": 0} {
+		conn, err := net.Dial("tcp", server.Listener.Addr().String())
+		if nil != err {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+
+		// Two whole lines of a body that promises a kilobyte, then nothing.
+		fmt.Fprintf(conn, "POST %s HTTP/1.1\r\nHost: rtail\r\nContent-Type: text/plain\r\n"+
+			"Content-Length: 1024\r\n\r\none\ntwo\n", path)
+
+		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+
+		response, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		if nil != err {
+			t.Fatalf("%s: %v — still waiting for the body", path, err)
+		}
+
+		if http.StatusRequestTimeout != response.StatusCode {
+			t.Errorf("%s: status = %d, want 408", path, response.StatusCode)
+		}
+
+		if out := decodeAnswer(t, response); want != out.Accepted || 1 != out.Rejected {
+			t.Errorf("%s: accepted %d rejected %d, want %d and 1", path, out.Accepted, out.Rejected, want)
+		}
+	}
+
+	if records, _ := store.Backlog(context.Background(), "stalled", 0); 2 != len(records) {
+		t.Errorf("stored %d records, want the 2 that arrived", len(records))
 	}
 }
 
@@ -896,6 +988,188 @@ func TestOTLPJSONReadsHexTraceIDs(t *testing.T) {
 		if "eee19b7ec3c1b174" != rec.Fields["span_id"].Str {
 			t.Errorf("%s: span_id = %q", rec.Msg, rec.Fields["span_id"].Str)
 		}
+	}
+}
+
+// protojson reads the proto field names as well as the JSON ones, and an id
+// is hex in either spelling.
+func TestOTLPJSONReadsSnakeCaseHexTraceIDs(t *testing.T) {
+	h := newHTTPHarness(t)
+
+	body := `{"resource_logs": [{
+	  "resource": { "attributes": [
+	    { "key": "service.name", "value": { "string_value": "snaked" } }
+	  ]},
+	  "scope_logs": [{ "log_records": [
+	    { "body": { "string_value": "one" },
+	      "trace_id": "5b8efff798038103d269b633813fc60c", "span_id": "eee19b7ec3c1b174" }
+	  ]}]
+	}]}`
+
+	response := h.post(t, "/v1/logs", "application/json", strings.NewReader(body), nil)
+	if http.StatusOK != response.StatusCode {
+		raw, _ := io.ReadAll(response.Body)
+		t.Fatalf("status = %d: %s", response.StatusCode, raw)
+	}
+
+	records := h.records(t, "snaked")
+	if 1 != len(records) {
+		t.Fatalf("stored %d records, want 1", len(records))
+	}
+
+	if "5b8efff798038103d269b633813fc60c" != records[0].Fields["trace_id"].Str {
+		t.Errorf("trace_id = %q", records[0].Fields["trace_id"].Str)
+	}
+	if "eee19b7ec3c1b174" != records[0].Fields["span_id"].Str {
+		t.Errorf("span_id = %q", records[0].Fields["span_id"].Str)
+	}
+}
+
+// otlpAnswer is ExportLogsServiceResponse as OTLP/JSON spells it: proto3's
+// JSON mapping, which writes an int64 as a string.
+type otlpAnswer struct {
+	PartialSuccess *struct {
+		RejectedLogRecords string `json:"rejectedLogRecords"`
+		ErrorMessage       string `json:"errorMessage"`
+	} `json:"partialSuccess"`
+}
+
+func decodeOTLPAnswer(t *testing.T, response *http.Response) otlpAnswer {
+	t.Helper()
+
+	var out otlpAnswer
+	if err := json.NewDecoder(response.Body).Decode(&out); nil != err || nil == out.PartialSuccess {
+		t.Fatalf("response is not an ExportLogsServiceResponse: %v", err)
+	}
+
+	return out
+}
+
+/*!
+ * An OTLP body or attribute longer than maxLine is truncated to it, as a line
+ * is on every other path. Kept whole, a 22MB body under MaxBody came to a
+ * write-ahead log frame past the 64MB limit, the batch answered 503, and the
+ * collector's retry stored every record before it again — forever.
+ */
+func TestOTLPTruncatesAnOverlongValue(t *testing.T) {
+	store, err := logstore.OpenDurable(context.Background(), t.TempDir(), logstore.DurableOptions{Log: quiet()})
+	if nil != err {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+
+	h := newHTTPHarnessWith(t, ingest.HTTPOptions{Store: store})
+
+	batch := otlpBatch("long", "first", logspb.SeverityNumber_SEVERITY_NUMBER_INFO, time.Now())
+	records := batch.ResourceLogs[0].ScopeLogs[0].LogRecords
+
+	long := proto.Clone(records[0]).(*logspb.LogRecord)
+	long.Body = &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: strings.Repeat("a", 22<<20)}}
+	long.Attributes = append(long.Attributes, &commonpb.KeyValue{
+		Key:   "dump",
+		Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: strings.Repeat("b", 2*ingest.MaxLineForTest)}},
+	})
+	batch.ResourceLogs[0].ScopeLogs[0].LogRecords = append(records, long)
+
+	encoded, err := proto.Marshal(batch)
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	response := h.post(t, "/v1/logs", "application/x-protobuf", bytes.NewReader(encoded), nil)
+	if http.StatusOK != response.StatusCode {
+		raw, _ := io.ReadAll(response.Body)
+		t.Fatalf("status = %d: %s", response.StatusCode, raw)
+	}
+
+	// Truncation is a warning: nothing rejected, and a message saying so.
+	answer := decodeOTLPAnswer(t, response)
+	if "" != answer.PartialSuccess.RejectedLogRecords {
+		t.Errorf("rejected = %q, want nothing", answer.PartialSuccess.RejectedLogRecords)
+	}
+	if !strings.Contains(answer.PartialSuccess.ErrorMessage, "1 log record(s)") {
+		t.Errorf("error message = %q, want a note about the truncated record", answer.PartialSuccess.ErrorMessage)
+	}
+
+	stored, _ := store.Backlog(context.Background(), "long", 0)
+	if 2 != len(stored) {
+		t.Fatalf("stored %d records, want 2", len(stored))
+	}
+	if ingest.MaxLineForTest != len(stored[1].Msg) {
+		t.Errorf("stored %d bytes of the long body, want %d", len(stored[1].Msg), ingest.MaxLineForTest)
+	}
+	if ingest.MaxLineForTest != len(stored[1].Fields["dump"].Str) {
+		t.Errorf("stored %d bytes of the long attribute, want %d", len(stored[1].Fields["dump"].Str), ingest.MaxLineForTest)
+	}
+}
+
+/*!
+ * A record still too large to store once its values are truncated — a map
+ * cannot be cut and stay JSON — is refused on its own, and reported in
+ * partialSuccess, which a collector does not retry. The rest of the batch is
+ * stored, once.
+ */
+func TestOTLPRejectsARecordTooLargeToStore(t *testing.T) {
+	h := newHTTPHarness(t)
+
+	var values []*commonpb.KeyValue
+	for i := range ingest.MaxRecordForTest/ingest.MaxLineForTest + 1 {
+		values = append(values, &commonpb.KeyValue{
+			Key:   fmt.Sprint(i),
+			Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: strings.Repeat("z", ingest.MaxLineForTest)}},
+		})
+	}
+
+	batch := otlpBatch("huge", "first", logspb.SeverityNumber_SEVERITY_NUMBER_INFO, time.Now())
+	records := batch.ResourceLogs[0].ScopeLogs[0].LogRecords
+
+	huge := proto.Clone(records[0]).(*logspb.LogRecord)
+	huge.Body = &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "huge"}}
+	huge.Attributes = append(huge.Attributes, &commonpb.KeyValue{
+		Key:   "nested",
+		Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_KvlistValue{KvlistValue: &commonpb.KeyValueList{Values: values}}},
+	})
+
+	last := proto.Clone(records[0]).(*logspb.LogRecord)
+	last.Body = &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "last"}}
+
+	batch.ResourceLogs[0].ScopeLogs[0].LogRecords = append(records, huge, last)
+
+	encoded, err := proto.Marshal(batch)
+	if nil != err {
+		t.Fatal(err)
+	}
+
+	response := h.post(t, "/v1/logs", "application/x-protobuf", bytes.NewReader(encoded), nil)
+	if http.StatusOK != response.StatusCode {
+		raw, _ := io.ReadAll(response.Body)
+		t.Fatalf("status = %d: %s", response.StatusCode, raw)
+	}
+
+	answer := decodeOTLPAnswer(t, response)
+	if "1" != answer.PartialSuccess.RejectedLogRecords {
+		t.Errorf("rejected = %q, want \"1\"", answer.PartialSuccess.RejectedLogRecords)
+	}
+	if !strings.Contains(answer.PartialSuccess.ErrorMessage, "not stored") {
+		t.Errorf("error message = %q, want it to say why", answer.PartialSuccess.ErrorMessage)
+	}
+
+	stored := h.records(t, "huge")
+	if 2 != len(stored) || "first" != stored[0].Msg || "last" != stored[1].Msg {
+		t.Errorf("stored %d records, want first and last", len(stored))
+	}
+}
+
+// A batch stored as sent is acknowledged with an empty partialSuccess.
+func TestOTLPAnswersAnEmptyPartialSuccess(t *testing.T) {
+	h := newHTTPHarness(t)
+
+	encoded, _ := proto.Marshal(otlpBatch("clean", "x", logspb.SeverityNumber_SEVERITY_NUMBER_INFO, time.Now()))
+
+	response := h.post(t, "/v1/logs", "application/x-protobuf", bytes.NewReader(encoded), nil)
+
+	if raw, _ := io.ReadAll(response.Body); `{"partialSuccess":{}}` != string(raw) {
+		t.Errorf("response = %s, want an empty partialSuccess", raw)
 	}
 }
 
@@ -1374,6 +1648,172 @@ func TestSyslogTCPRefusesAnEndlessOctetCount(t *testing.T) {
 	if 1 != h.receiver.Stats().Invalid.Load() {
 		t.Errorf("invalid = %d, want 1", h.receiver.Stats().Invalid.Load())
 	}
+}
+
+/*!
+ * An octet count is the sender's claim, and claiming a megabyte must not cost
+ * one. Allocated up front, eight bytes a connection held a megabyte each for
+ * as long as the connection stayed open.
+ */
+func TestSyslogTCPDoesNotAllocateAnOctetCountUpFront(t *testing.T) {
+	h := newSyslogHarness(t)
+
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+
+	const connections = 64
+	for range connections {
+		conn, err := net.Dial("tcp", h.receiver.TCPAddr().String())
+		if nil != err {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { conn.Close() })
+
+		fmt.Fprintf(conn, "%d <11>1 - - claim - - - ", ingest.MaxLineForTest)
+	}
+
+	// Long enough for every count to have been read.
+	time.Sleep(300 * time.Millisecond)
+
+	runtime.GC()
+	runtime.ReadMemStats(&after)
+
+	if grown := int64(after.HeapAlloc) - int64(before.HeapAlloc); grown > 16<<20 {
+		t.Errorf("%d connections that sent a count and a few bytes hold %dMB", connections, grown>>20)
+	}
+}
+
+// An octet-counted message past maxLine is truncated like a long line is,
+// and the connection, with whatever is queued behind it, carries on.
+func TestSyslogTCPTruncatesAnOverlongCountedMessage(t *testing.T) {
+	h := newSyslogHarness(t)
+
+	conn, err := net.Dial("tcp", h.receiver.TCPAddr().String())
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	for _, message := range []string{
+		"<11>1 - - counted - - - " + strings.Repeat("x", 2*ingest.MaxLineForTest),
+		"<11>1 - - counted - - - after",
+	} {
+		fmt.Fprintf(conn, "%d %s", len(message), message)
+	}
+
+	records := h.wait(t, "counted", 2)
+
+	if ingest.MaxLineForTest != len(records[0].Raw) {
+		t.Errorf("stored %d bytes of the long message, want %d", len(records[0].Raw), ingest.MaxLineForTest)
+	}
+	if "after" != records[1].Msg {
+		t.Errorf("msg = %q, want the message after the long one", records[1].Msg)
+	}
+}
+
+// failingListener fails its first accepts the way a process out of file
+// descriptors does.
+type failingListener struct {
+	net.Listener
+	failures atomic.Int32
+}
+
+func (l *failingListener) Accept() (net.Conn, error) {
+	if l.failures.Add(-1) >= 0 {
+		return nil, &net.OpError{Op: "accept", Net: "tcp", Err: os.NewSyscallError("accept4", syscall.EMFILE)}
+	}
+	return l.Listener.Accept()
+}
+
+// listenSyslog binds a receiver and lets prepare adjust it before it serves.
+func listenSyslog(t *testing.T, prepare func(*ingest.Syslog)) (*syslogHarness, <-chan error) {
+	t.Helper()
+
+	store := logstore.NewMemory(10)
+
+	receiver, err := ingest.ListenSyslog("127.0.0.1", 0, ingest.SyslogOptions{Store: store, Log: quiet()})
+	if nil != err {
+		t.Fatal(err)
+	}
+	prepare(receiver)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	served := make(chan error, 1)
+	go func() { served <- receiver.Serve(ctx) }()
+
+	t.Cleanup(func() {
+		cancel()
+		receiver.Close()
+		store.Close()
+	})
+
+	return &syslogHarness{receiver: receiver, store: store}, served
+}
+
+/*!
+ * A failed accept is waited out, not the end of TCP. Returning on one left
+ * the listener bound and nothing reading it: senders connected, and what
+ * they sent went nowhere until a restart.
+ */
+func TestSyslogTCPSurvivesAFailedAccept(t *testing.T) {
+	h, served := listenSyslog(t, func(receiver *ingest.Syslog) {
+		ingest.WrapTCPForTest(receiver, func(inner net.Listener) net.Listener {
+			failing := &failingListener{Listener: inner}
+			failing.failures.Store(3)
+			return failing
+		})
+	})
+
+	conn, err := net.Dial("tcp", h.receiver.TCPAddr().String())
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	fmt.Fprint(conn, "<11>1 - - survivor - - - after the flood\n")
+
+	h.wait(t, "survivor", 1)
+
+	select {
+	case err := <-served:
+		t.Errorf("Serve returned %v, want it still serving", err)
+	default:
+	}
+}
+
+// Past the connection limit a sender waits its turn rather than being served
+// at the cost of every other receiver's file descriptors.
+func TestSyslogTCPQueuesConnectionsPastTheLimit(t *testing.T) {
+	h, _ := listenSyslog(t, func(receiver *ingest.Syslog) {
+		ingest.SetMaxConnsForTest(receiver, 1)
+	})
+
+	first, err := net.Dial("tcp", h.receiver.TCPAddr().String())
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer first.Close()
+
+	fmt.Fprint(first, "<11>1 - - first - - - holding the only slot\n")
+	h.wait(t, "first", 1)
+
+	second, err := net.Dial("tcp", h.receiver.TCPAddr().String())
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer second.Close()
+
+	fmt.Fprint(second, "<11>1 - - second - - - waiting\n")
+
+	time.Sleep(200 * time.Millisecond)
+	if records, _ := h.store.Backlog(context.Background(), "second", 0); 0 != len(records) {
+		t.Fatalf("a connection past the limit was served")
+	}
+
+	first.Close()
+	h.wait(t, "second", 1)
 }
 
 // A connection that sends nothing is let go of, rather than held forever.

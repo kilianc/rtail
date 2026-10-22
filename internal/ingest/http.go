@@ -12,15 +12,17 @@
  *
  *   {"accepted": 120, "rejected": 1, "errors": ["..."]}
  *
- * and `accepted` is exact — lines are appended in order and nothing after a
- * failure is attempted, so that many lines from the start of the body are
- * durable. A shipper that gets anything but a 200 resumes after them rather
- * than replaying lines already stored:
+ * and `accepted` counts lines, exactly: blank ones too, which are accepted
+ * with nothing in them to store. Lines are appended in order and nothing
+ * after a failure is attempted, so the first `accepted` lines of the body are
+ * durable. A shipper that gets anything but a 200 resumes after that many
+ * lines rather than replaying lines already stored:
  *
  *   200  every line is stored. One longer than maxLine is truncated to it and
  *        stored all the same, and `errors` says how many were.
  *   400  the body could not be read: an unknown Content-Encoding, or gzip or
  *        zstd that stops decoding partway.
+ *   408  the body took longer than bodyTimeout to arrive.
  *   413  the body is over MaxBody, or decompresses to more than maxInflation
  *        times that.
  *   503  storage refused a record, and the batch stopped there.
@@ -47,8 +49,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 
@@ -87,6 +91,19 @@ const (
 	// --long, and the default of Go's encoder, so nothing compressed with
 	// stock settings is refused.
 	zstdMaxWindow = 8 << 20
+
+	/*!
+	 * bodyTimeout bounds how long one request's body may take to arrive.
+	 *
+	 * The server times out reading headers and nothing after them, so a
+	 * client that sends a Content-Length and then a byte a minute held a
+	 * handler, its goroutine and its buffers for as long as it liked — a few
+	 * thousand of those is a denial of service. Five minutes carries MaxBody
+	 * at under a megabit a second. The cost is that a batch slower than that
+	 * is cut off, and answered 408 with what of it was stored. It bounds the
+	 * whole body rather than each read, so trickling bytes cannot stretch it.
+	 */
+	bodyTimeout = 5 * time.Minute
 )
 
 // HTTPStats counts what the HTTP receivers have seen.
@@ -122,12 +139,14 @@ func (o *HTTPOptions) withDefaults() {
 type HTTP struct {
 	opts  HTTPOptions
 	stats HTTPStats
+	// timeout is bodyTimeout, held here so a test can shorten it.
+	timeout time.Duration
 }
 
 // NewHTTP builds the HTTP receivers.
 func NewHTTP(opts HTTPOptions) *HTTP {
 	opts.withDefaults()
-	return &HTTP{opts: opts}
+	return &HTTP{opts: opts, timeout: bodyTimeout}
 }
 
 // Stats exposes the counters.
@@ -216,6 +235,12 @@ func (h *HTTP) Lines(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// What EOF leaves is a line only if there is something in it: a body
+		// that ends with a newline ends there.
+		if nil != err && 0 == len(line) {
+			break
+		}
+
 		if 0 != len(bytes.TrimSpace(line)) {
 			if cut {
 				truncated++
@@ -231,9 +256,16 @@ func (h *HTTP) Lines(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			out.Accepted++
 			h.stats.Received.Add(1)
 		}
+
+		/*!
+		 * A blank line is accepted too, with nothing to store. accepted is
+		 * where a shipper resumes, counted in lines of its body; leaving the
+		 * blank ones out had it resume short, and send again lines that were
+		 * already stored.
+		 */
+		out.Accepted++
 
 		if nil != err {
 			break
@@ -282,8 +314,14 @@ func readLine(reader *bufio.Reader, line []byte) ([]byte, bool, error) {
  * what bounds memory — Lines holds one line at a time, at most maxLine, and
  * OTLP's readAll caps its buffer itself — but without the second, a body
  * well under MaxBody could still ask for billions of records.
+ *
+ * The time a body may take is bounded here as well, at bodyTimeout.
  */
 func (h *HTTP) open(w http.ResponseWriter, r *http.Request) (io.ReadCloser, error) {
+	// The error is ErrNotSupported where the connection cannot take a
+	// deadline, which is only ever a test's recorder.
+	http.NewResponseController(w).SetReadDeadline(time.Now().Add(h.timeout))
+
 	limited := http.MaxBytesReader(w, r.Body, h.opts.MaxBody)
 	inflated := maxInflation * h.opts.MaxBody
 
@@ -355,8 +393,8 @@ type tooLargeError struct {
 func (e *tooLargeError) Error() string { return e.what + " exceeds " + byteCount(e.limit) }
 
 // statusOf is the status for a body that could not be read: 413 when it ran
-// past a size limit, which the client fixes by sending less, and 400 for
-// anything else wrong with it.
+// past a size limit, which the client fixes by sending less, 408 when it ran
+// past bodyTimeout, and 400 for anything else wrong with it.
 func statusOf(err error) int {
 	var (
 		overBody     *http.MaxBytesError
@@ -365,6 +403,10 @@ func statusOf(err error) int {
 
 	if errors.As(err, &overBody) || errors.As(err, &overInflated) {
 		return http.StatusRequestEntityTooLarge
+	}
+
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return http.StatusRequestTimeout
 	}
 
 	return http.StatusBadRequest

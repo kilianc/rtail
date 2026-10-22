@@ -15,6 +15,7 @@ package ingest
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -69,6 +70,8 @@ type Syslog struct {
 	stats SyslogStats
 	// idle is idleTimeout, held here so a test can shorten it.
 	idle time.Duration
+	// slots holds one token per TCP connection being served, up to maxConns.
+	slots chan struct{}
 }
 
 // DefaultSyslogStream names messages that carry no app-name.
@@ -93,6 +96,21 @@ const (
 	// leaves room for leading zeros without letting a peer that sends digits
 	// forever grow the header without limit.
 	maxOctetDigits = 10
+
+	/*!
+	 * maxConns bounds how many TCP connections are served at once.
+	 *
+	 * Each one holds a goroutine, a 64KB read buffer and up to maxLine of the
+	 * message it is reading, and without a bound a flood of them runs the
+	 * process out of file descriptors — which fails every receiver's accept,
+	 * not only this one's. Past the bound a new connection waits in the
+	 * kernel's accept queue until one ends, as net/netutil.LimitListener has
+	 * it wait. That is the trade: a flood that fills every slot holds off new
+	 * TCP senders for as long as it lasts, instead of the whole process. A
+	 * thousand is far more than the relays a syslog receiver usually serves;
+	 * rsyslog's own default is two hundred.
+	 */
+	maxConns = 1024
 )
 
 /*!
@@ -128,7 +146,13 @@ func ListenSyslog(host string, port int, opts SyslogOptions) (*Syslog, error) {
 		return nil, fmt.Errorf("binding syslog TCP: %w", err)
 	}
 
-	return &Syslog{opts: opts, udp: udp, tcp: tcp, idle: idleTimeout}, nil
+	return &Syslog{
+		opts:  opts,
+		udp:   udp,
+		tcp:   tcp,
+		idle:  idleTimeout,
+		slots: make(chan struct{}, maxConns),
+	}, nil
 }
 
 // Addr reports the bound UDP address, which is how tests find an ephemeral port.
@@ -177,17 +201,53 @@ func (s *Syslog) serveUDP(ctx context.Context) error {
 	}
 }
 
+/*!
+ * serveTCP accepts connections until the listener is closed.
+ *
+ * An accept that fails for any other reason — EMFILE, in a flood of
+ * connections, is the usual one — is retried after a pause that doubles from
+ * 5ms to a second, as net/http's Server does. Returning instead ended TCP
+ * syslog for good while the listener stayed bound: senders could still
+ * connect, and nothing read what they sent until a restart.
+ */
 func (s *Syslog) serveTCP(ctx context.Context) error {
+	var delay time.Duration
+
 	for {
+		// A slot before the accept, so that past maxConns a connection waits
+		// in the kernel's queue rather than being taken and left unread.
+		select {
+		case s.slots <- struct{}{}:
+		case <-ctx.Done():
+			return nil
+		}
+
 		conn, err := s.tcp.Accept()
 		if nil != err {
+			<-s.slots
+
 			if nil != ctx.Err() || errors.Is(err, net.ErrClosed) {
 				return nil
 			}
-			return err
+
+			delay = min(max(2*delay, 5*time.Millisecond), time.Second)
+			s.opts.Log.Warn("accepting a syslog TCP connection", "err", err, "retry", delay)
+
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return nil
+			}
+
+			continue
 		}
 
-		go s.serveConn(ctx, conn)
+		delay = 0
+
+		go func() {
+			defer func() { <-s.slots }()
+			s.serveConn(ctx, conn)
+		}()
 	}
 }
 
@@ -202,10 +262,10 @@ func (s *Syslog) serveTCP(ctx context.Context) error {
  * after it, never at a frame boundary — and it costs nothing to accept a
  * sender that mixes the two.
  *
- * Every read is bounded: a line at maxLine, an octet count at
- * maxOctetDigits, and the wait for the next message at idleTimeout, so a
- * peer can hold neither unbounded memory nor a connection it has stopped
- * using.
+ * Every read is bounded: a message at maxLine in either framing, an octet
+ * count at maxOctetDigits, and the wait for the next message at idleTimeout,
+ * so a peer can hold neither unbounded memory nor a connection it has
+ * stopped using.
  */
 func (s *Syslog) serveConn(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
@@ -275,18 +335,38 @@ func (s *Syslog) readCounted(ctx context.Context, reader *bufio.Reader, host str
 		length = 10*length + int64(char-'0')
 	}
 
-	if length <= 0 || length > maxLine {
+	if length <= 0 {
 		s.stats.Invalid.Add(1)
 		return fmt.Errorf("bad octet count %d", length)
 	}
 
-	message := make([]byte, length)
-	if _, err := io.ReadFull(reader, message); nil != err {
+	/*!
+	 * The message grows as its bytes arrive, never allocated up front. The
+	 * count is only the sender's claim, and making a buffer of it let eight
+	 * bytes — "1048576 " — hold a megabyte for as long as the connection
+	 * stayed open.
+	 *
+	 * A message past maxLine is kept to maxLine and the rest read and thrown
+	 * away, as the newline framing does. Refusing it ended the connection,
+	 * and with it every message queued behind the long one.
+	 */
+	var message bytes.Buffer
+	if _, err := io.CopyN(&message, reader, min(length, maxLine)); nil != err {
 		return err
 	}
 
-	s.stats.Bytes.Add(uint64(length))
-	s.handle(ctx, message, host)
+	if length > maxLine {
+		s.opts.Log.Debug("truncating an over-long syslog line", "from", host, "limit", maxLine)
+	}
+
+	s.stats.Bytes.Add(uint64(message.Len()))
+	s.handle(ctx, message.Bytes(), host)
+
+	if length > maxLine {
+		if _, err := io.CopyN(io.Discard, reader, length-maxLine); nil != err {
+			return err
+		}
+	}
 
 	return nil
 }
