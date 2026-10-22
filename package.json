@@ -8,6 +8,8 @@
     "dev": "node tools/dev.js",
     "build": "node tools/build.js",
     "dist": "node tools/build.js --dist",
+    "build:site": "node tools/build-site.js",
+    "serve:site": "node tools/serve-site.js",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

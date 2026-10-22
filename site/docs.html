@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>rQL reference — rtail</title>
+  <meta name="description" content="The rtail query language: terms, combining, severity ordering, types, fields, the time range, and the SQL escape hatch.">
+
+  <link rel="canonical" href="https://rtail.ciuffolo.com/docs">
+
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://rtail.ciuffolo.com/docs">
+  <meta property="og:title" content="rQL reference — rtail">
+  <meta property="og:description" content="One language, two places it runs: a predicate over the live stream, and a scan over Parquet.">
+  <meta name="twitter:card" content="summary">
+
+  <link href="css/site.css" rel="stylesheet">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="icon" href="images/common/favicon-16x16.png" sizes="16x16">
+  <link rel="icon" href="images/common/favicon-32x32.png" sizes="32x32">
+  <link rel="icon" href="images/common/favicon-96x96.png" sizes="96x96">
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/">
+      rtail
+      <span class="tag">2.0.0-rc.2</span>
+    </a>
+
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/#explorer">Explorer</a>
+      <a href="/#rql">rQL</a>
+      <a href="/#ingest">Ingest</a>
+      <a href="/#storage">Storage</a>
+      <a href="/#install">Install</a>
+      <a href="/docs" aria-current="page">Docs</a>
+      <a class="nav-cta" href="https://github.com/kilianc/rtail">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap docs">
+
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>rQL</h2>
+    <ul>
+      <li><a href="#terms">Terms</a></li>
+      <li><a href="#combining">Combining</a></li>
+      <li><a href="#severity">Severity</a></li>
+      <li><a href="#types">Types</a></li>
+      <li><a href="#fields">Fields</a></li>
+      <li><a href="#time">Time range</a></li>
+      <li><a href="#sql">SQL</a></li>
+      <li><a href="#keyboard">Keyboard</a></li>
+    </ul>
+
+    <h2>Elsewhere</h2>
+    <ul>
+      <li><a href="https://github.com/kilianc/rtail#readme">README</a></li>
+      <li><a href="https://github.com/kilianc/rtail/releases">Releases</a></li>
+      <li><a href="https://github.com/kilianc/rtail/issues">Issues</a></li>
+    </ul>
+  </nav>
+
+  <main class="docs-main" id="main">
+    <p class="eyebrow">Search</p>
+    <h1>The rQL reference</h1>
+    <p class="docs-lede">
+      One language, two places it runs: the server compiles it to a predicate over the
+      live ingest stream, and to a scan over Parquet for history. There is one parser
+      behind both, so a query means the same thing either way.
+    </p>
+
+    <h2 id="terms">Terms</h2>
+    <div class="table-box">
+      <div>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col" style="width: 36%">Form</th>
+              <th scope="col">Matches</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="term">k=v</td>
+              <td>Equality. <code>service=api</code></td>
+            </tr>
+            <tr>
+              <td class="term">k:v</td>
+              <td>Case-insensitive substring. <code>path:/health</code></td>
+            </tr>
+            <tr>
+              <td class="term">k:~re</td>
+              <td>Regular expression. <code>req.path:~"^/v1/"</code></td>
+            </tr>
+            <tr>
+              <td class="term">k&gt;n</td>
+              <td>Comparison, with <code>&lt;</code>, <code>&gt;=</code> and <code>&lt;=</code> as well. <code>latency_ms&gt;500</code></td>
+            </tr>
+            <tr>
+              <td class="term">k=*</td>
+              <td>The key exists at all. <code>trace_id=*</code></td>
+            </tr>
+            <tr>
+              <td class="term">k=null</td>
+              <td>It does not.</td>
+            </tr>
+            <tr>
+              <td class="term">timeout</td>
+              <td>A bare word is full text across the message and the original line. Quote it to match a phrase.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2 id="combining">Combining</h2>
+    <p>
+      Terms are ANDed unless you write <code>OR</code>. <code>-</code> and
+      <code>NOT</code> negate the term they precede, and parentheses group.
+    </p>
+    <div class="panel">
+      <pre><code><span class="f">level&gt;=ERROR service=api "connection timeout"</span>
+<span class="f">-path:/health AND (region=us-east-1 OR region=us-west-2)</span>
+<span class="f">latency_ms&gt;500 req.path:~"^/v1/"</span>
+<span class="f">trace_id=*</span></code></pre>
+    </div>
+
+    <h2 id="severity">Severity</h2>
+    <p>
+      <code>level</code> compares by severity, not alphabetically —
+      <code>level&gt;=ERROR</code> matches FATAL too, which is what you meant. It holds
+      whatever the door it came through supplied: a JSON <code>level</code> key, an OTLP
+      severity number, or a syslog priority. The same query works across all of them
+      without anyone writing a parser.
+    </p>
+
+    <h2 id="types">Types</h2>
+    <p>
+      Values are coerced to the column's type. Quoting suppresses that, which is how you
+      reach a string that looks like a number.
+    </p>
+    <div class="panel">
+      <pre><code><span class="f">status=200</span>     the number
+<span class="f">status="200"</span>   the string</code></pre>
+    </div>
+
+    <h2 id="fields">Fields</h2>
+    <p>
+      The envelope is always there — timestamp, stream, level, message, host, sequence
+      and the original line. Everything else is whatever your logs happened to contain:
+      each root-level JSON key becomes its own typed column, and nested objects are kept
+      as JSON you can path into.
+    </p>
+    <div class="panel">
+      <div class="panel-bar"><span class="panel-label">One line</span></div>
+      <pre><code>{<span class="k">"level"</span>:<span class="s">"error"</span>,<span class="k">"msg"</span>:<span class="s">"upstream timeout"</span>,<span class="k">"service"</span>:<span class="s">"api"</span>,<span class="k">"latency_ms"</span>:<span class="n">30004</span>,<span class="k">"req"</span>:{<span class="k">"path"</span>:<span class="s">"/v1/checkout"</span>}}</code></pre>
+      <div class="panel-bar"><span class="panel-label">Terms that reach it</span></div>
+      <pre><code><span class="f">level&gt;=ERROR</span>            the envelope's severity
+<span class="f">service=api</span>             a promoted column
+<span class="f">latency_ms&gt;30000</span>        the number, compared
+<span class="f">req.path:/checkout</span>      into the nested object
+<span class="f">"upstream timeout"</span>      the text of the line</code></pre>
+    </div>
+    <p>
+      Two files written a week apart with completely different keys reconcile by name at
+      read time, so a field that only started appearing yesterday is still queryable
+      across the whole range.
+    </p>
+
+    <h2 id="time">Time range</h2>
+    <p>
+      The range is the partition pruner, not decoration. It is always applied — a query
+      without one gets the last 24 hours injected — and every response reports the window
+      it used along with how many files and rows the query implied reading, so a slow
+      search can explain itself. Durations take <code>d</code> and <code>w</code> as well
+      as Go's own units, because <code>--retention 720h</code> is nobody's idea of clear.
+    </p>
+
+    <h2 id="sql">SQL</h2>
+    <p>
+      When rQL runs out, post SQL. <code>logs</code> is a view over the pruned files, and
+      the query runs read-only in a DuckDB sandbox that can see nothing but your data
+      directory. On a server started with <code>--auth-token</code>, this route wants the
+      token like every other one: <code>Authorization: Bearer …</code>, or
+      <code>X-Rtail-Token</code> for clients that reserve the first.
+    </p>
+    <div class="panel">
+      <div class="panel-bar"><span class="panel-label">POST /v1/sql</span></div>
+      <pre><code>{
+  <span class="k">"sql"</span>: <span class="s">"SELECT a_service, count(*) n,
+          quantile_cont(a_latency_ms, 0.95) p95
+          FROM logs WHERE level = 'ERROR'
+          GROUP BY 1 ORDER BY n DESC"</span>,
+  <span class="k">"from"</span>: <span class="s">"-6h"</span>
+}</code></pre>
+    </div>
+
+    <h2 id="keyboard">Keyboard</h2>
+    <div class="table-box">
+      <div>
+        <table>
+          <tbody>
+            <tr>
+              <td class="term" style="width: 140px">/ or ⌘K</td>
+              <td>Focus the query editor.</td>
+            </tr>
+            <tr>
+              <td class="term">⌘⏎</td>
+              <td>Run it. Plain <code>⏎</code> is a newline — it is an editor.</td>
+            </tr>
+            <tr>
+              <td class="term">j / k</td>
+              <td>Move between events.</td>
+            </tr>
+            <tr>
+              <td class="term">⎋</td>
+              <td>Collapse everything.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p class="more"><a href="/">← Back to the landing page</a></p>
+  </main>
+</div>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div class="footer-brand">
+      <p>rtail</p>
+      <p>
+        Released under the Apache-2.0 license.<br>
+        Copyright © 2014–2026 Kilian Ciuffolo.
+      </p>
+    </div>
+
+    <nav class="footer-links" aria-label="Footer">
+      <a href="https://github.com/kilianc/rtail">Source</a>
+      <a href="https://github.com/kilianc/rtail/releases">Releases</a>
+      <a href="https://www.npmjs.com/package/rtail">npm</a>
+    </nav>
+  </div>
+</footer>
+
+<script type="module" src="site.js"></script>
+</body>
+</html>
