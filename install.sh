@@ -69,7 +69,8 @@ case "$os" in
   *)
     die "no tarball is published for $os.
   The client cross-compiles anywhere, so Windows is on npm instead:
-      npm install -g rtail
+      npm install -g rtail@next
+  (@next until 2.0.0 is tagged: without it, npm hands you the v1 Node client)
   or build it yourself:
       go install github.com/kilianc/rtail/v2/cmd/rtail@latest"
     ;;
@@ -88,6 +89,11 @@ esac
 # asked to try. So the default is still the latest *stable* release — a
 # surprise-free default — and RTAIL_PRERELEASE asks for the newest of any
 # kind, which is what the README tells you to use until 2.0.0 is out.
+#
+# Until then the latest stable release is v0.3.0: the v1 Node client, from
+# before releases carried tarballs at all. Asking it for one fails with a
+# download error that blames the wrong thing, so anything older than 2 is
+# turned away here, with the line that does work.
 
 if [ -z "$VERSION" ]; then
   if [ -n "$PRERELEASE" ]; then
@@ -102,6 +108,18 @@ fi
 [ -n "$VERSION" ] || die 'could not work out which version to install; set RTAIL_VERSION'
 
 v="${VERSION#v}"
+
+case "$v" in
+  0.* | 1.*)
+    if [ -n "${RTAIL_VERSION:-}" ]; then
+      die "$VERSION is v1, the Node client, from before releases carried tarballs; this installs 2.0 and later"
+    fi
+    die "no stable 2.x release yet — GitHub's latest is $VERSION, the v1 Node client.
+  Rerun with RTAIL_PRERELEASE=1 to take the 2.0 release candidate:
+      curl -fsSL https://raw.githubusercontent.com/$REPO/main/install.sh | RTAIL_PRERELEASE=1 sh"
+    ;;
+esac
+
 name="rtail_${v}_${os}_${arch}"
 base="https://github.com/$REPO/releases/download/$VERSION"
 

@@ -5,6 +5,10 @@
 #
 #   docker build -t rtail-tools tools/
 #
+# `make image` runs that only when there is no rtail-tools image at all, so a
+# change to this file does not reach an image you already have. Run the line
+# above again after pulling one — the cache makes it quick.
+#
 # Then run any tool against the checkout:
 #
 #   docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work rtail-tools \
@@ -25,9 +29,13 @@ FROM node:22.12.0-bookworm-slim
 # duckdb itself is here so the Parquet interop tests can run — they assert that
 # a completely unrelated implementation reads our files, which is the whole
 # anti-lock-in claim and is worth checking rather than asserting.
+#
+# shellcheck so `make ci` lints install.sh the way CI does. Without it the
+# lint was skipped here and run there, and a green `make ci` went red on push.
+# Bookworm's is 0.9.0, the version GitHub's Ubuntu 24.04 runners carry.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      ca-certificates git make g++ libstdc++-12-dev unzip curl \
+      ca-certificates git make g++ libstdc++-12-dev unzip curl shellcheck \
  && rm -rf /var/lib/apt/lists/*
 
 # The architecture comes from dpkg rather than from BuildKit's TARGETARCH.

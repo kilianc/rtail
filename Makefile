@@ -180,7 +180,9 @@ typecheck: image deps
 shell: image deps
 	$(DOCKER_RUN) -it $(IMAGE) bash
 
-## Build the toolchain image if it does not exist yet.
+## Build the toolchain image if it does not exist yet. Only then: after
+## tools/Dockerfile changes, `docker build -t rtail-tools tools/` brings an
+## existing image up to date.
 image:
 	@docker image inspect $(IMAGE) >/dev/null 2>&1 || { \
 		echo "==> building $(IMAGE)"; \

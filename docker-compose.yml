@@ -6,12 +6,21 @@
 #
 #   mycommand | rtail --host <this-host>
 #
-# `build: .` is here so the file works straight from a checkout; delete it to
-# always pull the published image instead.
+# That pulls the published image. `:next` is the newest release candidate, as
+# `rtail@next` is on npm; `latest` stays on an older candidate, without /data,
+# until 2.0.0 is tagged.
+#
+# `build: .` does nothing on its own — Compose pulls `image:` and builds only
+# if the pull fails. To run a checkout instead:
+#
+#   docker compose up -d --build
+#
+# That tags what it built with the same name, so a plain `up` keeps running
+# it until `docker compose pull` puts the published image back.
 
 services:
   rtail:
-    image: ghcr.io/kilianc/rtail:latest
+    image: ghcr.io/kilianc/rtail:next
     build: .
     restart: unless-stopped
     ports:

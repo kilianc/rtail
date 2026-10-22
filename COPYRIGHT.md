@@ -2,7 +2,7 @@
 
 rTail is licensed under the [Apache License 2.0](LICENSE).
 
-rTail **v1.x** (everything up to and including `v0.2.1`, and the history on
+rTail **v1.x** (everything up to and including `v0.3.0`, and the history on
 `main` before the v2 branch) was released under the MIT licence and stays that
 way. Nothing here makes an older release less permissive — if you are using v1,
 the MIT terms you accepted still apply, forever.
