@@ -67,8 +67,13 @@ export function terms(query: string): Term[] {
     }
 
     switch (char) {
-      case '"':
       case "'":
+        // An apostrophe inside a word is a letter — see opensQuote.
+        if (opensQuote(current.slice(current.search(/[^\s()]*$/)))) quote = char
+        current += char
+        break
+
+      case '"':
         quote = char
         current += char
         break
@@ -93,6 +98,29 @@ export function terms(query: string): Term[] {
   return out
 }
 
+/*!
+ * opensQuote reports whether an apostrophe after this much of a chunk begins a
+ * quoted string, by the server lexer's rule.
+ *
+ * At the start of a chunk, after its negating `-`, or right after its
+ * operator — `'a b'`, `-'a b'`, `msg:'a b'`. Anywhere else it is a letter:
+ * `don't` is a word, and splitting terms as though a string had opened there
+ * swallowed every term after it into one.
+ */
+function opensQuote(prefix: string): boolean {
+  const body = prefix.startsWith('-') ? prefix.slice(1) : prefix
+  if ('' === body) return true
+
+  // The chunk's operator is its first one, and the quote has to follow it
+  // directly. OPERATORS lists the longer spellings first, so `:~` wins over `:`.
+  for (let i = 0; i < body.length; i++) {
+    const op = OPERATORS.find((candidate) => body.startsWith(candidate, i))
+    if (op) return i + op.length === body.length
+  }
+
+  return false
+}
+
 function parseTerm(text: string): Term {
   let body = text
   let negated = false
@@ -102,8 +130,9 @@ function parseTerm(text: string): Term {
     body = body.slice(1)
   }
 
-  // A group or a bare keyword is not a comparison.
-  if (body.startsWith('(') || /^(AND|OR|NOT)$/i.test(body)) {
+  // A group or a bare keyword is not a comparison. Keywords are upper case
+  // only, as the server reads them: `not` is a word somebody searched for.
+  if (body.startsWith('(') || /^(AND|OR|NOT)$/.test(body)) {
     return { text, negated }
   }
 
@@ -312,8 +341,9 @@ export function highlightTerms(query: string): string[] {
     if (term.negated) continue
 
     if (undefined === term.field) {
+      // Tested before unquoting: a quoted "OR" is the word, not the operator.
       const text = unquote(term.text)
-      if (text && !/^(AND|OR|NOT)$/i.test(text) && !text.startsWith('(')) out.push(text)
+      if (text && !/^(AND|OR|NOT)$/.test(term.text) && !text.startsWith('(')) out.push(text)
       continue
     }
 
@@ -493,7 +523,7 @@ export function tokenize(query: string): Token[] {
 
     // Boolean glue is punctuation wearing letters, and reads as the operator
     // it is rather than as a field nobody has.
-    if (/^(AND|OR|NOT)$/i.test(word)) {
+    if (/^(AND|OR|NOT)$/.test(word)) {
       tokens.push({ kind: 'op', text, at: match.index })
       afterOp = false
       continue

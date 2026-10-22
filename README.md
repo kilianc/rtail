@@ -536,9 +536,10 @@ as a header; browsers sign in once and get a cookie.
 
 `X-Rtail-Token` works too, for clients that reserve `Authorization`. In a
 browser, opening the server without one gives you a sign-in form, and
-`https://logs.example.com/?token=…` signs you in from a link — the token is
-spent immediately and redirected out of the address bar so it does not end up
-in your history.
+`https://logs.example.com/?token=…` signs you in from a link. It is the shared
+token itself, not a one-time code, so treat the link as the secret it is: the
+server sets the cookie and redirects the token out of the address bar so it
+does not end up in your history or a bookmark.
 
 `/healthz` is deliberately left open, so a container healthcheck or a load
 balancer keeps working without being handed the secret. It reports liveness,
