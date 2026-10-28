@@ -169,10 +169,8 @@ job_npm() {
 # toolchain container. `make ci` drives it; `sh tools/ci.sh image` works too
 # wherever docker is reachable.
 #
-# The release runs it once per architecture, which is what the two knobs are
-# for: RTAIL_CI_PLATFORM runs an image built for another one (linux/arm64,
-# under QEMU), and RTAIL_CI_HEALTH_WAIT gives that emulated server longer than
-# the native thirty seconds to answer.
+# The release runs it once per architecture, each on a runner of that
+# architecture, so the image it starts is always the host's own.
 
 job_image() {
   # CI builds the image with buildx and a layer cache that lives on GitHub,
@@ -187,11 +185,10 @@ job_image() {
 
   step 'smoke-test the image'
   docker rm -f rtail-ci >/dev/null 2>&1 || true
-  docker run -d ${RTAIL_CI_PLATFORM:+--platform "$RTAIL_CI_PLATFORM"} \
-    --name rtail-ci -p 8899:8888 -p 9988:9999/udp rtail:ci >/dev/null
+  docker run -d --name rtail-ci -p 8899:8888 -p 9988:9999/udp rtail:ci >/dev/null
 
   ok=''
-  for _ in $(seq 1 "${RTAIL_CI_HEALTH_WAIT:-30}"); do
+  for _ in $(seq 1 30); do
     if curl -sf http://127.0.0.1:8899/healthz >/dev/null 2>&1; then ok=1; break; fi
     sleep 1
   done
