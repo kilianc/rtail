@@ -272,11 +272,37 @@ jobs:
             dist/*.sha256
           retention-days: 1
 
+  # ** The image, one architecture per runner. **
+  #
+  # Each architecture is built on a runner of its own kind — the same
+  # ubuntu-24.04-arm the arm64 binary is built on — then started and asked for
+  # /healthz, natively, before anything is pushed. ci.yml smoke-tests amd64 on
+  # pull requests and on main, which a tag is neither, and arm64 was never
+  # started anywhere until somebody pulled it.
+  #
+  # arm64 used to be built on the amd64 runner under QEMU. The Dockerfile
+  # compiles the server — Go and DuckDB's cgo — and compiling under emulation
+  # took ten minutes on a cold cache, against a minute or two natively, and
+  # the smoke test ran emulated too. The cost of building on two runners is that neither
+  # can push a multi-arch tag: each pushes its image by digest alone, and
+  # image-manifest below puts the tags on the pair.
   image:
     needs: binaries
-    runs-on: ubuntu-latest
 
-    # The only job that writes to the registry, and so the only one that can.
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux/amd64
+            arch: amd64
+          - os: ubuntu-24.04-arm
+            platform: linux/arm64
+            arch: arm64
+
+    runs-on: ${{ matrix.os }}
+
+    # The image jobs are the only ones that write to the registry, and so the
+    # only ones that can.
     permissions:
       contents: read
       packages: write
@@ -295,11 +321,103 @@ jobs:
           fi
           echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
-
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # For the labels. The tags are image-manifest's.
+      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}
+
+      # Built, loaded into the daemon and put through the same
+      # `tools/ci.sh image` CI uses. The push after it is a cache hit — the
+      # builder keeps the layers it has just made — so the image pushed is the
+      # one tested, as long as the build-args match, and they have to: the
+      # version is baked into a layer.
+      #
+      # One cache scope per architecture. Both jobs write their cache at once,
+      # and in one scope each would overwrite the other's.
+      - name: Build, to test
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          load: true
+          tags: rtail:ci
+          build-args: VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+
+      - name: Smoke-test
+        run: RTAIL_CI_IMAGE_PREBUILT=1 sh tools/ci.sh image
+
+      # By digest, with no tag: a tag here would name one architecture, and
+      # the other job's push would move it to the other.
+      - name: Push by digest
+        id: push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Without the `v`, as the tarballs and npm have it, so /healthz and
+          # --version agree whichever way rtail was installed.
+          build-args: VERSION=${{ steps.version.outputs.version }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=${{ startsWith(github.ref, 'refs/tags/') }}
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-to: type=gha,scope=image-${{ matrix.arch }},mode=max
+
+      - name: Hand the digest on
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: digest-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ** The tags, on both architectures at once. **
+  #
+  # One manifest list naming the two digests the image jobs pushed, under every
+  # tag the release gets. Nothing is tagged until both architectures have been
+  # built, started and pushed, so a tag never points at half a release.
+  #
+  # The steps are conditional and the job is not. npm needs this job, and a
+  # job that needs a skipped one is skipped too: on a rehearsal, with nothing
+  # pushed to name, this does nothing and lets npm's smoke test run.
+  image-manifest:
+    needs: image
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          pattern: digest-*
+          merge-multiple: true
+          path: /tmp/digests
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        if: startsWith(github.ref, 'refs/tags/')
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -313,6 +431,7 @@ jobs:
       # candidate: `latest` stayed on the rc cut before this rule, and every
       # fix since was reachable only by its exact version.
       - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        if: startsWith(github.ref, 'refs/tags/')
         id: meta
         with:
           images: ghcr.io/${{ github.repository }}
@@ -322,69 +441,22 @@ jobs:
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') }}
             type=raw,value=next,enable=${{ startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, '-') }}
 
-      # ** The image is started before it is pushed, on both architectures. **
-      #
-      # Every binary above was run and asked for /healthz on its own runner
-      # before anything was published; the image was not. ci.yml smoke-tests
-      # amd64 on pull requests and on main, which a tag is neither, and arm64
-      # was never started anywhere until somebody pulled it. So each platform
-      # is built on its own first, loaded into the daemon, and put through the
-      # same `tools/ci.sh image` CI uses. The multi-arch build after them is a
-      # cache hit for both: the builder keeps the layers it has just made, so
-      # what this adds is two exports into the daemon and two smoke tests, not
-      # two more builds.
-      #
-      # Same build-args as the push, or the layer that bakes in the version
-      # would miss the cache and the image pushed would not be the one tested.
-      - name: Build amd64, to test
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
-        with:
-          context: .
-          platforms: linux/amd64
-          load: true
-          tags: rtail:ci
-          build-args: VERSION=${{ steps.version.outputs.version }}
-          cache-from: type=gha
-
-      - name: Smoke-test amd64
-        run: RTAIL_CI_IMAGE_PREBUILT=1 sh tools/ci.sh image
-
-      - name: Build arm64, to test
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
-        with:
-          context: .
-          platforms: linux/arm64
-          load: true
-          tags: rtail:ci
-          build-args: VERSION=${{ steps.version.outputs.version }}
-          cache-from: type=gha
-
-      # Run under the QEMU registered above. Emulation makes the server slow
-      # to start rather than broken, so it gets three minutes to answer
-      # instead of thirty seconds — a timeout here should mean it is not
-      # coming up, not that it was being translated one instruction at a time.
-      - name: Smoke-test arm64, emulated
+      - name: Tag both architectures
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: /tmp/digests
         env:
-          RTAIL_CI_IMAGE_PREBUILT: '1'
-          RTAIL_CI_PLATFORM: linux/arm64
-          RTAIL_CI_HEALTH_WAIT: '180'
-        run: sh tools/ci.sh image
+          IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          digests=(*)
+          [ "${#digests[@]}" -eq 2 ] || { echo "expected two digests, found: ${digests[*]}"; exit 1; }
 
-      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
-        with:
-          context: .
-          # arm64 is emulated here rather than built on a native runner. It is
-          # slow — tens of minutes — but it happens once per release, and the
-          # alternative is a second runner and a manifest to assemble by hand.
-          platforms: linux/amd64,linux/arm64
-          push: ${{ startsWith(github.ref, 'refs/tags/') }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # Without the `v`, as the tarballs and npm have it, so /healthz and
-          # --version agree whichever way rtail was installed.
-          build-args: VERSION=${{ steps.version.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          args=()
+          while read -r tag; do args+=(-t "$tag"); done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          for digest in "${digests[@]}"; do args+=("$IMAGE@sha256:$digest"); done
+
+          docker buildx imagetools create "${args[@]}"
+
+          docker buildx imagetools inspect "$IMAGE:${{ steps.meta.outputs.version }}"
 
   # ** npm **
   #
@@ -402,7 +474,7 @@ jobs:
   # spent for good — so it happens only after everything that could still fail
   # has had its chance to.
   npm:
-    needs: [binaries, image]
+    needs: [binaries, image-manifest]
     runs-on: ubuntu-latest
 
     steps:
@@ -487,7 +559,7 @@ jobs:
           publish dist/npm/rtail
 
   release:
-    needs: [binaries, image, npm]
+    needs: [binaries, image-manifest, npm]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
 
