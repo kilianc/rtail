@@ -6,9 +6,7 @@
 #
 #   mycommand | rtail --host <this-host>
 #
-# That pulls the published image. `:next` is the newest release candidate, as
-# `rtail@next` is on npm; `latest` stays on an older candidate, without /data,
-# until 2.0.0 is tagged.
+# That pulls the published image, the newest release.
 #
 # `build: .` does nothing on its own — Compose pulls `image:` and builds only
 # if the pull fails. To run a checkout instead:
@@ -20,7 +18,7 @@
 
 services:
   rtail:
-    image: ghcr.io/kilianc/rtail:next
+    image: ghcr.io/kilianc/rtail:latest
     build: .
     restart: unless-stopped
     ports:

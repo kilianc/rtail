@@ -7,7 +7,7 @@
 # Options, as environment variables because this is usually run through a pipe
 # and has no argv worth speaking of:
 #
-#   RTAIL_VERSION=v2.0.0-rc.3   install exactly this tag
+#   RTAIL_VERSION=v2.0.0        install exactly this tag
 #   RTAIL_PRERELEASE=1          take the newest release even if it is a prerelease
 #   RTAIL_INSTALL_DIR=~/bin     where to put the binary
 #   RTAIL_SERVER=1              also install rtail-server
@@ -69,8 +69,7 @@ case "$os" in
   *)
     die "no tarball is published for $os.
   The client cross-compiles anywhere, so Windows is on npm instead:
-      npm install -g rtail@next
-  (@next until 2.0.0 is tagged: without it, npm hands you the v1 Node client)
+      npm install -g rtail
   or build it yourself:
       go install github.com/kilianc/rtail/v2/cmd/rtail@latest"
     ;;
@@ -84,16 +83,13 @@ esac
 
 # ** which version **
 #
-# GitHub's /releases/latest skips prereleases, which during a release
-# candidate means it points at something older than what people are being
-# asked to try. So the default is still the latest *stable* release — a
-# surprise-free default — and RTAIL_PRERELEASE asks for the newest of any
-# kind, which is what the README tells you to use until 2.0.0 is out.
+# GitHub's /releases/latest skips prereleases, so the default is the latest
+# *stable* release — a surprise-free default — and RTAIL_PRERELEASE asks for
+# the newest of any kind, release candidates included.
 #
-# Until then the latest stable release is v0.3.0: the v1 Node client, from
-# before releases carried tarballs at all. Asking it for one fails with a
-# download error that blames the wrong thing, so anything older than 2 is
-# turned away here, with the line that does work.
+# Releases before 2.0 are the v1 Node client, from before releases carried
+# tarballs at all. Asking one for a tarball fails with a download error that
+# blames the wrong thing, so anything older than 2 is turned away here.
 
 if [ -z "$VERSION" ]; then
   if [ -n "$PRERELEASE" ]; then
@@ -114,9 +110,8 @@ case "$v" in
     if [ -n "${RTAIL_VERSION:-}" ]; then
       die "$VERSION is v1, the Node client, from before releases carried tarballs; this installs 2.0 and later"
     fi
-    die "no stable 2.x release yet — GitHub's latest is $VERSION, the v1 Node client.
-  Rerun with RTAIL_PRERELEASE=1 to take the 2.0 release candidate:
-      curl -fsSL https://raw.githubusercontent.com/$REPO/main/install.sh | RTAIL_PRERELEASE=1 sh"
+    die "GitHub's latest release is $VERSION, the v1 Node client, which this does not install.
+  Set RTAIL_VERSION to a 2.x tag, or RTAIL_PRERELEASE=1 for the newest of any kind."
     ;;
 esac
 

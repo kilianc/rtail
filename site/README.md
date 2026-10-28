@@ -65,6 +65,6 @@ and the output is identical.
 `ciuffolo.com` is registered on Vercel, so the subdomain needed no DNS record.
 
 v2 landed on `main` in #146, so the page and the product it describes are on
-the same branch again. The facts it states — the release candidate it names,
+the same branch again. The facts it states — the release it names,
 the install routes, the auth story — are the README's; when those change, this
 page is part of the change.
