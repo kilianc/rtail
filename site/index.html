@@ -33,7 +33,7 @@
   <div class="wrap nav-inner">
     <a class="brand" href="/">
       rtail
-      <span class="tag">2.0.0-rc.3</span>
+      <span class="tag">2.0.0</span>
     </a>
 
     <nav class="nav-links" aria-label="Primary">
@@ -53,7 +53,7 @@
   <!-- hero -->
   <section class="hero">
     <div class="wrap">
-      <p class="badge">Release candidate · 2.0.0-rc.3</p>
+      <p class="badge">Released · 2.0.0</p>
 
       <h1>Still a UNIX pipe. Now a log store.</h1>
 
@@ -600,11 +600,11 @@
         <article class="panel">
           <div class="panel-bar">
             <span class="panel-label">01 · the server</span>
-            <button class="copy" type="button" data-copy="docker run -d --name rtail -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail:next">Copy</button>
+            <button class="copy" type="button" data-copy="docker run -d --name rtail -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail">Copy</button>
           </div>
           <pre><code><span class="p">$</span> docker run -d --name rtail \
     <span class="f">-p</span> 8888:8888 <span class="f">-p</span> 9999:9999/udp \
-    ghcr.io/kilianc/rtail:next</code></pre>
+    ghcr.io/kilianc/rtail</code></pre>
           <p>Then open <a href="http://localhost:8888">localhost:8888</a> and start piping. Every flag is also an <code>RTAIL_*</code> environment variable.</p>
         </article>
 
@@ -622,12 +622,12 @@
         <article class="panel">
           <div class="panel-bar">
             <span class="panel-label">03 · the client pipe</span>
-            <button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/main/install.sh | RTAIL_PRERELEASE=1 sh">Copy</button>
+            <button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/main/install.sh | sh">Copy</button>
           </div>
           <pre><code><span class="p">$</span> curl -fsSL \
     https://raw.githubusercontent.com/kilianc/rtail/main/install.sh \
-    | <span class="f">RTAIL_PRERELEASE=1</span> sh</code></pre>
-          <p>One 2.6 MB binary on the host you are tailing, with no runtime at all. Also <code>go install</code>, a tarball with checksums, or <code>npm i -g rtail@next</code> if you are already standing in a project.</p>
+    | sh</code></pre>
+          <p>One 2.6 MB binary on the host you are tailing, with no runtime at all. Also <code>go install</code>, a tarball with checksums, or <code>npm i -g rtail</code> if you are already standing in a project.</p>
         </article>
       </div>
     </div>
@@ -642,10 +642,8 @@
           Everything on this page is built and tested: storage, search, compaction, the
           explorer, the four ingest protocols, authentication, TLS, and a release
           pipeline that publishes four tarballs, six npm packages and a container image
-          per tag. <code>2.0.0-rc.3</code> is the current release — until
-          <code>2.0.0</code> is tagged, reaching it takes <code>RTAIL_PRERELEASE=1</code>
-          or the <code>next</code> tag, on npm and on the container image alike, because
-          “latest” means the older thing in GitHub's vocabulary, npm's and the registry's.
+          per tag. <code>2.0.0</code> is the current release, and the plain install
+          line, <code>npm i -g rtail</code> and the image's <code>latest</code> all reach it.
         </p>
       </div>
       <div class="danger">

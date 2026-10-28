@@ -18,18 +18,12 @@
 timeouts from payments in the last few minutes, with `service`, `status`,
 `latency_ms` and `region` promoted to columns.*
 
-> **v2 — release candidate.** v2 is a rewrite: a durable, searchable log store
-> backed by Parquet and SQL. The server is a single Go binary with the webapp
-> embedded, and the npm package carries only the client pipe.
+> **v2.** v2 is a rewrite: a durable, searchable log store backed by Parquet
+> and SQL. The server is a single Go binary with the webapp embedded, and the
+> npm package carries only the client pipe.
 >
 > The `cmd | rtail` wire format is frozen and always will be — the client you
 > already have installed works against a v2 server unchanged.
->
-> **Where it is:** everything described below is built and tested — storage,
-> search, compaction, the explorer, the four ingest protocols, authentication,
-> TLS, and a release pipeline that publishes four tarballs, six npm packages
-> and a container image per tag. `2.0.0-rc.3` is the current release; until
-> `2.0.0` is tagged, reaching it takes `RTAIL_PRERELEASE=1` — see below.
 
 `rtail` is a command line utility that grabs every line in `stdin` and broadcasts it over **UDP**. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using `rtail` broadcasting to an `rtail-server` – See multiple streams in the browser, in realtime.
 
@@ -37,12 +31,7 @@ timeouts from payments in the last few minutes, with `service`, `status`,
 
 The server ships as a container image — this is the recommended way to run it.
 
-    $ docker run -d --name rtail -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail:next
-
-`:next` is the newest release candidate, the way `rtail@next` is on npm.
-`latest` only moves on a stable release, so until `2.0.0` is tagged it is
-stuck on an earlier candidate that predates `/data`; once it is, the plain
-`ghcr.io/kilianc/rtail` is right again.
+    $ docker run -d --name rtail -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail
 
 Open <http://localhost:8888> and start piping. There is a
 [`docker-compose.yml`](docker-compose.yml) if you prefer:
@@ -52,16 +41,16 @@ Open <http://localhost:8888> and start piping. There is a
 Options are flags, or `RTAIL_*` environment variables:
 
     $ docker run -d -p 8080:8080 -p 9999:9999/udp \
-        -e RTAIL_WEB_PORT=8080 ghcr.io/kilianc/rtail:next
+        -e RTAIL_WEB_PORT=8080 ghcr.io/kilianc/rtail
 
     $ docker run -d -p 8888:8888 -p 9999:9999/udp \
-        ghcr.io/kilianc/rtail:next --backlog 500
+        ghcr.io/kilianc/rtail --backlog 500
 
 The image is memory-only until you give it somewhere to write. `/data` is
 there for that, owned by the user the server runs as:
 
     $ docker run -d -p 8888:8888 -p 9999:9999/udp \
-        -e RTAIL_DATA=/data -v rtail-data:/data ghcr.io/kilianc/rtail:next
+        -e RTAIL_DATA=/data -v rtail-data:/data ghcr.io/kilianc/rtail
 
 A named volume, as above, takes that owner on its own. A bind mount keeps the
 host directory's, which the server's uid 10001 cannot write to:
@@ -78,7 +67,7 @@ network or put a reverse proxy in front of it.
 
 Tagged releases carry a binary for each platform and a container image.
 
-    $ docker run -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail:next
+    $ docker run -p 8888:8888 -p 9999:9999/udp ghcr.io/kilianc/rtail
 
 Or take the binary for your platform from the
 [releases page](https://github.com/kilianc/rtail/releases) — `linux_amd64`,
@@ -100,26 +89,14 @@ of any kind:
     $ curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/main/install.sh | sh
 
     # or take the tarball yourself — it is what the line above downloads
-    $ tar -xzf rtail_2.0.0-rc.3_darwin_arm64.tar.gz
-    $ sudo mv rtail_2.0.0-rc.3_darwin_arm64/rtail /usr/local/bin
+    $ tar -xzf rtail_2.0.0_darwin_arm64.tar.gz
+    $ sudo mv rtail_2.0.0_darwin_arm64/rtail /usr/local/bin
 
     # or, if you have Go
     $ go install github.com/kilianc/rtail/v2/cmd/rtail@latest
 
     # or, if you are already standing in a project
-    $ npm install -g rtail@next
-
-**While 2.0 is a release candidate, two of those four need telling.** GitHub's
-"latest release" skips prereleases, so the plain `install.sh` stops and asks
-for `RTAIL_PRERELEASE=1`; and npm's `latest` tag still points at `0.2.1` — the
-v1 Node client — so a plain `npm install -g rtail` quietly hands you that:
-
-    $ curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/main/install.sh | RTAIL_PRERELEASE=1 sh
-    $ npm install -g rtail@next
-
-`go install …@latest` needs nothing: there is no `v2` release tag yet, so Go
-resolves it to the newest prerelease. Taking the tarball by name needs nothing
-either. When `2.0.0` is tagged, all four plain forms are correct.
+    $ npm install -g rtail
 
 [`install.sh`](install.sh) detects your platform, checks the download against
 the release's own `checksums.txt` and refuses to continue on a mismatch,
