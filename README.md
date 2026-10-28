@@ -9,6 +9,15 @@
 
 ## Terminal output to the browser in seconds, using UNIX pipes.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/explorer-dark.png">
+  <img alt="The rtail explorer: level>=WARN on the api stream over the last hour, a wall of upstream timeouts from payments at the top" src="docs/media/explorer-light.png">
+</picture>
+
+*`level>=WARN` on the `api` stream over the last hour: a run of upstream
+timeouts from payments in the last few minutes, with `service`, `status`,
+`latency_ms` and `region` promoted to columns.*
+
 > **v2 — release candidate.** v2 is a rewrite: a durable, searchable log store
 > backed by Parquet and SQL. The server is a single Go binary with the webapp
 > embedded, and the npm package carries only the client pipe.
@@ -134,11 +143,6 @@ Windows is published to npm and not as a tarball — the client cross-compiles
 anywhere, the server does not.
 
 ## The explorer
-
-![The rtail explorer](docs/media/explorer.png)
-
-*A spike of upstream timeouts, twenty minutes back: `level>=WARN` on the `api`
-stream, with `service`, `latency_ms` and `region` promoted to columns.*
 
 **One filter drives everything.** Type it and the live tail narrows — the
 server compiles the same rQL to a predicate over the ingest stream. Switch to
@@ -635,6 +639,7 @@ Other targets:
     $ make fmt        # gofmt the Go sources
     $ make typecheck  # type-check the webapp
     $ make npm-pack   # lay out the npm packages under dist/npm
+    $ make screenshots # retake the screenshot at the top of this README
     $ make shell      # open a shell inside the toolchain container
     $ make clean      # remove generated assets, binaries and dependencies
 
