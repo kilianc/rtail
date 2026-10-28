@@ -16,6 +16,7 @@
 #   make npm-pack   lay out the npm packages under dist/npm
 #   make site       build the landing page into site/dist
 #   make site-serve build it and serve it on this worktree's port
+#   make screenshots retake the README screenshot, light and dark
 #   make ci         run everything CI runs, here, before you push
 #   make test       run the Go test suite
 #   make vet        go vet
@@ -61,7 +62,7 @@ DOCKER_RUN := docker run --rm \
 DEV_ENV := -e WEB_PORT=$(PORT) -e UDP_PORT=$(UDP_PORT) -p $(PORT):$(PORT)
 
 .PHONY: dev up down logs url server build dist release client npm-pack site \
-        site-serve ci test go-test go-test-one vet typecheck fmt shell clean \
+        site-serve screenshots ci test go-test go-test-one vet typecheck fmt shell clean \
         image deps
 
 ## Run the app in the foreground: builds and watches assets, serves the webapp
@@ -143,6 +144,12 @@ site: image deps
 site-serve: site
 	@echo "==> $(URL)"
 	$(DOCKER_RUN) -it -p $(PORT):$(PORT) $(IMAGE) npm run serve:site -- --port $(PORT)
+
+## The README screenshot, both themes, from seeded data on a throwaway server.
+## Rerun it whenever the explorer changes how it looks.
+screenshots: image deps server build
+	docker build -q -t rtail-screenshot-tools tools/screenshot >/dev/null
+	sh tools/screenshot/run.sh
 
 ## Everything CI runs, before you spend a runner minute finding out.
 ##
