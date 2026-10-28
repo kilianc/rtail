@@ -7,7 +7,7 @@
 # Options, as environment variables because this is usually run through a pipe
 # and has no argv worth speaking of:
 #
-#   RTAIL_VERSION=v2.0.0-rc.2   install exactly this tag
+#   RTAIL_VERSION=v2.0.0-rc.3   install exactly this tag
 #   RTAIL_PRERELEASE=1          take the newest release even if it is a prerelease
 #   RTAIL_INSTALL_DIR=~/bin     where to put the binary
 #   RTAIL_SERVER=1              also install rtail-server

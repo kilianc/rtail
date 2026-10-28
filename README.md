@@ -28,7 +28,7 @@ timeouts from payments in the last few minutes, with `service`, `status`,
 > **Where it is:** everything described below is built and tested — storage,
 > search, compaction, the explorer, the four ingest protocols, authentication,
 > TLS, and a release pipeline that publishes four tarballs, six npm packages
-> and a container image per tag. `2.0.0-rc.2` is the current release; until
+> and a container image per tag. `2.0.0-rc.3` is the current release; until
 > `2.0.0` is tagged, reaching it takes `RTAIL_PRERELEASE=1` — see below.
 
 `rtail` is a command line utility that grabs every line in `stdin` and broadcasts it over **UDP**. That's it. Nothing fancy. Nothing complicated. Tail log files, app output, or whatever you wish, using `rtail` broadcasting to an `rtail-server` – See multiple streams in the browser, in realtime.
@@ -100,8 +100,8 @@ of any kind:
     $ curl -fsSL https://raw.githubusercontent.com/kilianc/rtail/main/install.sh | sh
 
     # or take the tarball yourself — it is what the line above downloads
-    $ tar -xzf rtail_2.0.0-rc.2_darwin_arm64.tar.gz
-    $ sudo mv rtail_2.0.0-rc.2_darwin_arm64/rtail /usr/local/bin
+    $ tar -xzf rtail_2.0.0-rc.3_darwin_arm64.tar.gz
+    $ sudo mv rtail_2.0.0-rc.3_darwin_arm64/rtail /usr/local/bin
 
     # or, if you have Go
     $ go install github.com/kilianc/rtail/v2/cmd/rtail@latest
